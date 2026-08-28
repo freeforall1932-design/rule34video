@@ -1,0 +1,172 @@
+{
+  "appId": "rule34",
+  "folderName": "rule34-downloader",
+  "family": "legacy direct-video",
+  "generatedAt": "2026-07-01T11:25:06.130Z",
+  "sourceAppFolder": "apps/converted-sandbox/pornhub-downloader",
+  "candidateFolder": "apps/generated-candidates/rule34-downloader",
+  "sourceAdapter": "factory/templates/rule34-adapter-seed.json",
+  "templateAppId": "pornhub",
+  "manifest": {
+    "name": "Downloader for Rule 34",
+    "description": "Fast, private, one-click video downloads from Rule 34.",
+    "version": "4.0.1",
+    "permissions": [
+      "downloads",
+      "activeTab",
+      "storage",
+      "notifications",
+      "contextMenus",
+      "tabs",
+      "scripting",
+      "offscreen",
+      "webRequest",
+      "declarativeNetRequest"
+    ],
+    "hostPermissions": [
+      "https://api.github.com/*",
+      "https://auth.serp.co/*",
+      "https://rule34.world/*",
+      "https://*.rule34.world/*",
+      "http://rule34.world/*",
+      "http://*.rule34.world/*",
+      "https://www.rule34.world/*",
+      "http://www.rule34.world/*"
+    ],
+    "matches": [
+      "https://rule34.world/*",
+      "https://*.rule34.world/*",
+      "http://rule34.world/*",
+      "http://*.rule34.world/*",
+      "https://www.rule34.world/*",
+      "http://www.rule34.world/*"
+    ],
+    "contentScripts": [
+      {
+        "matches": [
+          "https://rule34.world/*",
+          "https://*.rule34.world/*",
+          "http://rule34.world/*",
+          "http://*.rule34.world/*",
+          "https://www.rule34.world/*",
+          "http://www.rule34.world/*"
+        ],
+        "js": [
+          "site-config.js",
+          "logger.js",
+          "download-manager.js",
+          "content-bridge.js",
+          "site-adapter.js",
+          "content.js",
+          "player-button.js"
+        ],
+        "runAt": "document_idle"
+      }
+    ],
+    "backgroundServiceWorker": "background-enhanced.js",
+    "backgroundType": "module",
+    "actionPopup": "popup.html",
+    "actionTitle": "Downloader for Rule 34",
+    "webAccessibleResources": [
+      {
+        "resources": [
+          "inject.js",
+          "styles/download-manager.css",
+          "styles/player-button.css"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
+      },
+      {
+        "resources": [
+          "offscreen.html",
+          "offscreen.js"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
+      },
+      {
+        "resources": [
+          "modules/**/*"
+        ],
+        "matches": [
+          "<all_urls>"
+        ]
+      }
+    ]
+  },
+  "siteConfig": {
+    "siteName": "Rule 34",
+    "popupTitle": "Downloader for Rule 34",
+    "activationTitle": "Activate Video Downloader for Rule 34",
+    "entitlement": "rule34-downloader",
+    "storagePrefix": "rule34-downloader",
+    "authBaseUrl": "https://auth.serp.co",
+    "productUrl": "https://serp.ly/rule34-downloader",
+    "repoOwner": "serpapps",
+    "repoName": "rule34-downloader",
+    "brandAccent": "#2563eb",
+    "brandAccentHover": "#1d4ed8",
+    "logLevel": "debug"
+  },
+  "qa": {
+    "sourceRepairBatch": "combined-technical-proof-20260701",
+    "exampleUrl": "https://rule34.world/post/1351776?providerId=root",
+    "sourceHost": "rule34.world",
+    "candidateEvidence": {
+      "proofSource": "earlier-technical-proof",
+      "validMediaKind": "direct-media",
+      "validMediaStatus": "206",
+      "validMediaContentType": "video/mp4",
+      "hasDirectMediaEvidence": true,
+      "screenshotDir": "_tmp/site-url-discovery-deep-rest-resume-280/screenshots/rule34__rule34-world"
+    },
+    "actions": [
+      {
+        "type": "acceptAgeGate",
+        "selectors": [
+          "button:has-text(\"I Agree\")",
+          "button:has-text(\"I AGREE\")",
+          "button:has-text(\"Enter\")",
+          "a:has-text(\"Enter\")",
+          "button:has-text(\"Continue\")",
+          "a:has-text(\"Continue\")",
+          "input[value*=\"AGREE\" i]"
+        ],
+        "waitAfterMs": 2000,
+        "fallbackPoints": [
+          {
+            "x": 640,
+            "y": 430
+          }
+        ]
+      },
+      {
+        "type": "clickPlayer",
+        "selectors": [
+          "video",
+          "iframe[src*=\"player\"]",
+          "iframe[src*=\"embed\"]",
+          ".jwplayer",
+          ".vjs-big-play-button",
+          "button[aria-label*=\"Play\"]",
+          "[class*=\"play\"]",
+          "[id*=\"play\"]",
+          ".player",
+          ".video-player"
+        ],
+        "clicks": 3,
+        "clickFallbackPointsAlways": true,
+        "waitAfterMs": 3000,
+        "fallbackPoints": [
+          {
+            "x": 640,
+            "y": 420
+          }
+        ]
+      }
+    ]
+  }
+}

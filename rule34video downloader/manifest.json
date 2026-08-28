@@ -1,0 +1,103 @@
+{
+  "manifest_version": 3,
+  "name": "Downloader for Rule 34",
+  "description": "Fast, private, one-click video downloads from Rule 34.",
+  "version": "4.0.1",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "downloads",
+    "activeTab",
+    "storage",
+    "notifications",
+    "contextMenus",
+    "tabs",
+    "scripting",
+    "offscreen",
+    "webRequest",
+    "declarativeNetRequest"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*",
+    "https://auth.serp.co/*",
+    "https://rule34.world/*",
+    "https://*.rule34.world/*",
+    "http://rule34.world/*",
+    "http://*.rule34.world/*",
+    "https://www.rule34.world/*",
+    "http://www.rule34.world/*",
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background-enhanced.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://rule34.world/*",
+        "https://*.rule34.world/*",
+        "http://rule34.world/*",
+        "http://*.rule34.world/*",
+        "https://www.rule34.world/*",
+        "http://www.rule34.world/*"
+      ],
+      "js": [
+        "site-config.js",
+        "logger.js",
+        "download-manager.js",
+        "content-bridge.js",
+        "site-adapter.js",
+        "content.js",
+        "player-button.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Downloader for Rule 34",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "inject.js",
+        "styles/download-manager.css",
+        "styles/player-button.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    },
+    {
+      "resources": [
+        "offscreen.html",
+        "offscreen.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    },
+    {
+      "resources": [
+        "modules/**/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+    "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; child-src 'self';"
+  }
+}
