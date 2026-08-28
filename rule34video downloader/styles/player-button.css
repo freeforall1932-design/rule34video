@@ -1,0 +1,63 @@
+/* Download button overlay for AlphaPorno player */
+.ap-download-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10020;
+  background: var(--brand-accent);
+  border: none;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+.ap-download-button:hover { background: var(--brand-accent-hover); }
+.ap-download-button:active { transform: translateY(1px); }
+.ap-dl-icon { font-size: 14px; line-height: 1; }
+.ap-dl-text { line-height: 1; }
+
+/* Popover */
+.ap-quality-popover {
+  position: absolute;
+  min-width: 170px;
+  max-width: 240px;
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  border: 1px solid var(--border-dark);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.35);
+  overflow: hidden;
+}
+.ap-popover-header {
+  font-weight: 600;
+  font-size: 12px;
+  padding: 8px 10px;
+  background: var(--bg-darker);
+  border-bottom: 1px solid var(--border-dark);
+}
+.ap-popover-content { padding: 6px; }
+.ap-popover-loading, .ap-popover-error { font-size: 12px; color: var(--text-subtle); padding: 8px; }
+.ap-popover-list { display: flex; flex-direction: column; gap: 4px; }
+.ap-popover-item {
+  appearance: none;
+  border: none;
+  background: var(--bg-darker);
+  color: var(--text-primary);
+  text-align: left;
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.ap-popover-item:hover { background: var(--border-dark); }
+.ap-popover-q { font-weight: 600; }
+.ap-popover-type { font-size: 11px; opacity: 0.85; color: var(--text-muted); }
+

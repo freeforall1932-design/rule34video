@@ -1,0 +1,11 @@
+/* Basic stylesheet for AlphaPorno Download Manager (non-breaking; inline styles still apply) */
+#alphaporno-download-manager {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+#alphaporno-download-manager .cancel-download-btn:hover {
+  background-color: #f1f3f5;
+}
+#downloads-container {
+  scrollbar-width: thin;
+}
+
