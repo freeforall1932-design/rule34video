@@ -5,14 +5,6 @@
   const SiteConfig = {
       "SITE_NAME": "Rule 34",
       "POPUP_TITLE": "Downloader for Rule 34",
-      "activationHeading": "Get started in seconds",
-      "activationTitle": "Activate Video Downloader for Rule 34",
-      "AUTH": {
-          "baseUrl": "https://auth.serp.co",
-          "entitlement": "rule34-downloader",
-          "storagePrefix": "rule34-downloader",
-          "requiresCode": true
-      },
       "OFFSCREEN": {
           "downloadFolder": "Rule 34",
           "defaultRefererUrl": "https://rule34.world/",
@@ -80,7 +72,11 @@
                   "http://rule34.world/*",
                   "http://*.rule34.world/*",
                   "https://www.rule34.world/*",
-                  "http://www.rule34.world/*"
+                  "http://www.rule34.world/*",
+                  "https://rule34video.com/*",
+                  "https://*.rule34video.com/*",
+                  "http://rule34video.com/*",
+                  "http://*.rule34video.com/*"
               ],
               "messageAction": "getVideoInfo"
           },
@@ -92,23 +88,18 @@
               "logMessage": "Creating offscreen document for HLS processing"
           }
       },
-      "WORKER_URL": "https://ghl-check-license-worker-v2.farleythecoder.workers.dev",
-      "GUMROAD_PRODUCT_ID": "",
-      "GH_LICENSE_ID": "",
-      "PRODUCT_URL": "https://serp.ly/rule34-downloader",
       "UPDATE_CHECK": {
           "enabled": true,
           "provider": "github-releases",
-          "repoOwner": "serpapps",
-          "repoName": "rule34-downloader",
+          "repoOwner": "freeforall1932-design",
+          "repoName": "rule34video",
           "checkIntervalMs": 21600000,
           "requestTimeoutMs": 8000,
-          "releaseApiUrl": "https://api.github.com/repos/serpapps/rule34-downloader/releases/latest",
-          "releasePageUrl": "https://github.com/serpapps/rule34-downloader/releases/latest"
+          "releaseApiUrl": "https://api.github.com/repos/freeforall1932-design/rule34video/releases/latest",
+          "releasePageUrl": "https://github.com/freeforall1932-design/rule34video/releases/latest"
       },
       "LOG_LEVEL": "debug",
       "LOG_MIRROR_TO_BG": true,
-      "AUTH_ENTITLEMENT_ALIASES": [],
       "COLORS": {
           "brandAccent": "#2563eb",
           "brandAccentHover": "#1d4ed8",
@@ -125,9 +116,6 @@
           "lightBorder": "#cbd5e1",
           "lightBg": "#e2e8f0"
       },
-      "AUTH_BASE_URL": "https://auth.serp.co",
-      "AUTH_ENTITLEMENT": "rule34-downloader",
-      "AUTH_STORAGE_PREFIX": "rule34-downloader",
       "ADAPTER": {
           "staticMediaUrls": [],
           "preferredMediaUrlPatterns": [],
@@ -200,21 +188,8 @@
   } catch {}
 
   try {
-    SiteConfig.AUTH_BASE_URL = SiteConfig.AUTH && SiteConfig.AUTH.baseUrl;
-    SiteConfig.AUTH_ENTITLEMENT = SiteConfig.AUTH && SiteConfig.AUTH.entitlement;
-    SiteConfig.AUTH_STORAGE_PREFIX = SiteConfig.AUTH && SiteConfig.AUTH.storagePrefix;
-    SiteConfig.AUTH_ENTITLEMENT_ALIASES = Array.isArray(SiteConfig.AUTH_ENTITLEMENT_ALIASES)
-      ? [
-          ...new Set(
-            SiteConfig.AUTH_ENTITLEMENT_ALIASES.map((item) => String(item).trim()).filter(Boolean),
-          ),
-        ]
-      : [];
-  } catch {}
-
-  try {
     if (typeof document !== "undefined") {
-      applyThemeVariables(document, SiteConfig.COLORS, "serp-auth-theme-vars");
+      applyThemeVariables(document, SiteConfig.COLORS, "site-theme-boot-vars");
     }
   } catch {}
   try {

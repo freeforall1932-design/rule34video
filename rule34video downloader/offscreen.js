@@ -31,9 +31,7 @@ function inferSiteName() {
 function inferOriginFromHostPermissions() {
   const ignored = [
     "api.github.com",
-    "auth.serp.co",
     "workers.dev",
-    "serp.ly",
     "gstatic.com",
   ];
   const hosts = Array.isArray(manifest.host_permissions) ? manifest.host_permissions : [];

@@ -4,14 +4,6 @@ import './site-config.js';
 import './logger.js';
 import './background-bridge.js';
 import './site-adapter.js';
-import './auth.js';
-
-try {
-  if (!globalThis.__serpAuthListenerInstalled) {
-    globalThis.__serpAuthListenerInstalled = true;
-    globalThis.Auth?.registerAuthMessageListener?.();
-  }
-} catch {}
 
 const SiteConfig = globalThis.SiteConfig || {};
 const Bridge = globalThis.SerpBackgroundBridge || {};
@@ -27,6 +19,392 @@ const downloadMediaUrlRewriteRules = [];
 const removeMediaUrlQueryParams = [];
 const rangeRequestUrlPatterns = [];
 let currentDownloadTabId = null;
+
+// ---------------------------------------------------------------------------
+// Download queue with a user-configurable concurrency limit.
+// The limit lives in chrome.storage.local under DOWNLOAD_LIMIT_STORAGE_KEY.
+// 0 (or unset) means unlimited. When the number of in-flight downloads
+// reaches the limit, new requests are queued and dispatched automatically
+// as soon as a running download finishes, fails, or is cancelled.
+// ---------------------------------------------------------------------------
+const DOWNLOAD_LIMIT_STORAGE_KEY = "downloadConcurrencyLimit";
+const QUEUE_JOB_MAX_AGE_MS = 3 * 60 * 60 * 1000; // safety net for lost jobs
+const downloadQueue = [];
+const activeQueueJobs = new Map(); // downloadId (or temp key) -> { startedAt }
+const completedBeforeTracked = new Set();
+let queueJobSequence = 0;
+let queuedIdSequence = 0;
+let queuePumpRunning = false;
+let queuePumpPending = false;
+
+async function getDownloadLimit() {
+  try {
+    const data = await chrome.storage.local.get([DOWNLOAD_LIMIT_STORAGE_KEY]);
+    const value = Number(data?.[DOWNLOAD_LIMIT_STORAGE_KEY]);
+    return Number.isFinite(value) && value > 0 ? Math.min(Math.floor(value), 99) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function purgeStaleQueueJobs() {
+  const now = Date.now();
+  for (const [key, job] of activeQueueJobs) {
+    if (now - (job?.startedAt || 0) > QUEUE_JOB_MAX_AGE_MS) activeQueueJobs.delete(key);
+  }
+}
+
+function getQueueStatusSnapshot(limit) {
+  purgeStaleQueueJobs();
+  return {
+    active: activeQueueJobs.size,
+    queued: downloadQueue.length,
+    limit: Number.isFinite(Number(limit)) ? Number(limit) : 0,
+  };
+}
+
+function releaseQueueSlot(downloadId) {
+  if (downloadId === undefined || downloadId === null) return;
+  const removed = activeQueueJobs.delete(downloadId) || activeQueueJobs.delete(String(downloadId));
+  if (!removed) {
+    // Completion raced ahead of tracking; remember it briefly.
+    completedBeforeTracked.add(String(downloadId));
+    if (completedBeforeTracked.size > 50) {
+      completedBeforeTracked.delete(completedBeforeTracked.values().next().value);
+    }
+    return;
+  }
+  void pumpDownloadQueue();
+}
+
+function trackQueueJob(downloadId, job) {
+  const key = String(downloadId);
+  if (completedBeforeTracked.has(key)) {
+    completedBeforeTracked.delete(key);
+    void pumpDownloadQueue();
+    return;
+  }
+  activeQueueJobs.set(downloadId, job || { startedAt: Date.now() });
+}
+
+async function runQueuedDownload(videoInfo, tabId) {
+  const jobKey = `queue-job-${++queueJobSequence}`;
+  activeQueueJobs.set(jobKey, { startedAt: Date.now() });
+  let result;
+  try {
+    if (tabId) currentDownloadTabId = tabId;
+    result = await downloadVideo(videoInfo);
+  } catch (error) {
+    activeQueueJobs.delete(jobKey);
+    void pumpDownloadQueue();
+    throw error;
+  }
+  const job = activeQueueJobs.get(jobKey) || { startedAt: Date.now() };
+  activeQueueJobs.delete(jobKey);
+  const downloadId = result && result.downloadId;
+  if (downloadId !== undefined && downloadId !== null) {
+    trackQueueJob(downloadId, job);
+  } else {
+    void pumpDownloadQueue();
+  }
+  return result;
+}
+
+async function queueDownloadRequest(videoInfo) {
+  purgeStaleQueueJobs();
+  const limit = await getDownloadLimit();
+  const tabId = currentDownloadTabId;
+  if (limit > 0 && activeQueueJobs.size >= limit) {
+    const queuedId = `queued-${Date.now()}-${++queuedIdSequence}`;
+    downloadQueue.push({ queuedId, videoInfo, tabId, enqueuedAt: Date.now() });
+    const position = downloadQueue.length;
+    const title = sanitizeFilename(videoInfo?.title || videoInfo?.id || "Video");
+    notify(
+      "Download queued",
+      `"${title}" is #${position} in the queue. It will start automatically when a download slot frees up (limit: ${limit}).`,
+    );
+    return {
+      downloadId: queuedId,
+      queued: true,
+      queuePosition: position,
+      activeDownloads: activeQueueJobs.size,
+      limit,
+    };
+  }
+  return runQueuedDownload(videoInfo, tabId);
+}
+
+async function pumpDownloadQueue() {
+  if (queuePumpRunning) {
+    queuePumpPending = true;
+    return;
+  }
+  queuePumpRunning = true;
+  try {
+    do {
+      queuePumpPending = false;
+      purgeStaleQueueJobs();
+      const limit = await getDownloadLimit();
+      while (downloadQueue.length && (limit === 0 || activeQueueJobs.size < limit)) {
+        const job = downloadQueue.shift();
+        try {
+          await runQueuedDownload(job.videoInfo, job.tabId);
+        } catch (error) {
+          logger.error("Queued download failed", error);
+          notify("Download failed", error?.message || "Queued download failed.");
+        }
+      }
+    } while (queuePumpPending);
+  } finally {
+    queuePumpRunning = false;
+  }
+}
+
+function removeQueuedDownload(queuedId) {
+  const index = downloadQueue.findIndex((job) => job.queuedId === queuedId);
+  if (index === -1) return false;
+  downloadQueue.splice(index, 1);
+  return true;
+}
+
+// Free a slot whenever a Chrome-managed download finishes or is interrupted.
+try {
+  chrome.downloads.onChanged.addListener((delta) => {
+    if (!delta || !delta.state) return;
+    const state = delta.state.current;
+    if (state === "complete" || state === "interrupted") releaseQueueSlot(delta.id);
+  });
+} catch {}
+
+// Re-pump when the user changes the limit from the popup.
+try {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[DOWNLOAD_LIMIT_STORAGE_KEY]) void pumpDownloadQueue();
+  });
+} catch {}
+
+// ---------------------------------------------------------------------------
+// Site-specific post resolvers (rule34video.com + rule34.world).
+// Used by the popup format list, the per-card corner buttons, and batch mode.
+// ---------------------------------------------------------------------------
+const WORLD_CDN_ROOT = "https://rule34storage.b-cdn.net";
+const WORLD_ROOT = "https://rule34.world";
+// rule34.world file format ids -> [extension, label, kind] (best first)
+const WORLD_FORMATS = [
+  ["100", "mov.mp4", "Source MP4", "mp4"],
+  ["101", "mov720.mp4", "720p", "mp4"],
+  ["102", "mov480.mp4", "480p", "mp4"],
+  ["10", "pic.jpg", "Image", "image"],
+];
+
+function decodeHtmlEntities(value) {
+  return String(value || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function rule34VideoPostId(url) {
+  const match = String(url || "").match(/^https?:\/\/(?:www\.)?rule34video\.com\/(?:video|popup-video)\/(\d+)/i);
+  return match ? match[1] : "";
+}
+
+function rule34WorldPostId(url) {
+  const match = String(url || "").match(/^https?:\/\/(?:www\.)?rule34\.world\/post\/(\d+)/i);
+  return match ? match[1] : "";
+}
+
+function heightFromLabel(label) {
+  const match = String(label || "").match(/(\d{3,4})/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+async function resolveRule34VideoPost(pageUrl) {
+  const response = await fetch(pageUrl, {
+    credentials: "include",
+    headers: { Accept: "text/html,application/xhtml+xml,*/*" },
+  });
+  if (!response.ok) throw new Error(`Post page fetch failed (${response.status})`);
+  const html = await response.text();
+
+  const title = decodeHtmlEntities(
+    html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1] ||
+    html.match(/<h1[^>]*>([^<]+)<\/h1>/i)?.[1] ||
+    html.match(/<title>([^<]+)<\/title>/i)?.[1] ||
+    ""
+  ).replace(/\s*-\s*Rule ?34.*$/i, "").trim();
+
+  const thumbnail = decodeHtmlEntities(
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] || ""
+  );
+
+  const seen = new Set();
+  const formats = [];
+  const push = (rawUrl, label) => {
+    const url = decodeHtmlEntities(rawUrl);
+    if (!url || seen.has(url) || /_preview\.mp4/i.test(url)) return;
+    seen.add(url);
+    formats.push({
+      url,
+      quality: label,
+      label,
+      height: heightFromLabel(label),
+      ext: "mp4",
+      format_type: "mp4",
+      protocol: "https",
+      source: "rule34video-download-tab",
+    });
+  };
+
+  // Preferred: explicit download-tab links (carry download_filename).
+  const downloadLinkPattern = /https?:\/\/[^"'\s<>]+\/get_file\/[^"'\s<>]*?_(\d{3,4})p?\.mp4\/?\?[^"'\s<>]*download=true[^"'\s<>]*/gi;
+  for (const match of html.matchAll(downloadLinkPattern)) {
+    push(match[0], `${match[1]}p`);
+  }
+  // Fallback: any signed get_file mp4 (player sources).
+  if (!formats.length) {
+    const anyPattern = /https?:\/\/[^"'\s<>]+\/get_file\/[^"'\s<>]*?(?:_(\d{3,4})p?)?\.mp4\/?(?:\?[^"'\s<>]*)?/gi;
+    for (const match of html.matchAll(anyPattern)) {
+      push(match[0], match[1] ? `${match[1]}p` : "MP4");
+    }
+  }
+  formats.sort((a, b) => (b.height || 0) - (a.height || 0));
+  if (!formats.length) throw new Error("No downloadable files found on the post page.");
+  return {
+    id: rule34VideoPostId(pageUrl) || undefined,
+    title: title || `rule34video-${rule34VideoPostId(pageUrl) || Date.now()}`,
+    thumbnail,
+    url: pageUrl,
+    formats,
+  };
+}
+
+async function resolveRule34WorldPost(postId, pageUrl) {
+  const response = await fetch(`${WORLD_ROOT}/api/v2/post/${postId}`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error(`rule34.world API failed (${response.status})`);
+  const post = await response.json();
+  const files = post?.files || {};
+  const idNumber = Number(postId);
+  const directory = Math.floor(idNumber / 1000);
+
+  const formats = [];
+  for (const [formatId, extension, label, kind] of WORLD_FORMATS) {
+    if (!(formatId in files)) continue;
+    const flags = files[formatId];
+    const useCdn = Array.isArray(flags) ? Boolean(flags[0]) : Boolean(flags);
+    const root = useCdn ? WORLD_CDN_ROOT : WORLD_ROOT;
+    formats.push({
+      url: `${root}/posts/${directory}/${idNumber}/${idNumber}.${extension}`,
+      quality: label,
+      label,
+      height: heightFromLabel(label),
+      ext: extension.split(".").pop(),
+      format_type: kind === "image" ? "image" : "mp4",
+      protocol: "https",
+      source: "rule34world-api",
+    });
+  }
+  if (!formats.length) throw new Error("No downloadable files listed for this post.");
+
+  const artist = Array.isArray(post?.tags) ? post.tags.find((tag) => tag && tag.type === 8)?.value : "";
+  const baseName = String(post?.filename || "").replace(/\.[a-z0-9]+$/i, "");
+  const title = [artist, baseName || `post ${postId}`].filter(Boolean).join(" - ");
+  return {
+    id: String(postId),
+    title: title || `rule34world-${postId}`,
+    thumbnail: `${WORLD_CDN_ROOT}/posts/${directory}/${idNumber}/${idNumber}.pic256.jpg`,
+    duration: Number(post?.duration) || undefined,
+    url: pageUrl || `${WORLD_ROOT}/post/${postId}`,
+    formats,
+  };
+}
+
+async function resolveKnownPost(url) {
+  const videoId = rule34VideoPostId(url);
+  if (videoId) return resolveRule34VideoPost(url);
+  const worldId = rule34WorldPostId(url);
+  if (worldId) return resolveRule34WorldPost(worldId, url);
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Batch downloads: resolve each post and push it through the download queue.
+// Responds immediately, then streams per-post status back to the tab.
+// ---------------------------------------------------------------------------
+const BATCH_MAX_URLS = 300;
+let batchRunning = false;
+const batchPending = [];
+
+function sendBatchStatus(tabId, payload) {
+  if (!tabId) return;
+  try {
+    chrome.tabs.sendMessage(tabId, { action: "batchPostStatus", ...payload }, () => {
+      void chrome.runtime.lastError; // tab may be gone; ignore
+    });
+  } catch {}
+}
+
+async function processBatchQueue() {
+  if (batchRunning) return;
+  batchRunning = true;
+  try {
+    while (batchPending.length) {
+      const job = batchPending.shift();
+      try {
+        const resolved = await resolveKnownPost(job.url);
+        if (!resolved) throw new Error("Unsupported post URL.");
+        const best = resolved.formats[0];
+        if (job.tabId) currentDownloadTabId = job.tabId;
+        const result = await queueDownloadRequest({
+          id: resolved.id,
+          title: resolved.title,
+          url: resolved.url,
+          thumbnail: resolved.thumbnail,
+          duration: resolved.duration,
+          selectedFormat: best,
+          formats: resolved.formats,
+          skipFormatRefresh: true,
+        });
+        sendBatchStatus(job.tabId, {
+          url: job.url,
+          ok: true,
+          queued: Boolean(result?.queued),
+          queuePosition: result?.queuePosition || 0,
+          downloadId: result?.downloadId,
+          title: resolved.title,
+        });
+      } catch (error) {
+        logger.warn("Batch item failed", job.url, error);
+        sendBatchStatus(job.tabId, {
+          url: job.url,
+          ok: false,
+          error: error?.message || "Failed to resolve post.",
+        });
+      }
+    }
+  } finally {
+    batchRunning = false;
+  }
+}
+
+function enqueueBatchDownloads(urls, tabId) {
+  const accepted = [];
+  for (const raw of Array.isArray(urls) ? urls : []) {
+    const url = String(raw || "").trim();
+    if (!url || accepted.length >= BATCH_MAX_URLS) break;
+    if (!rule34VideoPostId(url) && !rule34WorldPostId(url)) continue;
+    if (batchPending.some((job) => job.url === url)) continue;
+    batchPending.push({ url, tabId });
+    accepted.push(url);
+  }
+  void processBatchQueue();
+  return accepted;
+}
 
 function sanitizeFilename(value) {
   return Bridge.sanitizeFilename ? Bridge.sanitizeFilename(value || "video") : String(value || "video").replace(/[<>:"/\\|?*\x00-\x1f]/g, "").trim().slice(0, 200);
@@ -436,6 +814,21 @@ async function defaultGetVideoFormats(videoInfo = {}) {
 
 async function getVideoFormats(videoInfo = {}, request = {}) {
   if (request && request.tabId) currentDownloadTabId = request.tabId;
+  // Fast path: resolve directly from the post page / API for supported sites.
+  try {
+    const postUrl = videoInfo?.url || videoInfo?.webpage_url || videoInfo?.pageUrl || "";
+    const resolved = await resolveKnownPost(postUrl);
+    if (resolved && resolved.formats.length) {
+      return {
+        formats: resolved.formats.map((format) => normalizeFormat(format)).filter(Boolean),
+        apiTitle: resolved.title,
+        apiThumbnail: resolved.thumbnail,
+        apiDuration: resolved.duration,
+      };
+    }
+  } catch (error) {
+    logger.warn("Known-post resolver failed, falling back to generic detection", error);
+  }
   const xiaoshenkeFormats = xiaoshenkePlayerFormats(videoInfo);
   if (xiaoshenkeFormats.length) return { formats: xiaoshenkeFormats };
   if (typeof Adapter.getVideoFormats === "function") {
@@ -456,14 +849,6 @@ async function getVideoFormats(videoInfo = {}, request = {}) {
     }
   }
   return defaultGetVideoFormats(videoInfo);
-}
-
-async function ensureDownloadAccess() {
-  if (globalThis.Auth?.ensureDownloadAccess) return globalThis.Auth.ensureDownloadAccess();
-  if (globalThis.Auth?.checkActivationStatus) {
-    const status = await globalThis.Auth.checkActivationStatus();
-    if (!status?.isActivated) throw new Error("Please sign in to continue.");
-  }
 }
 
 function getDownloadReferer(videoInfo = {}, fallbackUrl = "") {
@@ -1338,8 +1723,6 @@ async function downloadVideo(videoInfo = {}) {
     hasSelectedFormat: Boolean(videoInfo.selectedFormat),
     formatCount: Array.isArray(videoInfo.formats) ? videoInfo.formats.length : 0,
   });
-  await ensureDownloadAccess();
-  console.log("[download] auth-ok");
   let selectedFormat = normalizeFormat(videoInfo.selectedFormat);
   if (isSourcePageFormat(selectedFormat, videoInfo)) selectedFormat = null;
   let formatResponse = {
@@ -1352,7 +1735,9 @@ async function downloadVideo(videoInfo = {}) {
       : [],
   };
   try {
-    const refreshedResponse = await getVideoFormats({ ...videoInfo, selectedFormat });
+    const refreshedResponse = videoInfo.skipFormatRefresh
+      ? null
+      : await getVideoFormats({ ...videoInfo, selectedFormat });
     const mergedFormats = [];
     for (const format of [
       ...(Array.isArray(formatResponse.formats) ? formatResponse.formats : []),
@@ -1395,7 +1780,12 @@ async function downloadVideo(videoInfo = {}) {
     requiresReferer: Boolean(selectedFormat.requiresReferer),
     requiresRange: Boolean(selectedFormat.requiresRangeRequest || selectedFormat.rangeRequest),
   });
-  const filename = `${sanitizeFilename(videoInfo.title || videoInfo.id || "video")}.mp4`;
+  const fileExtension = (() => {
+    const ext = String(selectedFormat.ext || "").toLowerCase();
+    if (selectedFormat.format_type === "hls" || ext === "m3u8" || !/^[a-z0-9]{2,4}$/.test(ext)) return "mp4";
+    return ext;
+  })();
+  const filename = `${sanitizeFilename(videoInfo.title || videoInfo.id || "video")}.${fileExtension}`;
   const fullFilename = `${folderName()}/${filename}`;
   if (selectedFormat.format_type === "hls" && selectedFormat.forceChromeHlsSegmentDownload) {
     console.log("[download] hls-segment-chrome-start", { filename: fullFilename });
@@ -1452,8 +1842,14 @@ async function downloadVideo(videoInfo = {}) {
       return await downloadHLS(selectedFormat.url, filename, videoInfo, { downloadId, selectedFormat: hlsHeaderFormat });
     });
     void hlsTask()
-      .then((resolvedDownloadId) => console.log("[download] hls-id", resolvedDownloadId))
-      .catch((error) => logger.error("HLS background job failed", error));
+      .then((resolvedDownloadId) => {
+        console.log("[download] hls-id", resolvedDownloadId);
+        releaseQueueSlot(downloadId);
+      })
+      .catch((error) => {
+        logger.error("HLS background job failed", error);
+        releaseQueueSlot(downloadId);
+      });
     return { downloadId, format: hlsHeaderFormat, isHLS: true };
   }
   if (isXiaoshenkeFormat(selectedFormat)) {
@@ -1542,7 +1938,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   Bridge.handleConfiguredContextMenuClick?.({
     info,
     tab,
-    downloadVideo,
+    downloadVideo: queueDownloadRequest,
     setCurrentDownloadTabId(tabId) { currentDownloadTabId = tabId; },
     logger,
   });
@@ -1556,9 +1952,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         request,
         sender,
         sendResponse,
-        downloadVideo,
+        downloadVideo: queueDownloadRequest,
         setCurrentDownloadTabId(tabId) { currentDownloadTabId = tabId; },
       });
+    case "getQueueStatus":
+      getDownloadLimit()
+        .then((limit) => sendResponse({ success: true, ...getQueueStatusSnapshot(limit) }))
+        .catch(() => sendResponse({ success: true, ...getQueueStatusSnapshot(0) }));
+      return true;
+    case "setDownloadLimit": {
+      const raw = Number(request?.limit);
+      const limit = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 99) : 0;
+      chrome.storage.local.set({ [DOWNLOAD_LIMIT_STORAGE_KEY]: limit }, () => {
+        void pumpDownloadQueue();
+        try { sendResponse({ success: true, limit }); } catch {}
+      });
+      return true;
+    }
+    case "batchDownloadPosts": {
+      const tabId = sender?.tab?.id || request?.tabId || currentDownloadTabId || null;
+      const accepted = enqueueBatchDownloads(request?.urls, tabId);
+      sendResponse({ success: true, accepted: accepted.length, urls: accepted });
+      return false;
+    }
     case "getVideoFormats":
       return Bridge.handleGetVideoFormatsMessage({
         request,
@@ -1580,6 +1996,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     case "hlsComplete":
     case "HLS_PROCESSING_COMPLETE":
+      releaseQueueSlot(request?.downloadId);
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -1587,6 +2004,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     case "hlsError":
     case "HLS_PROCESSING_ERROR":
+      releaseQueueSlot(request?.downloadId);
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -1604,6 +2022,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }),
       });
     case "MP4_DOWNLOAD_COMPLETE":
+      releaseQueueSlot(request?.downloadId);
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -1615,6 +2034,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }),
       });
     case "MP4_DOWNLOAD_ERROR":
+      releaseQueueSlot(request?.downloadId);
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -1628,7 +2048,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "cancelDownload":
       try {
         if (typeof request.downloadId === "number") chrome.downloads.cancel(request.downloadId);
+        if (typeof request.downloadId === "string" && request.downloadId.startsWith("queued-")) {
+          removeQueuedDownload(request.downloadId);
+        }
         downloadProgress.delete(request.downloadId);
+        releaseQueueSlot(request.downloadId);
         sendResponse({ success: true });
       } catch (error) {
         sendResponse({ success: false, error: error?.message || "cancel failed" });

@@ -1,4 +1,4 @@
-﻿/* Dark theme and activation UI overrides for Skool Downloader popup */
+/* Dark theme and activation UI overrides for Skool Downloader popup */
 
 /* Base theme */
 body {
@@ -99,56 +99,6 @@ body {
   margin: 0 auto;
 }
 
-/* Activation section */
-.activation-section {
-  padding: 20px !important;
-  background: var(--bg-dark) !important;
-  border: 1px solid var(--border-dark) !important;
-  border-radius: 6px;
-}
-
-.activation-title { color: var(--brand-accent); font-size: 18px; margin: 0 0 6px 0; text-align: center; }
-.activation-subtitle { color: var(--text-subtle); font-size: 14px; margin: 0 0 16px 0; text-align: center; }
-
-.activation-section label { display: block; color: var(--text-primary); font-size: 14px; margin-bottom: 6px; }
-.activation-section input {
-  width: 100%;
-  padding: 10px;
-  background: var(--bg-darker) !important;
-  color: var(--text-primary) !important;
-  border: 1px solid var(--input-border) !important;
-  border-radius: 4px;
-  font-size: 14px;
-  box-sizing: border-box;
-  margin-bottom: 12px;
-}
-
-.activation-section input:focus { outline: none; border-color: var(--brand-accent) !important; box-shadow: 0 0 0 2px rgba(94, 53, 177, 0.2); }
-
-.activate-btn {
-  width: 100%;
-  padding: 12px;
-  background: var(--brand-accent) !important;
-  color: var(--text-primary) !important;
-  border: none !important;
-  border-radius: 4px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.2s ease;
-  margin-bottom: 10px;
-}
-
-.activate-btn:hover:not(:disabled) { background: var(--brand-accent-hover) !important; }
-.activate-btn:disabled { background: var(--bg-darker); cursor: not-allowed; }
-
-/* Status banners (success/info under activation) */
-.activation-status { margin-top: 10px; }
-.status-stack { display: grid; gap: 8px; }
-.status-banner { padding: 10px; border-radius: 4px; border: 1px solid transparent; text-align: center; font-weight: 500; }
-.status-banner.success { background: rgba(76,175,80,0.12); border-color: var(--success); color: var(--success); }
-.status-banner.info { background: rgba(33,150,243,0.12); border-color: var(--info); color: var(--info); }
-
 /* Back-compat for existing .status classes used by popup-enhanced.js */
 .status { padding: 10px; border-radius: 4px; margin: 10px 0; text-align: center; font-size: 14px; font-weight: 500; }
 .status.success { background: rgba(76,175,80,0.12); color: var(--success); border: 1px solid var(--success); }
@@ -197,63 +147,6 @@ body {
 #error .status-refresh-btn:hover {
   background: #f3f6ff;
 }
-
-/* Free trial banner */
-.trial-banner {
-  margin: 10px 0 14px 0;
-  padding: 9px 12px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, #f5c151 30%, var(--border-dark));
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, #f5c151 5%, var(--bg-darker)),
-    color-mix(in srgb, #f5c151 3%, var(--bg-darker))
-  );
-  color: #f5c151;
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.trial-banner-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.trial-banner-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 12px;
-  height: 12px;
-  color: #f5c151;
-}
-
-.trial-banner-icon svg {
-  width: 12px;
-  height: 12px;
-  display: block;
-}
-
-.trial-banner-upgrade {
-  color: var(--brand-accent);
-  text-decoration: none;
-  font-size: 12px;
-  font-weight: 700;
-  transition: color 0.2s ease;
-}
-
-.trial-banner-upgrade:hover {
-  color: color-mix(in srgb, var(--brand-accent) 85%, white 15%);
-}
-
-/* Buy key link */
-.buy-key-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; text-align: center; font-size: 15px; font-weight: 700; color: var(--brand-accent); text-decoration: none; margin-top: 12px; }
-.buy-key-link:hover { text-decoration: underline; }
 
 /* Ensure generic panels stay dark */
 .status,
@@ -538,3 +431,71 @@ body {
   color: var(--text-primary);
 }
 
+
+/* --- Simultaneous download limit control --- */
+.limit-section {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border-dark);
+  border-radius: 10px;
+  background: var(--bg-darker);
+}
+
+.limit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.limit-header label {
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.limit-value {
+  color: var(--brand-accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+#limit-slider {
+  width: 100%;
+  margin: 0 0 10px 0;
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+}
+
+.limit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#limit-input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+#limit-input:focus {
+  outline: none;
+  border-color: var(--brand-accent);
+}
+
+.queue-status {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.limit-hint {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}

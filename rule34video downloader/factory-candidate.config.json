@@ -9,16 +9,6 @@
   "candidateFolder": "apps/generated-candidates/rule34-downloader",
   "sharedCoreFiles": [
     {
-      "file": "auth-ui.js",
-      "required": true,
-      "sha256": "972db2217df42a9b26f0e298bd2c615b027ca17c91728234e863daae61524436"
-    },
-    {
-      "file": "auth.js",
-      "required": true,
-      "sha256": "ccf7ae6c664c1803b97fcb86dbef1938568988d82de2977d3b9e09534282d2f3"
-    },
-    {
       "file": "background-bridge.js",
       "required": true,
       "sha256": "a0ef8463ab28e5279c0063e402d60ece5857ef0873093340b33e7a362a60f7cc"
@@ -62,11 +52,6 @@
       "file": "popup.js",
       "required": true,
       "sha256": "ee9cbcf8d63b4c313f539ffa625f5afd0ef288cab93a353a4464bb0b45c12c3f"
-    },
-    {
-      "file": "trial-banner.js",
-      "required": true,
-      "sha256": "4e80602afb63b094d118bf084acd1b5cd012d3b10dfde46e329e9d6eab455e7c"
     },
     {
       "file": "update-notifier.js",
