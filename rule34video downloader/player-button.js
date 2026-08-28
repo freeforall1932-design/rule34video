@@ -191,16 +191,6 @@
     } catch {}
   }
 
-  function checkActivated() {
-    return new Promise((resolve) => {
-      try {
-        chrome.storage.local.get(["isActivated"], (data) => resolve(!!(data && data.isActivated)));
-      } catch {
-        resolve(false);
-      }
-    });
-  }
-
   function removeButtonIfPresent() {
     try {
       document.querySelectorAll(`.${classes.popover}`).forEach((node) => node.remove());
@@ -223,30 +213,8 @@
     state.currentVideo = null;
   }
 
-  function addStorageActivationListener() {
-    if (state.storageListenerAdded) return;
-    state.storageListenerAdded = true;
-    try {
-      chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== "local" || !changes.isActivated) return;
-        const nowActive = !!changes.isActivated.newValue;
-        if (nowActive) {
-          setTimeout(runAttachFlow, 0);
-        } else {
-          removeButtonIfPresent();
-        }
-      });
-    } catch {}
-  }
-
   async function init() {
     addStylesOnce();
-    addStorageActivationListener();
-    const activated = await checkActivated();
-    if (!activated) {
-      removeButtonIfPresent();
-      return;
-    }
     runAttachFlow();
     startUrlWatchers();
   }

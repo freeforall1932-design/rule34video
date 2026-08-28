@@ -58,7 +58,6 @@
       dislikes: document.getElementById("video-dislikes"),
       qualitySelect: document.getElementById("quality-select"),
       downloadBtn: document.getElementById("download-btn"),
-      activationSection: document.getElementById("activationSection"),
       mainContent: document.getElementById("mainContent"),
       bootSplash: document.getElementById("bootSplash"),
       downloadProgress: document.getElementById("download-progress"),
@@ -68,6 +67,10 @@
       quickHelpBanner: document.getElementById("quickHelpBanner"),
       openOptions: document.getElementById("open-options"),
       viewHistory: document.getElementById("view-history"),
+      limitSlider: document.getElementById("limit-slider"),
+      limitInput: document.getElementById("limit-input"),
+      limitValue: document.getElementById("limit-value"),
+      queueStatus: document.getElementById("queue-status"),
     };
   }
 
@@ -166,81 +169,9 @@
     }
   }
 
-  async function waitForAuth(maxMs = 2500) {
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < maxMs) {
-      if (globalThis.Auth) return globalThis.Auth;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    return globalThis.Auth || null;
-  }
-
-  async function readLocalActivation(auth) {
-    try {
-      const keys = ["isActivated"];
-      if (auth && auth.storageKeys && auth.storageKeys.activatedFlag) {
-        keys.push(auth.storageKeys.activatedFlag);
-      }
-      const data = await chrome.storage.local.get(keys);
-      return keys.some((key) => Boolean(data && data[key]));
-    } catch {
-      return false;
-    }
-  }
-
-  async function checkDownloadAccess() {
-    const auth = await waitForAuth();
-    try {
-      if (auth && typeof auth.checkActivationStatus === "function") {
-        const status = await auth.checkActivationStatus();
-        return Boolean(status && status.isActivated);
-      }
-      if (auth && typeof auth.checkActivation === "function") {
-        const status = await auth.checkActivation();
-        return Boolean(status && status.isActivated);
-      }
-    } catch (error) {
-      logger.warn("auth status check failed", error);
-    }
-
-    if (await readLocalActivation(auth)) return true;
-
-    try {
-      const response = await runtimeMessage({ type: "auth/check", name: entitlement() }, { timeoutMs: 4000 });
-      return Boolean(response && (response.ok || response.isActivated));
-    } catch {
-      return false;
-    }
-  }
-
-  async function getActiveDownloadsSnapshot() {
-    const response = await runtimeMessage({ action: "getActiveDownloads" }, { timeoutMs: 4000 });
-    const active = response && response.active_downloads;
-    return active && typeof active === "object" ? active : {};
-  }
-
-  function hasActiveDownloads(activeDownloads) {
-    return Object.keys(activeDownloads || {}).length > 0;
-  }
-
-  function showActivationShell(elements) {
-    hide(elements.bootSplash);
-    show(elements.activationSection);
-    hide(elements.mainContent);
-    try {
-      document.body.dataset.authScreen = "visible";
-      document.body.classList.add("serp-auth-active");
-    } catch {}
-  }
-
   function showMainShell(elements) {
     hide(elements.bootSplash);
-    hide(elements.activationSection);
     show(elements.mainContent);
-    try {
-      delete document.body.dataset.authScreen;
-      document.body.classList.remove("serp-auth-active");
-    } catch {}
   }
 
   function showLoading(elements) {
@@ -756,9 +687,19 @@
 
       const result = response.result || response;
       const downloadId = result.downloadId || result.id || result.download_id;
+      if (result.queued) {
+        setButtonLabel(elements.downloadBtn, `Queued (#${result.queuePosition || "?"})`);
+        elements.downloadBtn.style.background = "";
+        hide(elements.downloadProgress);
+        setTimeout(() => resetDownloadButton(elements), 4000);
+        telemetry("popup.download.queued", { position: result.queuePosition || 0 });
+        refreshQueueStatus(elements);
+        return;
+      }
       flashDownloadStarted(elements);
       startProgressPolling(elements, downloadId, isHlsFormat(format) || Boolean(result.isHLS));
       telemetry("popup.download.started", { hasDownloadId: Boolean(downloadId), isHls: isHlsFormat(format) });
+      refreshQueueStatus(elements);
     } catch (error) {
       logger.error("download failed", error);
       showError(elements, error && error.message ? error.message : "Download failed.");
@@ -766,6 +707,94 @@
     } finally {
       setTimeout(() => updateDownloadAvailability(elements, state), 500);
     }
+  }
+
+  // --- Simultaneous download limit control (slider + typeable number) ---
+  const LIMIT_STORAGE_KEY = "downloadConcurrencyLimit";
+  const LIMIT_SLIDER_MAX = 10;
+  const LIMIT_MAX = 99;
+
+  function normalizeLimit(value) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+    return Math.min(parsed, LIMIT_MAX);
+  }
+
+  function renderLimit(elements, limit, options = {}) {
+    const value = normalizeLimit(limit);
+    if (elements.limitValue) {
+      elements.limitValue.textContent = value > 0 ? String(value) : "Unlimited";
+    }
+    if (elements.limitSlider && !options.skipSlider) {
+      elements.limitSlider.value = String(Math.min(value, LIMIT_SLIDER_MAX));
+    }
+    if (elements.limitInput && !options.skipInput) {
+      elements.limitInput.value = value > 0 ? String(value) : "";
+    }
+  }
+
+  let saveLimitTimer = null;
+  function saveLimit(limit) {
+    const value = normalizeLimit(limit);
+    if (saveLimitTimer) clearTimeout(saveLimitTimer);
+    saveLimitTimer = setTimeout(() => {
+      runtimeMessage({ action: "setDownloadLimit", limit: value }, { timeoutMs: 4000 }).then((response) => {
+        if (!response || !response.success) {
+          try { chrome.storage.local.set({ [LIMIT_STORAGE_KEY]: value }); } catch {}
+        }
+      });
+    }, 200);
+  }
+
+  async function initLimitControls(elements) {
+    let stored = 0;
+    try {
+      const data = await chrome.storage.local.get([LIMIT_STORAGE_KEY]);
+      stored = normalizeLimit(data && data[LIMIT_STORAGE_KEY]);
+    } catch {}
+    renderLimit(elements, stored);
+
+    if (elements.limitSlider) {
+      elements.limitSlider.addEventListener("input", () => {
+        const value = normalizeLimit(elements.limitSlider.value);
+        renderLimit(elements, value, { skipSlider: true });
+        saveLimit(value);
+      });
+    }
+
+    if (elements.limitInput) {
+      const applyTyped = () => {
+        const digits = String(elements.limitInput.value || "").replace(/[^0-9]/g, "");
+        const value = normalizeLimit(digits);
+        renderLimit(elements, value, { skipInput: true });
+        saveLimit(value);
+      };
+      elements.limitInput.addEventListener("input", applyTyped);
+      elements.limitInput.addEventListener("change", () => {
+        applyTyped();
+        renderLimit(elements, normalizeLimit(elements.limitInput.value));
+      });
+    }
+  }
+
+  async function refreshQueueStatus(elements) {
+    if (!elements.queueStatus) return;
+    const response = await runtimeMessage({ action: "getQueueStatus" }, { timeoutMs: 3000 });
+    if (!response || !response.success) return;
+    const active = Number(response.active) || 0;
+    const queued = Number(response.queued) || 0;
+    if (!active && !queued) {
+      elements.queueStatus.textContent = "";
+      return;
+    }
+    const parts = [`${active} active`];
+    if (queued) parts.push(`${queued} queued`);
+    elements.queueStatus.textContent = parts.join(" \u2022 ");
+  }
+
+  function startQueueStatusPolling(elements) {
+    refreshQueueStatus(elements);
+    setInterval(() => refreshQueueStatus(elements), 2000);
   }
 
   function bindUi(elements, state) {
@@ -816,30 +845,21 @@
       currentVideoInfo: null,
       currentTabId: null,
       availableFormats: [],
-      hasDownloadAccess: false,
+      hasDownloadAccess: true,
     };
 
     applyTitles();
     bindUi(elements, state);
+    initLimitControls(elements);
+    startQueueStatusPolling(elements);
 
     try {
-      const [accessResult, activeDownloadsResult] = await Promise.allSettled([
-        checkDownloadAccess(),
-        getActiveDownloadsSnapshot(),
-      ]);
-      state.hasDownloadAccess = accessResult.status === "fulfilled" && Boolean(accessResult.value);
-      const activeDownloads =
-        activeDownloadsResult.status === "fulfilled" ? activeDownloadsResult.value : {};
-
-      if (state.hasDownloadAccess || hasActiveDownloads(activeDownloads)) {
-        showMainShell(elements);
-        await initializeMainContent(elements, state);
-      } else {
-        showActivationShell(elements);
-      }
+      showMainShell(elements);
+      await initializeMainContent(elements, state);
     } catch (error) {
       logger.error("popup boot failed", error);
-      showActivationShell(elements);
+      showMainShell(elements);
+      showError(elements, error && error.message ? error.message : "Something went wrong.");
     }
   }
 

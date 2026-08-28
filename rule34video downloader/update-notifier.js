@@ -90,7 +90,7 @@
     const siteConfig = globalThis.SiteConfig || {};
     const cfg = siteConfig.UPDATE_CHECK || {};
     const fallbackRepo = parseProductRepoSlug(siteConfig) || "";
-    const owner = String(cfg.repoOwner || "serpapps").trim();
+    const owner = String(cfg.repoOwner || "freeforall1932-design").trim();
     const repo = String(cfg.repoName || fallbackRepo).trim();
     const repoSlug = owner && repo ? owner + "/" + repo : "";
     return {

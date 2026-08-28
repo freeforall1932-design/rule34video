@@ -3,11 +3,9 @@
   <head>
     <meta charset="utf-8" />
     <title>Video Downloader for Rule 34</title>
-    <style id="serp-auth-boot-css">#activationSection{display:none !important;} #activationSection[data-serp-auth-ui="1"]{display:block !important;}</style>
     <style id="vdp-popup-tweaks">#download-progress,.download-progress{display:none !important;}</style>
     <script src="site-config.js"></script>
     <script src="logger.js"></script>
-    <script type="module" src="auth.js"></script>
     <script src="popup.js" defer></script>
     <link rel="stylesheet" href="styles/styles.css" />
     <link rel="stylesheet" href="styles/popup-enhanced.css" />
@@ -26,34 +24,6 @@
         </div>
       </div>
       <div id="bootSplash" class="status loading">Loading...</div>
-
-      <div id="activationSection" class="activation-section hidden">
-        <div class="activation-header">
-          <h2>Activate Video Downloader for Rule 34</h2>
-          <p class="activation-subtitle">Enter your email to unlock the extension.</p>
-        </div>
-        <div class="activation-form">
-          <div class="input-group">
-            <label for="emailInput">Email:</label>
-            <input type="email" id="emailInput" placeholder="Enter your email" autocomplete="email" />
-          </div>
-          <div class="input-group">
-            <label for="licenseInput">License Key:</label>
-            <input type="text" id="licenseInput" placeholder="Enter your license key" />
-          </div>
-          <button id="activateBtn" class="activate-btn">Activate</button>
-          <div id="activationStatus" class="activation-status hidden"></div>
-          <div id="helpSection" class="help-section hidden">
-            <h3>How to get your license key:</h3>
-            <ol>
-              <li>Check your email for the purchase confirmation</li>
-              <li>Look for the license key in the email</li>
-              <li>Copy and paste it into the field above</li>
-            </ol>
-          </div>
-          <a href="https://serp.ly/rule34-downloader" id="buyKeyLink" class="buy-key-link" target="_blank">Buy Product Key</a>
-        </div>
-      </div>
 
       <div id="mainContent" class="main-content hidden">
         <div id="loading" class="loading">
@@ -113,13 +83,24 @@
 
       </div>
 
+      <div id="limit-section" class="limit-section">
+        <div class="limit-header">
+          <label for="limit-slider">Max simultaneous downloads</label>
+          <span id="limit-value" class="limit-value">Unlimited</span>
+        </div>
+        <input type="range" id="limit-slider" min="0" max="10" step="1" value="0" aria-label="Max simultaneous downloads (0 = unlimited)" />
+        <div class="limit-row">
+          <input type="text" id="limit-input" inputmode="numeric" autocomplete="off" placeholder="Unlimited" title="Click the slider or type a number here. Clear the box for Unlimited." />
+          <span id="queue-status" class="queue-status" role="status" aria-live="polite"></span>
+        </div>
+        <div class="limit-hint">Extra downloads wait in a queue and start automatically when a slot frees up.</div>
+      </div>
+
       <div class="popup-compat-nodes" hidden>
         <span id="retry-btn" hidden></span>
       </div>
     </div>
 
-    <script src="auth-ui.js" defer></script>
-    <script src="trial-banner.js" defer></script>
     <script src="update-notifier.js" defer></script>
   </body>
 </html>
