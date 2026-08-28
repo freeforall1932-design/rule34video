@@ -1,248 +1,286 @@
-# Session Handoff — Rule34 Downloader (free/community rebrand)
+# Session Handoff — Rule34 Downloader (fresh-context handoff)
 
-> Purpose: this document is a **fresh-context-window handoff**. It records exactly
-> what was done, why, what is left, and how to validate — so a new session can pick
-> up without re-deriving anything.
+> Purpose: a **fresh-context-window handoff**. It records the true repository
+> state, what every session has done, what was found & fixed *this* session,
+> what features already exist, and exactly what is left — so a new session can
+> pick up without re-deriving anything.
+>
+> Written: 2026-08-29 (Asia/Jakarta) by the Arena.ai coding agent.
 
-## 1. The ask (verbatim intent)
+---
 
-The user is rebranding the Chrome extension into a **single, free/community
-"Rule34 Downloader"** supporting both target sites:
+## 0. TL;DR — the "missing PR" mystery is resolved
 
-- `rule34.world`
-- `rule34video.com`
+The previous session **did** open a PR and merge it. Evidence:
 
-Explicit requirements, in the order they were raised:
+- `origin/main` = `42cc212 Merge pull request #1 from freeforall1932-design/arena/01a04898-rule34video`
+- PR #1: **MERGED 2026-08-28T23:11:49Z**, title "Rebrand as free community
+  Rule34 downloader with batch queue", +5126 / −2025 across 26 files.
+- The feature branch `arena/01a04898-rule34video` still exists on the remote.
 
-1. Strip **all third-party auth** that is not from the target sites themselves.
-   The user no longer owns the original website and no longer uses its login.
-2. Remove the fixed **3-download trial limit**; replace it with a
-   **user-configurable simultaneous-download limit** (slider **and** typeable
-   number input). Default = **Unlimited**, but when a limit is set, extra
-   downloads should **queue** and auto-dispatch as slots free (no spamming).
-3. **Re-fetch / use page sources** for both Rule34 World and Rule34 Video.
-4. **Re-review the codebase for missing/broken logic without losing functionality.**
-5. Add **batch fetch + batch download** (not just manual one-by-one).
-6. Add a **corner / action-bar download button inside each post/card**.
-7. Use `freeforall1932-design/twitter-batch-download` as the **reference** for
-   X/Twitter-style action-bar buttons + batch queue UX.
-8. Create handoff docs (`SESSION_HANDOFF.md`, `IMPROVEMENT_LOG.md`, `WORKLIST.md`).
-9. **Open a PR, then merge it with a merge commit** so the user can test from `main`.
+This session's sandbox was initially checked out at the **old** pre-merge
+commit `5219397`, which made it look like nothing had landed. After
+`git fetch origin` + `git reset --hard origin/main`, all previous work is
+present. **New sessions must always `git fetch origin` and work from
+`origin/main` first** — do not trust the local checkout to be current.
 
-## 2. Repository / branch state
+This session then:
+1. Synced the working branch to merged `main`.
+2. Did a full codebase review (architecture + end-to-end message/handler audit).
+3. Found & fixed **2 real logic bugs** (see §5).
+4. Refreshed these handoff docs.
+5. Opened PR #2 with the fixes (merge commit to `main`).
+
+---
+
+## 1. Repository / branch state
 
 - Repo: `freeforall1932-design/rule34video`
 - Working copy: `/home/user/rule34video`
-- Extension dir: `/home/user/rule34video/rule34video downloader`
-- Branch for this session: `arena/01a04898-rule34video` (from `aba4516 Add files via upload`)
-- `origin/main` advanced separately to `5219397` (added `page source.txt` and
-  `page source for rule34 world`).
-- The two page-source files are present in both `main` and the working tree
-  (byte-identical) — they are **not** part of the diff, only untracked locally
-  because this branch was created before main moved. They must be included in the
-  final commit so the branch is fully self-contained.
+- Extension dir: `/home/user/rule34video/rule34video downloader`  (note the space)
+- Docs dir: `/home/user/rule34video/docs`
+- Session branch: `arena/01a048c4-rule34video`
+- Base: `origin/main` @ `42cc212` (PR #1 merge), version `4.1.0` → bumped to **`4.1.1`**.
+- GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
+- The two `page source*.txt|html` files at the repo root are saved reference
+  HTML for rule34.world / rule34video.com. They are not code.
 
-> NOTE on git history: this checkout is **shallow/grafted** — `git log` only shows
-> the root commits, and there is **no prior local merge commit**. The earlier
-> "merge main" step recorded in prior context did not persist. The correct path
-> forward is a single squashed-ish content commit on this branch, then a GitHub
-> **merge commit** PR (done via `gh pr merge --merge`, not squash).
+---
 
-## 3. What was changed (code)
+## 2. What the product is
 
-### 3.1 Deleted — third-party auth / paywall / trial (phase 1)
+A **Manifest V3 Chrome/Edge browser extension** — a **free, community
+"Downloader for Rule 34"** that supports BOTH target sites:
 
-Removed files:
+- **rule34.world** — Angular SPA; post data via `https://rule34.world/api/v2/post/{id}`;
+  media on the BunnyCDN host `https://rule34storage.b-cdn.net`.
+- **rule34video.com** — KVS-style site; signed `get_file/..._{height}p.mp4`
+  download links live in the post-page HTML.
 
-- `rule34video downloader/auth.js`
-- `rule34video downloader/auth-ui.js`
-- `rule34video downloader/trial-banner.js`
-- `rule34video downloader/auth/auth-api.js`
-- `rule34video downloader/auth/auth-config.js`
-- `rule34video downloader/auth/auth-storage.js`
-- `rule34video downloader/auth/auth-telemetry.js`
-- `rule34video downloader/auth/auth-token.js`
+All third-party paywall/auth/trial machinery from the original generator
+(serp.co / serp.ly / gumroad / activation license / 3-download trial) was
+**removed** in PR #1. The extension is fully free.
 
-Removed references:
+---
 
-- `manifest.json`: dropped `https://auth.serp.co/*` (and related) host permission.
-- `player-button.js`: removed `checkActivated()`, `addStorageActivationListener()`,
-  and the `isActivated` gate around `runAttachFlow()`.
-- `offscreen.js`: removed `auth.serp.co` and `serp.ly` from the host-permission
-  origin ignore list.
-- `background-enhanced.js`: `downloadVideo` no longer calls `ensureDownloadAccess`.
-- `popup.html` / `popup.js`: removed activation / email / license UI and `serp.ly`
-  buy link.
-- `styles/popup-enhanced.css`: removed activation + free-trial-banner + buy-key CSS.
-- `app.config.json` / `unified-app.config.json`: removed `activationTitle`.
+## 3. Architecture (how the pieces fit)
 
-The **internal namespace names** `SerpBackgroundBridge`, `SerpContentBridge`,
-`SerpSiteAdapter`, `SerpUnifiedPopup` are still used as code identifiers. They are
-cosmetic leftovers from the generator and are **not** third-party integrations —
-a full rename is optional, tracked in WORKLIST.
+### 3.1 Extension surfaces (`manifest.json`)
+- **Service worker (module):** `background-enhanced.js` — imports
+  `site-config.js`, `logger.js`, `background-bridge.js`, `site-adapter.js`.
+  Holds the download queue, post resolvers, batch engine, and the central
+  `chrome.runtime.onMessage` router.
+- **Content scripts** (run `document_idle` on both sites), in order:
+  `site-config.js → logger.js → download-manager.js → content-bridge.js →
+  site-adapter.js → content.js → player-button.js → post-actions.js`.
+- **Popup:** `popup.html` + `popup.js` (+ `site-config.js`, `logger.js`,
+  `update-notifier.js`). The paywall-era `auth-ui.js` / `trial-banner.js`
+  scripts were deleted in PR #1 and are no longer referenced by `popup.html`.
+- **Offscreen document:** `offscreen.html` → `site-config.js`, `logger.js`,
+  `offscreen.js` (module). Does the heavy HLS-transmux / MP4-fetch work.
+- **Injected page script:** `inject.js` (web-accessible).
 
-### 3.2 Update checker repointed to the user's repo
+### 3.2 Request flow (single post)
+1. Popup queries the active tab.
+2. Popup asks the **content script** for `getVideoInfo` (DOM/observation based).
+3. Popup asks the **background** for `getVideoFormats`. Background has a
+   **fast-path resolver** (`resolveKnownPost`) that hits the rule34.world API
+   or scrapes the rule34video.com post HTML — this is the reliable path for
+   these sites. It falls back to the generic `site-adapter.js` detector, then
+   observed webRequest media.
+4. User picks a quality → popup sends `downloadVideo` → background routes to
+   chrome download / offscreen MP4 / HLS / tab-download / xiaoshenke resolver.
+5. All single downloads go through `queueDownloadRequest`, which honors the
+   user-configurable concurrency limit.
 
-`update-notifier.js` + `site-config.js`:
+### 3.3 Batch flow (corner buttons)
+- `post-actions.js` (content) adds a corner `↓` button to every post card and
+  a floating "Download visible (N)" toolbar. Both send
+  `{ action: "batchDownloadPosts", urls }`.
+- Background `enqueueBatchDownloads` → `processBatchQueue` → resolves each post,
+  picks the best format, pushes through `queueDownloadRequest` (so the
+  concurrency limit applies), and streams `{ action: "batchPostStatus" }`
+  toasts back to the tab.
+- Card buttons & toolbar **do not depend on the popup** — they always worked.
 
-- owner: `freeforall1932-design`
-- repo: `rule34video`
-- API: `https://api.github.com/repos/freeforall1932-design/rule34video/releases/latest`
-- Page: `https://github.com/freeforall1932-design/rule34video/releases/latest`
+---
 
-### 3.3 Dual-site support + post resolvers (background)
+## 4. Features that ALREADY EXIST (do not rebuild)
 
-In `background-enhanced.js`:
+- Free rebrand; all auth/license/trial/paywall code deleted; update checker
+  repointed to `freeforall1932-design/rule34video` GitHub releases.
+- **Dual-site post resolvers** in `background-enhanced.js`:
+  - rule34video.com: scrapes signed `get_file` MP4 links, prefers
+    `download=true` links, skips `_preview.mp4`, sorts highest-res first.
+  - rule34.world: `/api/v2/post/{id}` → builds CDN URLs
+    (`{cdn}/posts/{id//1000}/{id}/{id}.{ext}`); formats `100` Source MP4,
+    `101` 720p, `102` 480p, `10` Image; title from artist tag (`type===8`).
+- **Configurable concurrency queue**: storage key `downloadConcurrencyLimit`
+  (0/empty = Unlimited, max 99). Slider (0–10) + numeric input in the popup,
+  live `N active • M queued`, auto-dispatch on slot free, re-pump on limit
+  change, stale-job purge (3h), cancel handling.
+- **Batch backend** (`enqueueBatchDownloads`, `processBatchQueue`,
+  `sendBatchStatus`, `BATCH_MAX_URLS=300`) + `batchDownloadPosts` handler.
+- **Per-card corner buttons + visible-batch toolbar + toasts** (`post-actions.js`),
+  MutationObserver for infinite scroll / Angular re-renders, scroll-based count.
+- Extension-aware filenames (`.mp4` vs `.jpg`), download folder from config.
+- Rich generic media detection inherited from the generator (`site-adapter.js`):
+  HLS/DASH, many third-party hosters (eporner, voe, streamtape, dood,
+  nhplayer, xiaoshenke, byse/q8 proof-of-work, etc.) — mostly irrelevant to
+  the two rule34 sites but harmless.
+- Offscreen HLS transmux + MP4 fetch (`offscreen.js` + `modules/`), progress
+  manager, context menu, notifications.
 
-- `WORLD_CDN_ROOT = "https://rule34storage.b-cdn.net"`
-- `WORLD_ROOT = "https://rule34.world"`
-- `WORLD_FORMATS` maps rule34.world file ids:
-  - `100` → `mov.mp4` (Source MP4)
-  - `101` → `mov720.mp4` (720p)
-  - `102` → `mov480.mp4` (480p)
-  - `10`  → `pic.jpg` (Image)
-- `rule34VideoPostId(url)` — matches `/video/{id}` or `/popup-video/{id}` on `rule34video.com`.
-- `rule34WorldPostId(url)` — matches `/post/{id}` on `rule34.world`.
-- `resolveRule34VideoPost(pageUrl)` — fetches the post page HTML
-  (`credentials: "include"`), extracts title (`og:title` / `h1` / `title`),
-  thumbnail (`og:image`), and parses **signed** `get_file/..._{height}.mp4` links,
-  preferring the explicit `download=true` download-tab links and falling back to
-  player `get_file` MP4s. Skips `_preview.mp4`. Sorts highest resolution first.
-- `resolveRule34WorldPost(postId, pageUrl)` — fetches
-  `https://rule34.world/api/v2/post/{id}`, builds CDN URLs as
-  `{root}/posts/{id//1000}/{id}/{id}.{ext}`, derives title from artist tag
-  (`type === 8`) + `filename`, and a `pic256.jpg` thumbnail.
-- `resolveKnownPost(url)` — dispatches to the right resolver.
+---
 
-`getVideoFormats()` gained a fast path: for supported post URLs it resolves
-formats directly from the page/API instead of relying on DOM/network observation.
+## 5. Bugs FOUND & FIXED this session (PR #2)
 
-`downloadVideo()` now derives the file extension from the selected format
-(so rule34.world image posts save as `.jpg`, videos as `.mp4`), and honors
-`skipFormatRefresh` so freshly-signed rule34video links are not refetched.
+### Bug A — Popup could never reach the working resolver on single posts
+**File:** `popup.js` (`initializeMainContent`).
+The popup hard-required the content script's `getVideoInfo` to succeed before
+it ever called `getVideoFormats`. On rule34.world (Angular shell, no media in
+static DOM) and some lazy rule34video players, `getVideoInfo` returns nothing
+usable, so the popup showed **"No video found"** and the reliable background
+post-resolver was never invoked. (Corner buttons were unaffected.)
+**Fix:** Added `supportedPostUrl()` + `fallbackVideoInfoForTab(tab)`. When the
+content-side extraction fails on a supported rule34 post URL, the popup builds
+a minimal `{ url, webpage_url, pageUrl, … }` record and proceeds to
+`loadFormats`, letting the background resolver return formats + `apiTitle` +
+`apiThumbnail`. Non-supported pages still show the normal error.
 
-### 3.4 Configurable concurrency queue
+### Bug B — rule34.world image posts routed into the MP4/offscreen pipeline
+**File:** `background-enhanced.js` (`shouldUseOffscreenMp4`).
+Image posts have `format_type: "image"` and a cross-origin CDN URL
+(`b-cdn.net`), so the old "cross-origin referer" check sent them to the
+offscreen **MP4** downloader, which expects media and can fail/block images.
+**Fix:** `shouldUseOffscreenMp4` now returns `false` for image formats
+(`format_type === "image"` or ext jpg/png/webp/gif/bmp/avif), so images take
+the normal direct Chrome download path.
 
-- Storage key: `downloadConcurrencyLimit` (0 = Unlimited, up to 99).
-- Background queue in `background-enhanced.js`:
-  - `getDownloadLimit()`, `queueDownloadRequest()`, `pumpDownloadQueue()`,
-    `releaseQueueSlot()`, `removeQueuedDownload()`.
-  - `chrome.downloads.onChanged` frees a slot on `complete`/`interrupted`.
-  - `chrome.storage.onChanged` re-pumps when the user changes the limit.
-- Message handlers: `getQueueStatus`, `setDownloadLimit`.
-- Popup (`popup.html` + `popup.js`): slider (0–10) **and** numeric input (up to 99),
-  "Unlimited" default, live `N active • M queued` status. Clear the input = Unlimited.
+### Also
+- Bumped `manifest.json` `4.1.0 → 4.1.1`.
+- Re-validated: all JS passes `node --check` (bg as ESM), all JSON parses,
+  forbidden-paywall grep is clean (see §8).
 
-### 3.5 Batch download backend
+---
 
-In `background-enhanced.js`:
+## 6. Known issues / things that still need attention
 
-- `BATCH_MAX_URLS = 300`
-- `enqueueBatchDownloads(urls, tabId)` — dedupes, filters to supported URLs, queues.
-- `processBatchQueue()` — resolves each post, picks `formats[0]` (best), and pushes
-  it through `queueDownloadRequest` (so it respects the user's concurrency limit),
-  with `skipFormatRefresh: true`.
-- `sendBatchStatus(tabId, payload)` — streams per-post `batchPostStatus` back to the tab.
-- Message handler `batchDownloadPosts` (sync `sendResponse`, returns accepted count).
+Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 
-### 3.6 Content-side corner buttons + batch toolbar (NEW this phase)
+1. **MANUAL BROWSER TESTING IS THE #1 GAP.** Static analysis can't confirm
+   live behavior. Run the matrix in `WORKLIST.md` on both sites.
+2. **rule34.world listing-card selectors are inferred, not confirmed**
+   (`app-post-card` / `mat-card` / `[class*='post']`). Verify on a live
+   listing page and adjust `post-actions.js` `pinContainerFor` /
+   `processCards` if cards don't get buttons.
+3. **`popup.js` still sends `{ type: "TELEMETRY_LOG" }`** in `telemetry()`;
+   there is no background handler, so it's a harmless no-op. Optionally route
+   it to the existing `LOG_MIRROR` handler or drop it.
+4. **Broad host permissions** (`https://*/*`, `http://*/*`) remain from the
+   generator. Narrow to rule34 + the BunnyCDN host once testing confirms no
+   cross-origin media needs the wildcard.
+5. **Cosmetic namespace leftovers**: `SerpBackgroundBridge`, `SerpContentBridge`,
+   `SerpSiteAdapter`, `SerpUnifiedPopup` identifier names (generator branding).
+   Not third-party integration; optional rename to `Rule34*`.
+6. Nice-to-haves: rule34video image posts; "already downloaded" dedupe via
+   `chrome.downloads` history; batch auto-paginate rule34.world (POST API with
+   `Skip`/`take`/`cursor`).
 
-New file: `rule34video downloader/post-actions.js` (registered in `manifest.json`
-content-script `js` list after `player-button.js`).
+> Verified clean this session: `popup.html` does NOT reference the deleted
+> `auth-ui.js` / `trial-banner.js` (PR #1 removed those tags), and no file
+> references any deleted auth/trial file. The forbidden-paywall grep is empty.
 
-- Detects `rule34.world` vs `rule34video.com` by hostname.
-- `anchorForCard()` / `pinContainerFor()` find the post `<a>` and a stable container:
-  - rule34video.com: `a.th.js-open-popup[href]`, `a[href*="/video/"]`,
-    `a[href*="/popup-video/"]`, pinned into `.img.wrap_image` / card.
-  - rule34.world: `a[href*="/post/"]`, pinned into `app-post-card` / `mat-card` /
-    `[class*="post"]` container.
-- Adds a **corner download button** (`↓`) to every card via a `MutationObserver`
-  (handles lazy/infinite-scroll + Angular SPA re-renders).
-- Adds a **floating "Download visible (N)" toolbar** (bottom-right) that collects
-  all in-viewport supported post URLs and sends `batchDownloadPosts`.
-- Single-post pages fall back to treating `location.href` as the one post.
-- Listens for `batchPostStatus` and shows a **toast** (queued / downloading / failed).
-- All downloads flow through the background queue, so the concurrency limit applies.
+---
 
-## 4. Discovered site/API facts (for future work)
+## 7. File map (extension code only; `modules/` is vendored third-party)
 
-### rule34video.com
+| File | Role |
+|---|---|
+| `manifest.json` | MV3 config; surface registration; permissions |
+| `background-enhanced.js` | SW: queue, post resolvers, batch, message router, download routing |
+| `background-bridge.js` | SW helpers (offscreen doc, DNR rules, progress forwarders, response wrappers) |
+| `site-config.js` | SITE_NAME, folder, player-button selectors, context-menu patterns, update-check config, colors |
+| `site-adapter.js` | Generic media-detection hook module (many hosters); `SerpSiteAdapter` |
+| `content.js` | Generic content adapter; `getVideoInfo` extractor |
+| `content-bridge.js` | Content-side message bridge / progress UI glue (`SerpContentBridge`) |
+| `post-actions.js` | **Corner buttons + batch toolbar + toasts** (new in PR #1) |
+| `player-button.js` | In-page player download button (single-video) |
+| `popup.html` / `popup.js` | Toolbar popup UI; concurrency controls; download trigger |
+| `offscreen.html` / `offscreen.js` | Offscreen doc: HLS transmux / MP4 fetch |
+| `download-manager.js` | In-page download progress UI |
+| `update-notifier.js` | GitHub release update check |
+| `inject.js` | Page-context injected script |
+| `logger.js` | Logging + log mirroring to SW |
+| `styles/*` | popup / player-button / download-manager CSS |
+| `modules/**` | Vendored libs (hls2mp4, dash2mp4, mediabunny, mp4box, utils) |
+| `app.config.json` / `unified-app.config.json` / `factory-candidate.config.json` | Generator config artifacts (edit in step) |
+| `generate-icons.js` | Icon generator helper |
 
-- KVS-based. Cards look like:
-  ```html
-  <div class="item thumb video_1" data-video-card-id="4573905">
-    <a data-href=".../popup-video/4573905/?popup_id=1" class="js-click hidden"></a>
-    <a class="th js-open-popup" href="https://rule34video.com/video/4573905/slug/">
-      <div class="img wrap_image" data-preview="...4573905_preview.mp4/">
-        <img class="thumb lazy-load" data-original="...320x180/3.jpg">
-        <div class="quality">...</div><div class="futa">Futa</div><div class="time">34:52</div>
-      </div>
-      <div class="thumb_title">...</div>
-    </a>
-  </div>
-  ```
-- The **`data-preview` URLs are preview MP4s — do NOT use as final downloads.**
-- Final download URLs are signed `get_file/.../{1080p|720p|480p|360}.mp4/?...&download=true&download_filename=...`.
-- The per-post HTML exposes player quality labels (1080p/720p/480p/360p) and the
-  signed download-tab links; the resolver prefers the `download=true` links.
+---
 
-### rule34.world
-
-- Angular SPA (`<app-root>`), data loaded via API, not in static HTML.
-- Post API: `https://rule34.world/api/v2/post/{id}` → JSON with `files` map,
-  `tags` (artist = `type === 8`), `duration`, `width`, `height`, `type`, etc.
-- File URL pattern: `{cdn}/posts/{id//1000}/{id}/{id}.{ext}`.
-- CDN host: `https://rule34storage.b-cdn.net` (world) / `https://rule34xyz.b-cdn.net` (xyz).
-- Formats (gallery-dl reference): `10` pic.jpg, `100` mov.mp4, `101` mov720.mp4, `102` mov480.mp4.
-- Pagination API is POST-based with `Skip`/`take`/`cursor` (not yet needed).
-
-### Update-check / repo
-
-- Target repo: `freeforall1932-design/rule34video` (GitHub releases).
-
-## 5. Validation commands (run these)
+## 8. Validation commands (run these after any change)
 
 ```bash
 cd "/home/user/rule34video/rule34video downloader"
+
+# JS syntax (content scripts are classic; background is a module)
 for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
          content.js content-bridge.js download-manager.js logger.js background-bridge.js \
          inject.js site-adapter.js post-actions.js; do
   node --check "$f" || echo "FAIL $f"
 done
 node --input-type=module --check < background-enhanced.js
+
+# JSON
 for j in manifest.json app.config.json unified-app.config.json factory-candidate.config.json; do
   python3 -m json.tool "$j" >/dev/null || echo "FAIL $j"
 done
-```
 
-Forbidden-remnant check (should print nothing):
-
-```bash
-grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivation|isActivated|auth-ui\.js|trial-banner\.js|gumroad|activationTitle' \
+# Paywall/auth remnants — must print NOTHING:
+grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivated|isActivated|auth-ui\.js|trial-banner\.js|gumroad|activationTitle' \
   --include='*.js' --include='*.json' --include='*.html' --include='*.css' . \
   | grep -viE 'SerpBackground|SerpContent|SerpSite|SerpBridge|SerpUnifiedPopup'
 ```
+(NB: the last grep will still show the `popup.html` `<script src="auth-ui.js">`
+/ `trial-banner.js` tags until cleanup task #2 in §6 is done.)
 
-## 6. What still needs doing (see WORKLIST.md for the full checklist)
+---
 
-1. **Manual browser test matrix** — the biggest open item. See `docs/WORKLIST.md`.
-   - rule34video.com listing card button + single video popup
-   - rule34.world hot/listing visible batch + single video post + image post
-   - concurrency limit 2/3 vs Unlimited, cancellation, update checker
-2. Optional rename of `Serp*` namespace identifiers to `Rule34*` (cosmetic).
-3. Optional: verify rule34.world `app-post-card` DOM assumptions once a live page
-   is inspected (the Angular shell has no post HTML in the saved page source).
-4. Optional: reduce broad `https://*/*` host permission if not needed; keep
-   `https://rule34storage.b-cdn.net/*` explicitly for world downloads.
-
-## 7. How the PR/merge should be done
+## 9. Git / PR procedure for the next session
 
 ```bash
 cd /home/user/rule34video
+git fetch origin
+git checkout <session-branch>        # stay on the assigned arena/* branch
+git reset --hard origin/main         # start from current merged main
+# ...make changes...
+# run §8 validation...
 git add -A
-git commit -m "..."          # single commit carrying all changes + docs
-git push origin arena/01a04898-rule34video
-gh pr create --base main --head arena/01a04898-rule34video \
-  --title "..." --body-file docs/SESSION_HANDOFF.md
-gh pr merge <PR_NUMBER> --merge --delete-branch=false   # merge commit, NOT squash
+git commit -m "..."
+git push origin <session-branch>
+gh pr create --base main --head <session-branch> --title "..." --body-file docs/SESSION_HANDOFF.md
+gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on main
 ```
+
+- **Always** use a merge commit (`--merge`), per the user's preference.
+- Do not switch/push to other branches; the session is tied to its `arena/*` branch.
+- PR #2 (this session): popup fallback + image-routing fix + docs refresh.
+
+---
+
+## 10. Site facts worth keeping (from PR #1 + live reference files)
+
+### rule34video.com
+- KVS. Card: `a.th.js-open-popup[href*="/video/"]`; `data-preview` URLs are
+  **preview MP4s — never final downloads**.
+- Final links are signed `get_file/.../{1080p|720p|480p|360p}.mp4/...&download=true&download_filename=...`
+  in the post HTML.
+
+### rule34.world
+- Angular SPA (`<app-root>`); data via API, not static HTML.
+- `GET https://rule34.world/api/v2/post/{id}` → JSON `{ files: {"100":..,"101":..,"102":..,"10":..}, tags:[...], duration, width, height, type, filename }`.
+- Artist tag = `tag.type === 8`.
+- File URL: `https://rule34storage.b-cdn.net/posts/{floor(id/1000)}/{id}/{id}.{mov.mp4|mov720.mp4|mov480.mp4|pic.jpg}`.
+- Thumbnail: `{...}/{id}.pic256.jpg`.
+- Listing pagination = POST API with `Skip`/`take`/`cursor` (not yet used).

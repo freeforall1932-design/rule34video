@@ -1032,6 +1032,9 @@ async function withTemporaryHeaderRules(selectedFormat = {}, videoInfo = {}, tas
 
 function shouldUseOffscreenMp4(selectedFormat = {}, videoInfo = {}) {
   if (!selectedFormat?.url || selectedFormat.format_type === "hls") return false;
+  // Static images (e.g. rule34.world image posts) are plain direct downloads;
+  // never send them through the MP4/offscreen media pipeline.
+  if (selectedFormat.format_type === "image" || /^\s*(jpe?g|png|webp|gif|bmp|avif)\s*$/i.test(String(selectedFormat.ext || ""))) return false;
   if (selectedFormat.forceOffscreenDownload) return true;
   if (SiteConfig.BACKGROUND?.forceOffscreenMp4) return true;
   if (selectedFormat.forceTabDownload || selectedFormat.tabInitiatedDownload) return false;

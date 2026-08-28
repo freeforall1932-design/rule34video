@@ -245,6 +245,33 @@
     return Boolean(info && (info.id || info.title || info.url || info.videoUrl || info.thumbnail));
   }
 
+  // True for a rule34video.com / rule34.world post page the background service
+  // worker can resolve directly (via the post page or the rule34.world API),
+  // even when the content script could not read the SPA / lazy-loaded player.
+  function supportedPostUrl(url) {
+    const value = String(url || "");
+    return (
+      /^https?:\/\/(?:www\.)?rule34video\.com\/(?:video|popup-video)\/\d+/i.test(value) ||
+      /^https?:\/\/(?:www\.)?rule34\.world\/post\/\d+/i.test(value)
+    );
+  }
+
+  function fallbackVideoInfoForTab(tab) {
+    const url = String((tab && tab.url) || "");
+    if (!supportedPostUrl(url)) return null;
+    const idMatch = url.match(/(\d+)/);
+    return {
+      id: idMatch ? idMatch[1] : "",
+      title: "",
+      url,
+      webpage_url: url,
+      pageUrl: url,
+      thumbnail: "",
+      formats: [],
+      resolvedByBackground: true,
+    };
+  }
+
   async function requestVideoInfo(tabId) {
     const overrideInfo = globalThis.__SERP_TEST_VIDEO_INFO_OVERRIDE__;
     if (hasUsableVideoInfo(overrideInfo)) {
@@ -572,7 +599,18 @@
 
     state.currentTabId = tab.id;
     try {
-      state.currentVideoInfo = await requestVideoInfo(tab.id);
+      try {
+        state.currentVideoInfo = await requestVideoInfo(tab.id);
+      } catch (videoInfoError) {
+        // The content-script DOM extractor cannot see rule34.world's Angular
+        // shell or some lazy KVS players. For a supported post page, fall back
+        // to a minimal record keyed on the tab URL and let the background
+        // post-resolver (getVideoFormats fast path) populate formats/title.
+        const fallback = fallbackVideoInfoForTab(tab);
+        if (!fallback) throw videoInfoError;
+        logger.warn("content getVideoInfo failed; using background post resolver", videoInfoError && videoInfoError.message);
+        state.currentVideoInfo = fallback;
+      }
       applyVideoInfo(elements, state.currentVideoInfo, state.currentTabId);
       await loadFormats(elements, state);
     } catch (error) {
