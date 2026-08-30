@@ -3,7 +3,7 @@
 (function () {
   const SiteConfig = globalThis.SiteConfig || {};
   const Logger =
-    (globalThis.Logger && globalThis.Logger.createLogger && globalThis.Logger.createLogger("[SERP DM]")) || {
+    (globalThis.Logger && globalThis.Logger.createLogger && globalThis.Logger.createLogger("[RULE34 DM]")) || {
       log: function () {},
       warn: function () {},
       error: function () {},
@@ -18,7 +18,7 @@
   );
   const titleText = `${siteName} Downloader`;
   const panelId = `${appId}-download-manager`;
-  const guardKey = `__SERP_DM_LOADED__:${appId}`;
+  const guardKey = `__RULE34_DM_LOADED__:${appId}`;
   const legacyGuardKeys = [
     "__AP_DM_LOADED__",
     "__BEEG_DM_LOADED__",
@@ -75,7 +75,7 @@
 
   function injectCss() {
     try {
-      const cssId = "serp-download-manager-css";
+      const cssId = "rule34-download-manager-css";
       if (document.getElementById(cssId)) return;
       const link = document.createElement("link");
       link.id = cssId;
@@ -92,7 +92,7 @@
 
     try {
       const existing = document.getElementById(panelId);
-      if (existing && existing.getAttribute("data-serp-download-manager") === "1") {
+      if (existing && existing.getAttribute("data-rule34-download-manager") === "1") {
         downloadManager = existing;
         return existing;
       }
@@ -100,8 +100,8 @@
 
     const panel = document.createElement("div");
     panel.id = panelId;
-    panel.className = "serp-download-manager";
-    panel.setAttribute("data-serp-download-manager", "1");
+    panel.className = "rule34-download-manager";
+    panel.setAttribute("data-rule34-download-manager", "1");
     panel.style.cssText = [
       "position:fixed",
       "top:20px",

@@ -3,7 +3,6 @@
 import './site-config.js';
 import './logger.js';
 import './background-bridge.js';
-import './site-adapter.js';
 
 const SiteConfig = globalThis.SiteConfig || {};
 const Bridge = globalThis.Rule34BackgroundBridge || {};
@@ -629,6 +628,7 @@ async function resolveRule34WorldPost(postId, pageUrl) {
   return {
     id: String(postId),
     title: title || `rule34world-${postId}`,
+    artist,
     thumbnail: `${WORLD_CDN_ROOT}/posts/${directory}/${idNumber}/${idNumber}.pic256.jpg`,
     duration: Number(post?.duration) || undefined,
     url: pageUrl || `${WORLD_ROOT}/post/${postId}`,
@@ -642,6 +642,43 @@ async function resolveKnownPost(url) {
   const worldId = rule34WorldPostId(url);
   if (worldId) return resolveRule34WorldPost(worldId, url);
   return null;
+}
+
+// rule34.world cursor-paginated search (confirmed from the gallery-dl
+// rule34xyz extractor). Used by the "bulk download by tag / playlist" feature.
+async function searchRule34WorldPosts({ tags, playlistId, maxUrls = BATCH_MAX_URLS } = {}) {
+  const tagged = Array.isArray(tags)
+    ? tags.filter(Boolean)
+    : String(tags || "").split(/[,+]/).map((t) => t.trim()).filter(Boolean);
+  const urls = [];
+  let cursor = null;
+  for (let page = 0; page < 50 && urls.length < maxUrls; page += 1) {
+    const isPlaylist = Boolean(playlistId);
+    const endpoint = isPlaylist
+      ? `${WORLD_ROOT}/v2/post/search/playlist/${encodeURIComponent(playlistId)}`
+      : `${WORLD_ROOT}/api/v2/post/search/root`;
+    const body = isPlaylist
+      ? { Skip: page * 60, take: 60, CountTotal: false, IncludeLinks: true, OrderBy: 0 }
+      : { includeTags: tagged, Skip: page * 60, take: 60, CountTotal: false, IncludeLinks: true, OrderBy: 0, cursor: cursor || undefined };
+    const response = await fetch(endpoint, {
+      method: "POST",
+      credentials: "include",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(`rule34.world search failed (${response.status})`);
+    const data = await response.json();
+    const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
+    if (!items.length) break;
+    for (const item of items) {
+      const id = item && (item.id || item.postId || item.post_id);
+      if (id && urls.length < maxUrls) urls.push(`${WORLD_ROOT}/post/${id}`);
+    }
+    const nextCursor = data?.cursor;
+    if (nextCursor) cursor = nextCursor;
+    if (items.length < 60 && !nextCursor) break;
+  }
+  return urls;
 }
 
 // ---------------------------------------------------------------------------
@@ -751,6 +788,57 @@ function sanitizeFilename(value) {
 
 function folderName() {
   return sanitizeFilename(SiteConfig.OFFSCREEN?.downloadFolder || SiteConfig.SITE_NAME || "Videos") || "Videos";
+}
+
+// --- Smart Library: configurable download-path template -------------------
+// The user picks where files land via a {token}-based template stored in
+// chrome.storage.local ("downloadPathTemplate"). Tokens: {site} {artist}
+// {title} {id}. Each token is filesystem-sanitized; empty segments collapse
+// so e.g. "{site}/{artist}/{title}" with no artist becomes "site/title".
+function getDownloadPathTemplate() {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(["downloadPathTemplate"], (data) => {
+        const stored = data && data.downloadPathTemplate;
+        resolve(stored || (SiteConfig.DOWNLOADS && SiteConfig.DOWNLOADS.pathTemplate) || "{site}/{artist}/{title}");
+      });
+    } catch {
+      resolve("{site}/{artist}/{title}");
+    }
+  });
+}
+
+function siteTokenForUrl(url) {
+  const value = String(url || "");
+  if (/rule34\.world/i.test(value)) return "rule34world";
+  if (/rule34video\.com/i.test(value)) return "rule34video";
+  return "rule34";
+}
+
+function parseArtistFromTitle(title) {
+  const value = String(title || "");
+  const match = value.match(/^(.+?)\s*-\s*(?:post\s+)?[\w-]+$/i);
+  return match ? match[1].trim() : "";
+}
+
+async function buildDownloadPath(videoInfo, ext) {
+  const template = await getDownloadPathTemplate();
+  const safe = (value) => sanitizeFilename(String(value || "").trim()) || "";
+  const site = siteTokenForUrl(videoInfo.url || videoInfo.webpage_url || videoInfo.pageUrl);
+  const artist = safe(videoInfo.artist || parseArtistFromTitle(videoInfo.title));
+  const title = safe(videoInfo.title || videoInfo.id || "video");
+  const id = safe(videoInfo.id || "");
+  let relative = String(template || "{site}/{artist}/{title}")
+    .replace(/\{site\}/g, site)
+    .replace(/\{artist\}/g, artist)
+    .replace(/\{title\}/g, title)
+    .replace(/\{id\}/g, id)
+    .replace(/\/+/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+  if (!relative) relative = title || "video";
+  const cleanExt = /^[a-z0-9]{2,4}$/.test(ext || "") ? ext : "mp4";
+  return `${relative}.${cleanExt}`;
 }
 
 function notify(title, message) {
@@ -1126,7 +1214,21 @@ try {
     globalThis.__rule34ObservedMediaListenerInstalled = true;
     chrome.webRequest.onBeforeRequest.addListener(
       rememberObservedRequest,
-      { urls: ["<all_urls>"] },
+      {
+        urls: [
+          "https://rule34.world/*",
+          "http://rule34.world/*",
+          "https://*.rule34.world/*",
+          "http://*.rule34.world/*",
+          "https://www.rule34.world/*",
+          "http://www.rule34.world/*",
+          "https://rule34storage.b-cdn.net/*",
+          "https://rule34video.com/*",
+          "http://rule34video.com/*",
+          "https://*.rule34video.com/*",
+          "http://*.rule34video.com/*",
+        ],
+      },
     );
   }
 } catch {}
@@ -1161,6 +1263,7 @@ async function getVideoFormats(videoInfo = {}, request = {}) {
       return {
         formats: resolved.formats.map((format) => normalizeFormat(format)).filter(Boolean),
         apiTitle: resolved.title,
+        apiArtist: resolved.artist,
         apiThumbnail: resolved.thumbnail,
         apiDuration: resolved.duration,
       };
@@ -2099,6 +2202,9 @@ async function downloadVideo(videoInfo = {}) {
   if (refreshedResponse?.apiTitle && !videoInfo.title) {
     videoInfo = { ...videoInfo, title: refreshedResponse.apiTitle };
   }
+  if (refreshedResponse?.apiArtist && !videoInfo.artist) {
+    videoInfo = { ...videoInfo, artist: refreshedResponse.apiArtist };
+  }
   if (!selectedFormat) selectedFormat = normalizeFormat(videoInfo.selectedFormat) || formatResponse.formats[0];
   if (typeof Adapter.prepareDownload === "function") {
     try {
@@ -2133,8 +2239,7 @@ async function downloadVideo(videoInfo = {}) {
     if (selectedFormat.format_type === "hls" || ext === "m3u8" || !/^[a-z0-9]{2,4}$/.test(ext)) return "mp4";
     return ext;
   })();
-  const filename = `${sanitizeFilename(videoInfo.title || videoInfo.id || "video")}.${fileExtension}`;
-  const fullFilename = `${folderName()}/${filename}`;
+  const fullFilename = await buildDownloadPath(videoInfo, fileExtension);
   if (selectedFormat.format_type === "hls" && selectedFormat.forceChromeHlsSegmentDownload) {
     console.log("[download] hls-segment-chrome-start", { filename: fullFilename });
     const hlsHeaderFormat = {
@@ -2178,7 +2283,7 @@ async function downloadVideo(videoInfo = {}) {
     return { downloadId, format: segmentFormat, viaChromeHlsSegment: true };
   }
   if (selectedFormat.format_type === "hls" && !selectedFormat.forceChromeDownload) {
-    console.log("[download] hls-start", { filename });
+    console.log("[download] hls-start", { filename: fullFilename });
     const downloadId = "hls-" + Date.now();
     const hlsHeaderFormat = selectedFormat.useDownloadHeaderRules
       ? {
@@ -2187,7 +2292,7 @@ async function downloadVideo(videoInfo = {}) {
         }
       : selectedFormat;
     const hlsTask = async () => await withTemporaryHeaderRules(hlsHeaderFormat, videoInfo, async () => {
-      return await downloadHLS(selectedFormat.url, filename, videoInfo, { downloadId, selectedFormat: hlsHeaderFormat });
+      return await downloadHLS(selectedFormat.url, fullFilename, videoInfo, { downloadId, selectedFormat: hlsHeaderFormat });
     });
     void hlsTask()
       .then((resolvedDownloadId) => {
@@ -2359,6 +2464,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       persistQueueState();
       sendResponse({ success: true, removedQueued, removedBatch });
       return false;
+    }
+    case "bulkDownloadTag": {
+      const tabId = sender?.tab?.id || request?.tabId || currentDownloadTabId || null;
+      (async () => {
+        try {
+          let urls = [];
+          if (request?.playlistUrl) {
+            const pid = String(request.playlistUrl).match(/playlist[/=](\w+)/i)?.[1]
+              || String(request.playlistUrl).match(/(\d+)/)?.[1];
+            if (!pid) throw new Error("Could not parse a playlist id from that URL.");
+            urls = await searchRule34WorldPosts({ playlistId: pid, maxUrls: BATCH_MAX_URLS });
+          } else if (request?.tags) {
+            urls = await searchRule34WorldPosts({ tags: request.tags, maxUrls: BATCH_MAX_URLS });
+          } else {
+            throw new Error("Enter a tag/artist or a playlist URL.");
+          }
+          if (!urls.length) throw new Error("No posts found for that query.");
+          const { accepted, skipped } = enqueueBatchDownloads(urls, tabId);
+          sendResponse({ success: true, accepted: accepted.length, skipped, urls: accepted });
+        } catch (error) {
+          sendResponse({ success: false, error: error?.message || "Bulk download failed." });
+        }
+      })();
+      return true;
     }
     case "TELEMETRY_LOG":
       // Popup telemetry pings: no metrics backend — just mirror to the SW log.

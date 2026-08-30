@@ -258,7 +258,7 @@
     Bridge.runInitialVideoCheck({ extractVideoInfo, logger });
     if (injectPageDataRelay && Bridge.listenForPageData && Bridge.injectPageScript) {
       Bridge.listenForPageData({
-        dataType: "SERP_GENERATED_PAGE_DATA",
+        dataType: "RULE34_GENERATED_PAGE_DATA",
         updatedAction: false,
         onData(payload) {
           generatedPageData = payload || null;
@@ -267,14 +267,14 @@
           } catch {}
         },
       });
-      Bridge.injectPageScript({ script: "inject.js", requestType: "REQUEST_SERP_GENERATED_PAGE_DATA", logger });
+      Bridge.injectPageScript({ script: "inject.js", requestType: "REQUEST_RULE34_GENERATED_PAGE_DATA", logger });
     }
     if (videoInfoPollMs > 0 && videoInfoPollCount > 0) {
       let remainingPolls = videoInfoPollCount;
       const pollTimer = setInterval(() => {
         remainingPolls -= 1;
         try {
-          if (injectPageDataRelay) globalThis.postMessage({ type: "REQUEST_SERP_GENERATED_PAGE_DATA" }, "*");
+          if (injectPageDataRelay) globalThis.postMessage({ type: "REQUEST_RULE34_GENERATED_PAGE_DATA" }, "*");
           Bridge.safeSendMessage({ action: "videoDetected", data: extractVideoInfo() }).catch(function () {});
         } catch (error) {
           logger.warn("Video info poll failed", error);

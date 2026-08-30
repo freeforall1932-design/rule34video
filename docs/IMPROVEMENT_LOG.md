@@ -170,6 +170,50 @@ of both target sites from the sandbox). Findings & fixes:
   free), batch dedupe (0 accepted / 3 skipped), stale (5h) job purge.
   All pass.
 
+## Session 4 — retrofit to free community + quality-of-life (2026-08-30)
+
+Context: the user is retrofitting the previously-marketed **paid, license-checked**
+Chrome extension into a **free community** tool for rule34.world +
+rule34video.com, and asked for (a) a neat must/nice-to-have QoL feature, (b)
+robust-coding / quality brainstorming, and (c) a recheck for stale code + any
+third-party involvement.
+
+### Stale / branding remediation
+- Removed the `license_code` flashvar key from `inject.js` (paid-product leftover).
+- Removed orphaned paywall CSS (`.activation-section`, `.activate-btn`,
+  `.buy-key-link`) from `styles.css`.
+- Removed the dead `chrome.action.onClicked` listener (the manifest sets a
+  default popup, so it never fired).
+- Renamed generator-branding identifiers `Serp*` → `Rule34*` (8 files) and the
+  `SERP`/`serp` strings (message contracts, logger labels, CSS/event ids) for a
+  clean rebrand. `site-adapter.js` keeps its internal `serp` strings because it
+  is now kept-but-unloaded legacy code.
+
+### Third-party / licensing
+- Added a top-level `LICENSE` (**MIT**) and `docs/THIRD_PARTY_LICENSES.md`
+  (mediabunny **MPL-2.0** file-level copyleft — source ships in the repo;
+  mp4box **BSD-3-Clause**). No external telemetry / analytics / beacon found.
+- **Gated the generic multi-hoster surface:** `site-adapter.js` is no longer
+  injected into rule34 pages and its background fallback is now inert;
+  `host_permissions` narrowed to the two sites + `rule34storage.b-cdn.net` +
+  `api.github.com` (dropped the `"https://*/*"` / `"http://*/*"` wildcards).
+
+### Quality-of-life features
+- **Smart Library** — configurable download-path template
+  (`{site}/{artist}/{title}`, `{site}/{title}`, `{title}` presets) so files land
+  in organized subfolders instead of a flat Downloads folder. The artist tag is
+  already extracted by the rule34.world resolver.
+- **Bulk download by tag / playlist** (rule34.world) — a popup control that
+  cursor-paginates `/api/v2/post/search/root` (and
+  `/v2/post/search/playlist/{id}`) and enqueues every post through the existing
+  batch engine.
+
+### Validation
+- All classic scripts `node --check`; `background-enhanced.js` as ESM; all JSON
+  parses; forbidden-paywall grep clean; `Serp`/`SERP` branding gone from active
+  code (only `rule34` remains); the `RULE34_GENERATED_PAGE_DATA` message contract
+  is preserved on both sides. Version bumped **4.2.0 → 4.3.0**.
+
 ## Known issues / notes
 
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not

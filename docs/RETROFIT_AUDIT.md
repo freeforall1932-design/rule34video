@@ -175,3 +175,26 @@ risk, and it reuses data we already have. D2 right after.
 - `grep -rn 'Serp' *.js` → **0** (rebrand complete). ✔
 
 See `docs/SESSION_HANDOFF.md §8` for the full command set.
+
+---
+
+## Status (implemented this session, 2026-08-30)
+
+- **Gated** the generic multi-hoster surface: `site-adapter.js` removed from
+  `content_scripts`; background `import` removed (generic fallback now inert);
+  `host_permissions` narrowed (the `"https://*/*"` / `"http://*/*"` wildcards
+  dropped; `rule34storage.b-cdn.net` + `api.github.com` added).
+- **Smart Library** implemented: `buildDownloadPath()` + `getDownloadPathTemplate()`
+  in `background-enhanced.js`; popup template input + presets; the rule34.world
+  resolver now also returns `artist`.
+- **Bulk by tag / playlist** implemented for rule34.world: `searchRule34WorldPosts()`
+  (cursor-paginated `/api/v2/post/search/root` + `/v2/post/search/playlist/{id}`)
+  + a `bulkDownloadTag` message + a popup control. rule34video.com tag search is
+  intentionally **not** wired (different search API).
+- **Stale / branding** removed: `license_code` flashvar, orphaned activation CSS,
+  dead `chrome.action.onClicked` listener, and the `Serp*`→`Rule34*` rename across
+  active code (the kept-but-unloaded `site-adapter.js` retains its internal
+  `serp` strings).
+- **Licensing**: top-level `LICENSE` (MIT) + `docs/THIRD_PARTY_LICENSES.md`.
+- Version **4.2.0 → 4.3.0**. Validation: all `node --check` (classic + BG as ESM),
+  JSON parse, forbidden-paywall grep, and `Serp`/`SERP` grep pass.

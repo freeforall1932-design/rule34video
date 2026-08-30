@@ -5,7 +5,7 @@
   const STORAGE_DISMISSED_VERSION_KEY = "update:dismissedVersion";
   const DEFAULT_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
   const DEFAULT_TIMEOUT_MS = 8000;
-  const STYLE_ID = "serp-update-notifier-style";
+  const STYLE_ID = "rule34-update-notifier-style";
 
   function normalizeVersion(value) {
     return String(value || "").trim().replace(/^v/i, "").split("+")[0].trim();

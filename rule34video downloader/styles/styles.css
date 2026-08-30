@@ -356,3 +356,60 @@ body {
   );
   animation: shimmer 1.5s infinite;
 }
+
+.path-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.path-preset {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.path-preset:hover {
+  background: #f5f5f5;
+}
+
+#path-template,
+#bulk-tag,
+#bulk-playlist {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+  margin-top: 4px;
+}
+
+.bulk-btn {
+  width: auto;
+  padding: 8px 14px;
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+#bulk-status.error {
+  color: #c62828;
+  background: #ffebee;
+}
+
+#bulk-status.success {
+  color: #2e7d32;
+  background: #e8f5e9;
+}
+
+code {
+  background: #eef1f5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}

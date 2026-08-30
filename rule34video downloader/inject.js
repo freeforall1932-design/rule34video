@@ -100,12 +100,12 @@
 
   function postPageData() {
     try {
-      window.postMessage({ type: "SERP_GENERATED_PAGE_DATA", data: collectPageData() }, "*");
+      window.postMessage({ type: "RULE34_GENERATED_PAGE_DATA", data: collectPageData() }, "*");
     } catch {}
   }
 
   window.addEventListener("message", (event) => {
-    if (event?.data?.type === "REQUEST_SERP_GENERATED_PAGE_DATA") postPageData();
+    if (event?.data?.type === "REQUEST_RULE34_GENERATED_PAGE_DATA") postPageData();
   });
 
   postPageData();

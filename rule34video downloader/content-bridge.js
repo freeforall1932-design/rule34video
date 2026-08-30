@@ -12,13 +12,13 @@
   function createLogger(label) {
     try {
       if (globalThis.Logger && typeof globalThis.Logger.createLogger === "function") {
-        return globalThis.Logger.createLogger(label || "[SERP Content]");
+        return globalThis.Logger.createLogger(label || "[RULE34 Content]");
       }
     } catch {}
     return noopLogger;
   }
 
-  const Logger = createLogger("[SERP Content Bridge]");
+  const Logger = createLogger("[RULE34 Content Bridge]");
 
   function ensureMap(name) {
     try {

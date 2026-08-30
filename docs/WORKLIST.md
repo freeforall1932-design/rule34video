@@ -52,6 +52,23 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 - [x] **(PR #3) TELEMETRY_LOG** now acks into the SW log (was a no-op).
 - [x] **(PR #3)** Bump version to `4.2.0`; refresh docs; Node harness
       (mocked chrome + fetch) validates 23 queue/host behaviors.
+- [x] **(Session 4) Retrofit audit + rebrand:** removed stale paywall/branding
+      (`license_code` in `inject.js`, `.activation-section`/`.activate-btn`/
+      `.buy-key-link` CSS, dead `chrome.action.onClicked` listener); renamed
+      `Serp*` → `Rule34*` identifiers across 8 files + `SERP`/`serp` strings;
+      added top-level MIT `LICENSE` and `docs/THIRD_PARTY_LICENSES.md`
+      (mediabunny MPL-2.0, mp4box BSD-3).
+- [x] **(Session 4) Gate generic multi-hoster:** `site-adapter.js` no longer
+      loaded on rule34 pages; its background fallback is inert; `host_permissions`
+      narrowed to the two sites + `rule34storage.b-cdn.net` + `api.github.com`
+      (wildcards dropped).
+- [x] **(Session 4) Smart Library:** configurable `{site}/{artist}/{title}`
+      download-path template (popup UI + presets), stored in `downloadPathTemplate`;
+      artist supplied by the rule34.world resolver.
+- [x] **(Session 4) Bulk by tag / playlist:** rule34.world cursor-paginated
+      search (`/api/v2/post/search/root`, `/v2/post/search/playlist/{id}`) wired
+      to the batch engine via a new `bulkDownloadTag` popup control.
+- [x] **(Session 4)** Bump version to `4.3.0`; `docs/RETROFIT_AUDIT.md` written.
 
 ## Manual browser test matrix (MOST IMPORTANT remaining work)
 

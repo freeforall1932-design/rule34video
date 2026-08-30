@@ -28,6 +28,18 @@ and fixed the biggest real-world bug found so far:
 3. Batch hardening (dedupe, parallel resolution, no notification spam),
    signed-link re-resolve on dispatch failure, filename title fix,
    TELEMETRY_LOG handler. Version bumped **4.1.1 → 4.2.0** (PR #3).
+4. **Session 4 (this one) — retrofit to free community + quality-of-life.**
+   Per the user's retrofit goal (paid/licensed → free community), the audit
+   found and removed stale paywall/branding (`license_code`, `.activate-btn`
+   activation CSS, dead `action.onClicked`), renamed `Serp*` → `Rule34*`
+   identifiers, and added a top-level MIT `LICENSE` + `docs/THIRD_PARTY_LICENSES.md`
+   (mediabunny MPL-2.0, mp4box BSD-3). The generic multi-hoster `site-adapter.js`
+   is **gated** (kept but no longer loaded on the two rule34 sites; its
+   background fallback is inert) and `host_permissions` narrowed to the two sites
+   + BunnyCDN + `api.github.com`. New **Smart Library** auto-organization
+   (configurable `{site}/{artist}/{title}` download-path template) and **bulk
+   "download by tag / playlist"** for rule34.world (cursor-paginated search API).
+   Version bumped **4.2.0 → 4.3.0**. Full write-up: `docs/RETROFIT_AUDIT.md`.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -78,12 +90,15 @@ All third-party paywall/auth/trial machinery from the original generator
 
 ### 3.1 Extension surfaces (`manifest.json`)
 - **Service worker (module):** `background-enhanced.js` — imports
-  `site-config.js`, `logger.js`, `background-bridge.js`, `site-adapter.js`.
-  Holds the download queue, post resolvers, batch engine, and the central
+  `site-config.js`, `logger.js`, `background-bridge.js`. (The generic
+  multi-hoster `site-adapter.js` is **gated** — kept in the repo but no longer
+  imported or injected; the rule34 resolvers handle both target sites.) Holds
+  the download queue, post resolvers, batch engine, the Smart Library path
+  builder, the rule34.world tag/playlist search, and the central
   `chrome.runtime.onMessage` router.
 - **Content scripts** (run `document_idle` on both sites), in order:
   `site-config.js → logger.js → download-manager.js → content-bridge.js →
-  site-adapter.js → content.js → player-button.js → post-actions.js`.
+  content.js → player-button.js → post-actions.js`.
 - **Popup:** `popup.html` + `popup.js` (+ `site-config.js`, `logger.js`,
   `update-notifier.js`). The paywall-era `auth-ui.js` / `trial-banner.js`
   scripts were deleted in PR #1 and are no longer referenced by `popup.html`.
@@ -162,6 +177,19 @@ All third-party paywall/auth/trial machinery from the original generator
   the two rule34 sites but harmless.
 - Offscreen HLS transmux + MP4 fetch (`offscreen.js` + `modules/`), progress
   manager, context menu, notifications.
+- **Smart Library download-path template (session 4):** configurable
+  `{site}/{artist}/{title}` folder layout (popup control + presets), stored in
+  `downloadPathTemplate`; each token sanitized, empty segments collapse. The
+  rule34.world resolver supplies the artist tag (returned as `artist`).
+- **Bulk download by tag / playlist (session 4):** popup "Download tag" enqueues
+  a whole rule34.world tag search or playlist via the cursor-paginated
+  `/api/v2/post/search/root` (and `/v2/post/search/playlist/{id}`) API, reusing
+  the existing batch engine. (rule34video.com tag search not yet wired — see §6.)
+- **Generic multi-hoster surface gated (session 4):** `site-adapter.js` is no
+  longer injected into rule34 pages and its background fallback is inert;
+  `host_permissions` narrowed to the two sites + BunnyCDN + api.github.com.
+- **Licensing clarity (session 4):** top-level `LICENSE` (MIT) +
+  `docs/THIRD_PARTY_LICENSES.md`.
 
 ---
 
@@ -254,18 +282,19 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
    live listing page and adjust `post-actions.js` `pinContainerFor` /
    `processCards` if cards don't get buttons. (The rule34video.com side WAS
    verified live in session 3 — selectors are correct there.)
-3. **Broad host permissions** (`https://*/*`, `http://*/*`) remain from the
-   generator. Narrow to rule34 + the BunnyCDN host once testing confirms no
-   cross-origin media needs the wildcard.
-4. **Cosmetic namespace leftovers**: `SerpBackgroundBridge`, `SerpContentBridge`,
-   `SerpSiteAdapter`, `SerpUnifiedPopup` identifier names (generator branding).
-   Not third-party integration; optional rename to `Rule34*`.
+3. **Host permissions narrowed (session 4):** the `"https://*/*"` / `"http://*/*"`
+   wildcards are gone; `host_permissions` is now just the two rule34 sites +
+   `rule34storage.b-cdn.net` + `api.github.com`. (If a future feature needs a
+   new host, add it explicitly.)
+4. **Cosmetic namespace rename done (session 4):** `Serp*` identifiers and
+   `SERP`/`serp` strings were renamed to `Rule34*`/`rule34` across active code
+   (the kept-but-unloaded `site-adapter.js` retains its internal `serp` strings).
 5. **rule34.world CDN state is volatile** — as of 2026-08-30
    `rule34storage.b-cdn.net` 500s on everything. The probe/fallback code
    (PR #3) handles both directions automatically, but re-verify the probe
    behavior if the CDN comes back (flag-preferred root should win again).
-6. **`chrome.action.onClicked` listener is dead code** (manifest sets a
-   default popup, so the event never fires). Harmless; optional removal.
+6. **Dead `chrome.action.onClicked` listener removed (session 4)** (manifest
+   sets a default popup, so it never fired).
 7. Nice-to-haves: rule34video image posts; "already downloaded" dedupe via
    `chrome.downloads` history; batch auto-paginate rule34.world — session 3
    pinned down the exact API from the gallery-dl fork: `POST
@@ -273,6 +302,9 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
    `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
    OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
    `/v2/post/search/playlist/{id}` for playlists.
+   **Session 4 implemented** the rule34.world bulk-by-tag/playlist flow on top of
+   this exact API (`searchRule34WorldPosts` + `bulkDownloadTag`); rule34video.com
+   tag search is still a future nice-to-have.
 
 > Verified clean session 3: forbidden-paywall grep empty, all JS/JSON valid,
 > 23-check mocked harness green (see §8). `TELEMETRY_LOG` from the popup now
@@ -288,9 +320,9 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `background-enhanced.js` | SW: queue, post resolvers, batch, message router, download routing |
 | `background-bridge.js` | SW helpers (offscreen doc, DNR rules, progress forwarders, response wrappers) |
 | `site-config.js` | SITE_NAME, folder, player-button selectors, context-menu patterns, update-check config, colors |
-| `site-adapter.js` | Generic media-detection hook module (many hosters); `SerpSiteAdapter` |
+| `site-adapter.js` | Generic multi-hoster media-detection hook module (many hosters); **gated** — kept but not loaded on rule34 sites (`Rule34SiteAdapter`) |
 | `content.js` | Generic content adapter; `getVideoInfo` extractor |
-| `content-bridge.js` | Content-side message bridge / progress UI glue (`SerpContentBridge`) |
+| `content-bridge.js` | Content-side message bridge / progress UI glue (`Rule34ContentBridge`) |
 | `post-actions.js` | **Corner buttons + batch toolbar + toasts** (new in PR #1) |
 | `player-button.js` | In-page player download button (single-video) |
 | `popup.html` / `popup.js` | Toolbar popup UI; concurrency controls; download trigger |
