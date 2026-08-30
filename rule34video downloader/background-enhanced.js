@@ -29,13 +29,19 @@ let currentDownloadTabId = null;
 // ---------------------------------------------------------------------------
 const DOWNLOAD_LIMIT_STORAGE_KEY = "downloadConcurrencyLimit";
 const QUEUE_JOB_MAX_AGE_MS = 3 * 60 * 60 * 1000; // safety net for lost jobs
+const QUEUE_STATE_STORAGE_KEY = "r34.queueState.v1"; // persisted session queue
+const MAX_QUEUED_DOWNLOADS = 500;
 const downloadQueue = [];
-const activeQueueJobs = new Map(); // downloadId (or temp key) -> { startedAt }
+const activeQueueJobs = new Map(); // downloadId (or temp key) -> { startedAt, title, url }
 const completedBeforeTracked = new Set();
+const userCancelledDownloads = new Set(); // string downloadIds the user cancelled
+const retriedInterruptedDownloads = new Set(); // string downloadIds already retried on fallback
+const downloadRetryContext = new Map(); // string chrome downloadId -> { videoInfo, format }
 let queueJobSequence = 0;
 let queuedIdSequence = 0;
 let queuePumpRunning = false;
 let queuePumpPending = false;
+let queuePersistTimer = null;
 
 async function getDownloadLimit() {
   try {
@@ -52,7 +58,144 @@ function purgeStaleQueueJobs() {
   for (const [key, job] of activeQueueJobs) {
     if (now - (job?.startedAt || 0) > QUEUE_JOB_MAX_AGE_MS) activeQueueJobs.delete(key);
   }
+  const before = downloadQueue.length;
+  for (let index = downloadQueue.length - 1; index >= 0; index -= 1) {
+    if (now - (downloadQueue[index]?.enqueuedAt || 0) > QUEUE_JOB_MAX_AGE_MS) downloadQueue.splice(index, 1);
+  }
+  const beforeBatch = batchPending.length;
+  for (let index = batchPending.length - 1; index >= 0; index -= 1) {
+    if (now - (batchPending[index]?.enqueuedAt || 0) > QUEUE_JOB_MAX_AGE_MS) batchPending.splice(index, 1);
+  }
+  if (downloadQueue.length !== before || batchPending.length !== beforeBatch) persistQueueState();
 }
+
+// ---------------------------------------------------------------------------
+// Queue persistence.
+// MV3 service workers are killed after ~30s of idle (and on extension
+// reloads / updates / crashes), which would silently drop every waiting
+// download and batch URL. The queue state is mirrored to chrome.storage.local
+// on every mutation (debounced) and restored on service-worker startup, so a
+// session queue survives the worker restarts. Jobs older than
+// QUEUE_JOB_MAX_AGE_MS are dropped on restore (their signed links / state
+// would be stale anyway).
+// ---------------------------------------------------------------------------
+function snapshotQueueState() {
+  const now = Date.now();
+  const queued = downloadQueue.map((job) => ({
+    queuedId: job.queuedId,
+    videoInfo: job.videoInfo,
+    tabId: job.tabId,
+    enqueuedAt: job.enqueuedAt || now,
+  }));
+  const batch = batchPending.map((job) => ({
+    url: job.url,
+    tabId: job.tabId,
+    enqueuedAt: job.enqueuedAt || now,
+  }));
+  const active = [];
+  for (const [key, job] of activeQueueJobs) {
+    active.push({
+      key: String(key),
+      startedAt: job?.startedAt || now,
+      title: job?.title || "",
+      url: job?.url || "",
+    });
+  }
+  return { queued, batch, active };
+}
+
+function persistQueueState() {
+  if (queuePersistTimer) return;
+  queuePersistTimer = setTimeout(() => {
+    queuePersistTimer = null;
+    flushQueueState();
+  }, 250);
+}
+
+function flushQueueState() {
+  if (queuePersistTimer) {
+    clearTimeout(queuePersistTimer);
+    queuePersistTimer = null;
+  }
+  try {
+    const state = snapshotQueueState();
+    if (!state.queued.length && !state.batch.length && !state.active.length) {
+      chrome.storage.local.remove(QUEUE_STATE_STORAGE_KEY);
+    } else {
+      chrome.storage.local.set({ [QUEUE_STATE_STORAGE_KEY]: state });
+    }
+  } catch (error) {
+    logger.warn("Failed to persist queue state", error);
+  }
+}
+
+async function restoreQueueState() {
+  let state = null;
+  try {
+    const data = await chrome.storage.local.get([QUEUE_STATE_STORAGE_KEY]);
+    state = data?.[QUEUE_STATE_STORAGE_KEY];
+  } catch {
+    return;
+  }
+  if (!state) return;
+  const now = Date.now();
+  if (Array.isArray(state.queued)) {
+    for (const job of state.queued) {
+      if (!job || !job.queuedId || !job.videoInfo) continue;
+      if (now - (job.enqueuedAt || 0) > QUEUE_JOB_MAX_AGE_MS) continue;
+      if (downloadQueue.length >= MAX_QUEUED_DOWNLOADS) break;
+      downloadQueue.push({
+        queuedId: job.queuedId,
+        videoInfo: job.videoInfo,
+        tabId: job.tabId ?? null,
+        enqueuedAt: job.enqueuedAt || now,
+      });
+    }
+  }
+  if (Array.isArray(state.batch)) {
+    for (const job of state.batch) {
+      if (!job || !job.url) continue;
+      if (now - (job.enqueuedAt || 0) > QUEUE_JOB_MAX_AGE_MS) continue;
+      if (batchPending.some((item) => item.url === job.url)) continue;
+      batchPending.push({ url: job.url, tabId: job.tabId ?? null, enqueuedAt: job.enqueuedAt || now });
+    }
+  }
+  if (Array.isArray(state.active)) {
+    for (const item of state.active) {
+      if (!item || !item.key) continue;
+      if (now - (item.startedAt || 0) > QUEUE_JOB_MAX_AGE_MS) continue;
+      const key = String(item.key);
+      if (/^\d+$/.test(key)) {
+        // Chrome-managed download: verify it is still alive before re-tracking.
+        let alive = false;
+        try {
+          const downloadItem = await chrome.downloads.get(Number(key));
+          alive = downloadItem?.state === "in_progress" || downloadItem?.state === "incomplete";
+        } catch {
+          alive = false;
+        }
+        if (!alive) continue;
+      }
+      activeQueueJobs.set(key, { startedAt: item.startedAt || now, title: item.title || "", url: item.url || "" });
+    }
+  }
+  if (downloadQueue.length || batchPending.length || activeQueueJobs.size) {
+    logger.log("Restored persisted download queue", {
+      queued: downloadQueue.length,
+      batch: batchPending.length,
+      active: activeQueueJobs.size,
+    });
+    void pumpDownloadQueue();
+    void processBatchQueue();
+  }
+}
+
+// Best-effort sync right before the service worker is torn down.
+try {
+  chrome.runtime.onSuspend.addListener(() => {
+    flushQueueState();
+  });
+} catch {}
 
 function getQueueStatusSnapshot(limit) {
   purgeStaleQueueJobs();
@@ -74,6 +217,7 @@ function releaseQueueSlot(downloadId) {
     }
     return;
   }
+  persistQueueState();
   void pumpDownloadQueue();
 }
 
@@ -84,45 +228,103 @@ function trackQueueJob(downloadId, job) {
     void pumpDownloadQueue();
     return;
   }
-  activeQueueJobs.set(downloadId, job || { startedAt: Date.now() });
+  activeQueueJobs.set(downloadId, {
+    startedAt: job?.startedAt || Date.now(),
+    title: job?.title || "",
+    url: job?.url || "",
+  });
+  persistQueueState();
+}
+
+// If dispatching a download fails, give rule34 post jobs one chance to
+// re-resolve the post page / API and retry with fresh formats. This covers
+// expired signed rule34video `get_file` links (queued batches can outlive
+// them) and rule34.world hosts that were down at resolve time.
+async function tryReResolveVideoInfo(videoInfo, error) {
+  if (!videoInfo || Number(videoInfo.__retried || 0) >= 1) return null;
+  const url = String(videoInfo.url || videoInfo.webpage_url || "");
+  if (!rule34VideoPostId(url) && !rule34WorldPostId(url)) return null;
+  try {
+    const resolved = await resolveKnownPost(url);
+    if (!resolved || !Array.isArray(resolved.formats) || !resolved.formats.length) return null;
+    const best = resolved.formats[0];
+    logger.log("Re-resolved post for download retry", { url, attempt: Number(videoInfo.__retried || 0) + 1 });
+    return {
+      ...videoInfo,
+      id: resolved.id || videoInfo.id,
+      title: resolved.title || videoInfo.title,
+      thumbnail: resolved.thumbnail || videoInfo.thumbnail,
+      duration: resolved.duration !== undefined ? resolved.duration : videoInfo.duration,
+      selectedFormat: best,
+      formats: resolved.formats,
+      skipFormatRefresh: true,
+      __retried: Number(videoInfo.__retried || 0) + 1,
+    };
+  } catch (resolveError) {
+    logger.warn("Re-resolve before download retry failed", { url, error, resolveError });
+    return null;
+  }
 }
 
 async function runQueuedDownload(videoInfo, tabId) {
   const jobKey = `queue-job-${++queueJobSequence}`;
-  activeQueueJobs.set(jobKey, { startedAt: Date.now() });
+  activeQueueJobs.set(jobKey, { startedAt: Date.now(), title: videoInfo?.title || "", url: videoInfo?.url || "" });
+  persistQueueState();
+  let current = videoInfo;
   let result;
   try {
     if (tabId) currentDownloadTabId = tabId;
-    result = await downloadVideo(videoInfo);
+    let attempts = 0;
+    for (;;) {
+      try {
+        result = await downloadVideo(current);
+        break;
+      } catch (error) {
+        const reResolved = await tryReResolveVideoInfo(current, error);
+        if (!reResolved || attempts >= 1) throw error;
+        current = reResolved;
+        attempts += 1;
+      }
+    }
   } catch (error) {
     activeQueueJobs.delete(jobKey);
+    persistQueueState();
     void pumpDownloadQueue();
     throw error;
   }
-  const job = activeQueueJobs.get(jobKey) || { startedAt: Date.now() };
+  const job = activeQueueJobs.get(jobKey) || { startedAt: Date.now(), title: current?.title || "", url: current?.url || "" };
   activeQueueJobs.delete(jobKey);
+  persistQueueState();
   const downloadId = result && result.downloadId;
   if (downloadId !== undefined && downloadId !== null) {
-    trackQueueJob(downloadId, job);
+    trackQueueJob(downloadId, { ...job, title: current?.title || job.title, url: current?.url || job.url });
   } else {
     void pumpDownloadQueue();
   }
   return result;
 }
 
-async function queueDownloadRequest(videoInfo) {
+async function queueDownloadRequest(videoInfo, options = {}) {
   purgeStaleQueueJobs();
   const limit = await getDownloadLimit();
   const tabId = currentDownloadTabId;
   if (limit > 0 && activeQueueJobs.size >= limit) {
+    if (downloadQueue.length >= MAX_QUEUED_DOWNLOADS) {
+      throw new Error(`Download queue is full (${MAX_QUEUED_DOWNLOADS} waiting). Raise the limit or wait for downloads to finish.`);
+    }
     const queuedId = `queued-${Date.now()}-${++queuedIdSequence}`;
     downloadQueue.push({ queuedId, videoInfo, tabId, enqueuedAt: Date.now() });
+    persistQueueState();
     const position = downloadQueue.length;
-    const title = sanitizeFilename(videoInfo?.title || videoInfo?.id || "Video");
-    notify(
-      "Download queued",
-      `"${title}" is #${position} in the queue. It will start automatically when a download slot frees up (limit: ${limit}).`,
-    );
+    // Batches already surface per-post toasts in the page; one browser
+    // notification per queued item would be spam for large batches.
+    if (!options.quiet) {
+      const title = sanitizeFilename(videoInfo?.title || videoInfo?.id || "Video");
+      notify(
+        "Download queued",
+        `"${title}" is #${position} in the queue. It will start automatically when a download slot frees up (limit: ${limit}).`,
+      );
+    }
     return {
       downloadId: queuedId,
       queued: true,
@@ -147,11 +349,12 @@ async function pumpDownloadQueue() {
       const limit = await getDownloadLimit();
       while (downloadQueue.length && (limit === 0 || activeQueueJobs.size < limit)) {
         const job = downloadQueue.shift();
+        persistQueueState();
         try {
           await runQueuedDownload(job.videoInfo, job.tabId);
         } catch (error) {
           logger.error("Queued download failed", error);
-          notify("Download failed", error?.message || "Queued download failed.");
+          if (!job?.videoInfo?.__fromBatch) notify("Download failed", error?.message || "Queued download failed.");
         }
       }
     } while (queuePumpPending);
@@ -164,7 +367,54 @@ function removeQueuedDownload(queuedId) {
   const index = downloadQueue.findIndex((job) => job.queuedId === queuedId);
   if (index === -1) return false;
   downloadQueue.splice(index, 1);
+  persistQueueState();
   return true;
+}
+
+// Remember which chrome download belongs to which resolved format so an
+// interrupted download can be restarted on the format's fallback host.
+function rememberDownloadRetryContext(downloadId, videoInfo, selectedFormat) {
+  if (downloadId === undefined || downloadId === null) return;
+  if (!selectedFormat?.fallbackUrl) return;
+  const key = String(downloadId);
+  downloadRetryContext.set(key, { videoInfo, format: selectedFormat });
+  if (downloadRetryContext.size > 400) {
+    downloadRetryContext.delete(downloadRetryContext.keys().next().value);
+  }
+}
+
+// A chrome-managed download that was interrupted (HTTP 5xx, CDN outage, ...)
+// is restarted once on the format's fallback host — but never for downloads
+// the user cancelled themselves.
+async function retryInterruptedDownload(delta) {
+  const downloadId = delta && delta.id;
+  if (downloadId === undefined || downloadId === null || typeof downloadId !== "number") return;
+  const key = String(downloadId);
+  if (userCancelledDownloads.has(key) || retriedInterruptedDownloads.has(key)) return;
+  const context = downloadRetryContext.get(key);
+  if (!context || !context.format?.fallbackUrl) return;
+  retriedInterruptedDownloads.add(key);
+  if (retriedInterruptedDownloads.size > 500) {
+    retriedInterruptedDownloads.delete(retriedInterruptedDownloads.values().next().value);
+  }
+  downloadRetryContext.delete(key);
+  logger.log("Retrying interrupted download on fallback host", { downloadId, url: context.format?.url });
+  try {
+    await chrome.downloads.cancel(downloadId);
+  } catch {}
+  const fallbackFormat = { ...context.format, url: context.format.fallbackUrl, fallbackUrl: "" };
+  const videoInfo = { ...context.videoInfo, selectedFormat: fallbackFormat, skipFormatRefresh: true };
+  const title = sanitizeFilename(videoInfo.title || videoInfo.id || "Video");
+  try {
+    const result = await queueDownloadRequest(videoInfo, { quiet: true });
+    notify(
+      "Download restarted",
+      `"${title}" restarted on the backup file host${result?.queued ? ` (queued #${result.queuePosition || "?"})` : ""}.`,
+    );
+  } catch (error) {
+    logger.warn("Fallback download retry failed", error);
+    notify("Download failed", error?.message || `Could not restart "${title}" on the backup file host.`);
+  }
 }
 
 // Free a slot whenever a Chrome-managed download finishes or is interrupted.
@@ -172,7 +422,9 @@ try {
   chrome.downloads.onChanged.addListener((delta) => {
     if (!delta || !delta.state) return;
     const state = delta.state.current;
-    if (state === "complete" || state === "interrupted") releaseQueueSlot(delta.id);
+    if (state !== "complete" && state !== "interrupted") return;
+    releaseQueueSlot(delta.id);
+    if (state === "interrupted") void retryInterruptedDownload(delta);
   });
 } catch {}
 
@@ -196,6 +448,45 @@ const WORLD_FORMATS = [
   ["102", "mov480.mp4", "480p", "mp4"],
   ["10", "pic.jpg", "Image", "image"],
 ];
+// The rule34.world post API reports, per file, whether it lives on the
+// BunnyCDN root or the site origin. In practice the CDN has been observed
+// failing wholesale (HTTP 500) while the origin keeps serving, so we probe
+// both roots once per session (cheap HEAD/RANGE on one real file) and build
+// format URLs on the healthy root. Every format also carries a fallbackUrl
+// on the other root so a failed download can be retried there.
+const WORLD_HOST_PROBE_TTL_MS = 10 * 60 * 1000;
+let worldHostProbe = null; // { cdnOk, originOk, checkedAt }
+
+async function probeMediaUrl(url) {
+  const attempt = async (method, headers, timeoutMs) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { method, headers, cache: "no-store", signal: controller.signal });
+      const ok = response.status >= 200 && response.status < 400;
+      if (ok && response.body) {
+        try { await response.body.cancel(); } catch {}
+      }
+      return ok;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  if (await attempt("HEAD", {}, 6000)) return true;
+  return attempt("GET", { Range: "bytes=0-0" }, 8000);
+}
+
+async function getWorldHostStatus(samplePath) {
+  if (worldHostProbe && Date.now() - worldHostProbe.checkedAt < WORLD_HOST_PROBE_TTL_MS) return worldHostProbe;
+  const [cdnOk, originOk] = await Promise.all([
+    probeMediaUrl(WORLD_CDN_ROOT + samplePath),
+    probeMediaUrl(WORLD_ROOT + samplePath),
+  ]);
+  worldHostProbe = { cdnOk, originOk, checkedAt: Date.now() };
+  return worldHostProbe;
+}
 
 function decodeHtmlEntities(value) {
   return String(value || "")
@@ -292,13 +583,33 @@ async function resolveRule34WorldPost(postId, pageUrl) {
   const idNumber = Number(postId);
   const directory = Math.floor(idNumber / 1000);
 
-  const formats = [];
+  const entries = [];
   for (const [formatId, extension, label, kind] of WORLD_FORMATS) {
     if (!(formatId in files)) continue;
     const flags = files[formatId];
     const useCdn = Array.isArray(flags) ? Boolean(flags[0]) : Boolean(flags);
-    const root = useCdn ? WORLD_CDN_ROOT : WORLD_ROOT;
-    formats.push({
+    entries.push({ extension, label, kind, useCdn });
+  }
+  if (!entries.length) throw new Error("No downloadable files listed for this post.");
+
+  // Probe both file hosts once per session (sampled on the first real file)
+  // and prefer the healthy one over whatever the API flag claims.
+  const samplePath = `/posts/${directory}/${idNumber}/${postId}.${entries[0].extension}`;
+  const hostStatus = await getWorldHostStatus(samplePath);
+  const pickRoots = (useCdn) => {
+    const preferred = useCdn ? WORLD_CDN_ROOT : WORLD_ROOT;
+    const preferredOk = preferred === WORLD_CDN_ROOT ? hostStatus.cdnOk : hostStatus.originOk;
+    const other = preferred === WORLD_CDN_ROOT ? WORLD_ROOT : WORLD_CDN_ROOT;
+    const otherOk = preferred === WORLD_CDN_ROOT ? hostStatus.originOk : hostStatus.cdnOk;
+    if (preferredOk || (!preferredOk && !otherOk)) {
+      return { root: preferred, altRoot: otherOk ? other : "" };
+    }
+    return { root: other, altRoot: preferredOk ? preferred : "" };
+  };
+
+  const formats = entries.map(({ extension, label, kind, useCdn }) => {
+    const { root, altRoot } = pickRoots(useCdn);
+    const format = {
       url: `${root}/posts/${directory}/${idNumber}/${idNumber}.${extension}`,
       quality: label,
       label,
@@ -307,9 +618,10 @@ async function resolveRule34WorldPost(postId, pageUrl) {
       format_type: kind === "image" ? "image" : "mp4",
       protocol: "https",
       source: "rule34world-api",
-    });
-  }
-  if (!formats.length) throw new Error("No downloadable files listed for this post.");
+    };
+    if (altRoot) format.fallbackUrl = `${altRoot}/posts/${directory}/${idNumber}/${idNumber}.${extension}`;
+    return format;
+  });
 
   const artist = Array.isArray(post?.tags) ? post.tags.find((tag) => tag && tag.type === 8)?.value : "";
   const baseName = String(post?.filename || "").replace(/\.[a-z0-9]+$/i, "");
@@ -337,6 +649,7 @@ async function resolveKnownPost(url) {
 // Responds immediately, then streams per-post status back to the tab.
 // ---------------------------------------------------------------------------
 const BATCH_MAX_URLS = 300;
+const BATCH_RESOLVE_CONCURRENCY = 5;
 let batchRunning = false;
 const batchPending = [];
 
@@ -349,43 +662,54 @@ function sendBatchStatus(tabId, payload) {
   } catch {}
 }
 
+async function processBatchJob(job) {
+  try {
+    const resolved = await resolveKnownPost(job.url);
+    if (!resolved) throw new Error("Unsupported post URL.");
+    const best = resolved.formats[0];
+    if (job.tabId) currentDownloadTabId = job.tabId;
+    const result = await queueDownloadRequest(
+      {
+        id: resolved.id,
+        title: resolved.title,
+        url: resolved.url,
+        thumbnail: resolved.thumbnail,
+        duration: resolved.duration,
+        selectedFormat: best,
+        formats: resolved.formats,
+        skipFormatRefresh: true,
+        __fromBatch: true,
+      },
+      { quiet: true },
+    );
+    sendBatchStatus(job.tabId, {
+      url: job.url,
+      ok: true,
+      queued: Boolean(result?.queued),
+      queuePosition: result?.queuePosition || 0,
+      downloadId: result?.downloadId,
+      title: resolved.title,
+    });
+  } catch (error) {
+    logger.warn("Batch item failed", job.url, error);
+    sendBatchStatus(job.tabId, {
+      url: job.url,
+      ok: false,
+      error: error?.message || "Failed to resolve post.",
+    });
+  }
+}
+
 async function processBatchQueue() {
   if (batchRunning) return;
   batchRunning = true;
   try {
     while (batchPending.length) {
-      const job = batchPending.shift();
-      try {
-        const resolved = await resolveKnownPost(job.url);
-        if (!resolved) throw new Error("Unsupported post URL.");
-        const best = resolved.formats[0];
-        if (job.tabId) currentDownloadTabId = job.tabId;
-        const result = await queueDownloadRequest({
-          id: resolved.id,
-          title: resolved.title,
-          url: resolved.url,
-          thumbnail: resolved.thumbnail,
-          duration: resolved.duration,
-          selectedFormat: best,
-          formats: resolved.formats,
-          skipFormatRefresh: true,
-        });
-        sendBatchStatus(job.tabId, {
-          url: job.url,
-          ok: true,
-          queued: Boolean(result?.queued),
-          queuePosition: result?.queuePosition || 0,
-          downloadId: result?.downloadId,
-          title: resolved.title,
-        });
-      } catch (error) {
-        logger.warn("Batch item failed", job.url, error);
-        sendBatchStatus(job.tabId, {
-          url: job.url,
-          ok: false,
-          error: error?.message || "Failed to resolve post.",
-        });
-      }
+      const chunk = batchPending.splice(0, BATCH_RESOLVE_CONCURRENCY);
+      persistQueueState();
+      // Resolve several posts in parallel (the per-download concurrency
+      // limit still applies inside queueDownloadRequest).
+      await Promise.all(chunk.map((job) => processBatchJob(job)));
     }
   } finally {
     batchRunning = false;
@@ -394,16 +718,31 @@ async function processBatchQueue() {
 
 function enqueueBatchDownloads(urls, tabId) {
   const accepted = [];
+  let skipped = 0;
+  // Posts already waiting (batch-resolving, queued, or actively downloading)
+  // are not enqueued again when the user clicks "Download visible" twice.
+  const waitingUrls = new Set(
+    [
+      ...downloadQueue.map((job) => String(job?.videoInfo?.url || "")),
+      ...Array.from(activeQueueJobs.values()).map((job) => String(job?.url || "")),
+    ].filter(Boolean),
+  );
   for (const raw of Array.isArray(urls) ? urls : []) {
     const url = String(raw || "").trim();
     if (!url || accepted.length >= BATCH_MAX_URLS) break;
     if (!rule34VideoPostId(url) && !rule34WorldPostId(url)) continue;
-    if (batchPending.some((job) => job.url === url)) continue;
-    batchPending.push({ url, tabId });
+    if (batchPending.some((job) => job.url === url) || waitingUrls.has(url)) {
+      skipped += 1;
+      continue;
+    }
+    batchPending.push({ url, tabId, enqueuedAt: Date.now() });
     accepted.push(url);
   }
-  void processBatchQueue();
-  return accepted;
+  if (accepted.length) {
+    persistQueueState();
+    void processBatchQueue();
+  }
+  return { accepted, skipped };
 }
 
 function sanitizeFilename(value) {
@@ -1737,8 +2076,9 @@ async function downloadVideo(videoInfo = {}) {
         )
       : [],
   };
+  let refreshedResponse = null;
   try {
-    const refreshedResponse = videoInfo.skipFormatRefresh
+    refreshedResponse = videoInfo.skipFormatRefresh
       ? null
       : await getVideoFormats({ ...videoInfo, selectedFormat });
     const mergedFormats = [];
@@ -1753,6 +2093,11 @@ async function downloadVideo(videoInfo = {}) {
     if (mergedFormats.length) formatResponse = { ...(refreshedResponse || {}), formats: mergedFormats };
   } catch (error) {
     logger.warn("Download format refresh failed", error);
+  }
+  // Apply resolver-provided metadata (rule34 post API / post page) when the
+  // caller didn't have it, so the saved filename gets the real title/id.
+  if (refreshedResponse?.apiTitle && !videoInfo.title) {
+    videoInfo = { ...videoInfo, title: refreshedResponse.apiTitle };
   }
   if (!selectedFormat) selectedFormat = normalizeFormat(videoInfo.selectedFormat) || formatResponse.formats[0];
   if (typeof Adapter.prepareDownload === "function") {
@@ -1913,6 +2258,7 @@ async function downloadVideo(videoInfo = {}) {
   });
   console.log("[download] chrome-id", downloadId);
   downloadProgress.set(downloadId, { videoInfo, format: selectedFormat, startTime: Date.now() });
+  rememberDownloadRetryContext(downloadId, videoInfo, selectedFormat);
   Bridge.notifyContentDownloadStarted?.({
     tabId: currentDownloadTabId,
     downloadId,
@@ -1932,6 +2278,10 @@ async function downloadVideo(videoInfo = {}) {
   }
   return { downloadId, format: selectedFormat };
 }
+
+// Restore the persisted session queue (waiting downloads, batch URLs,
+// in-flight job slots) after a service-worker restart, then keep draining.
+void restoreQueueState();
 
 chrome.runtime.onInstalled.addListener(() => {
   Bridge.createConfiguredContextMenu?.({ logger });
@@ -1974,10 +2324,49 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     case "batchDownloadPosts": {
       const tabId = sender?.tab?.id || request?.tabId || currentDownloadTabId || null;
-      const accepted = enqueueBatchDownloads(request?.urls, tabId);
-      sendResponse({ success: true, accepted: accepted.length, urls: accepted });
+      const { accepted, skipped } = enqueueBatchDownloads(request?.urls, tabId);
+      sendResponse({ success: true, accepted: accepted.length, skipped, urls: accepted });
       return false;
     }
+    case "getQueueItems": {
+      purgeStaleQueueJobs();
+      const active = [];
+      for (const [key, job] of activeQueueJobs) {
+        active.push({
+          key: String(key),
+          title: job?.title || "Download",
+          url: job?.url || "",
+          startedAt: job?.startedAt || Date.now(),
+        });
+      }
+      const queued = downloadQueue.map((job, index) => ({
+        queuedId: job.queuedId,
+        title: job?.videoInfo?.title || job?.videoInfo?.id || "Download",
+        url: job?.videoInfo?.url || "",
+        position: index + 1,
+        enqueuedAt: job?.enqueuedAt || Date.now(),
+      }));
+      getDownloadLimit()
+        .then((limit) => sendResponse({ success: true, limit, active, queued, batchPending: batchPending.length }))
+        .catch(() => sendResponse({ success: true, limit: 0, active, queued, batchPending: batchPending.length }));
+      return true;
+    }
+    case "clearQueue": {
+      const removedQueued = downloadQueue.length;
+      const removedBatch = batchPending.length;
+      downloadQueue.length = 0;
+      batchPending.length = 0;
+      persistQueueState();
+      sendResponse({ success: true, removedQueued, removedBatch });
+      return false;
+    }
+    case "TELEMETRY_LOG":
+      // Popup telemetry pings: no metrics backend — just mirror to the SW log.
+      try {
+        logger.log("telemetry", request?.evt || "", request?.data || {});
+      } catch {}
+      try { sendResponse({ success: true }); } catch {}
+      return false;
     case "getVideoFormats":
       return Bridge.handleGetVideoFormatsMessage({
         request,
@@ -2050,7 +2439,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     case "cancelDownload":
       try {
-        if (typeof request.downloadId === "number") chrome.downloads.cancel(request.downloadId);
+        if (typeof request.downloadId === "number") {
+          userCancelledDownloads.add(String(request.downloadId));
+          if (userCancelledDownloads.size > 500) {
+            userCancelledDownloads.delete(userCancelledDownloads.values().next().value);
+          }
+          chrome.downloads.cancel(request.downloadId);
+        }
         if (typeof request.downloadId === "string" && request.downloadId.startsWith("queued-")) {
           removeQueuedDownload(request.downloadId);
         }

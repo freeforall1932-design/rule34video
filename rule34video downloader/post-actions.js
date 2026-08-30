@@ -201,8 +201,15 @@
           return;
         }
         const n = resp && typeof resp.accepted === "number" ? resp.accepted : 0;
+        const s = resp && typeof resp.skipped === "number" ? resp.skipped : 0;
         if (done) done(n);
-        toast(n ? "Queued " + n + " post" + (n === 1 ? "" : "s") + " for download" : "No new posts to download");
+        if (n) {
+          toast("Queued " + n + " post" + (n === 1 ? "" : "s") + " for download" + (s ? " (" + s + " already in queue)" : ""), "ok");
+        } else if (s) {
+          toast("Those " + s + " post" + (s === 1 ? " is" : "s are") + " already in the download queue");
+        } else {
+          toast("No new posts to download");
+        }
       });
     } catch (error) {
       toast("Failed to start download: " + (error && error.message ? error.message : error), "error");
