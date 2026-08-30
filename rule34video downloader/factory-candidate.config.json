@@ -72,10 +72,7 @@
     "site-config.js"
   ],
   "siteAdapterFiles": [
-    {
-      "file": "site-adapter.js",
-      "source": "generated-stub"
-    },
+
     {
       "file": "background-enhanced.js",
       "source": "generated-stub"

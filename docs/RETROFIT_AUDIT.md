@@ -91,9 +91,11 @@ Web-Store-clean.
 4. **Remove the dead `forceChromeHlsSegmentDownload` knob** (fold into the
    site-adapter cleanup).
 
-This is a product decision (loss of generic multi-site support) and touches
-permissions, so it's listed as a proposal — not applied yet. Tell me A or B and
-I'll implement + re-validate.
+**Status (session 4):** implemented as a *move* — `site-adapter.js` was moved out
+of the packaged extension to `legacy/` (still in the repo for reference). This is
+strictly better than a keep-loaded gate because the bytes are no longer shipped.
+The `host_permissions` narrowing and webRequest scoping from points 2–3 are also
+done.
 
 ---
 
@@ -180,10 +182,11 @@ See `docs/SESSION_HANDOFF.md §8` for the full command set.
 
 ## Status (implemented this session, 2026-08-30)
 
-- **Gated** the generic multi-hoster surface: `site-adapter.js` removed from
-  `content_scripts`; background `import` removed (generic fallback now inert);
-  `host_permissions` narrowed (the `"https://*/*"` / `"http://*/*"` wildcards
-  dropped; `rule34storage.b-cdn.net` + `api.github.com` added).
+- **Moved the generic multi-hoster `site-adapter.js` out of the packaged
+  extension** to `legacy/` (kept in the repo for reference); background `import`
+  already removed; generic fallback now inert; `host_permissions` narrowed (the
+  `"https://*/*"` / `"http://*/*"` wildcards dropped; `rule34storage.b-cdn.net` +
+  `api.github.com` added).
 - **Smart Library** implemented: `buildDownloadPath()` + `getDownloadPathTemplate()`
   in `background-enhanced.js`; popup template input + presets; the rule34.world
   resolver now also returns `artist`.

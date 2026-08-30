@@ -67,7 +67,6 @@
           "logger.js",
           "download-manager.js",
           "content-bridge.js",
-          "site-adapter.js",
           "content.js",
           "player-button.js"
         ],

@@ -58,10 +58,10 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
       `Serp*` → `Rule34*` identifiers across 8 files + `SERP`/`serp` strings;
       added top-level MIT `LICENSE` and `docs/THIRD_PARTY_LICENSES.md`
       (mediabunny MPL-2.0, mp4box BSD-3).
-- [x] **(Session 4) Gate generic multi-hoster:** `site-adapter.js` no longer
-      loaded on rule34 pages; its background fallback is inert; `host_permissions`
-      narrowed to the two sites + `rule34storage.b-cdn.net` + `api.github.com`
-      (wildcards dropped).
+- [x] **(Session 4) Move generic multi-hoster out of package:** `site-adapter.js`
+      moved to `legacy/` (excluded from the extension package); its background
+      fallback is inert; `host_permissions` narrowed to the two sites +
+      `rule34storage.b-cdn.net` + `api.github.com` (wildcards dropped).
 - [x] **(Session 4) Smart Library:** configurable `{site}/{artist}/{title}`
       download-path template (popup UI + presets), stored in `downloadPathTemplate`;
       artist supplied by the rule34.world resolver.

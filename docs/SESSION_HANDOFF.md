@@ -34,8 +34,9 @@ and fixed the biggest real-world bug found so far:
    activation CSS, dead `action.onClicked`), renamed `Serp*` → `Rule34*`
    identifiers, and added a top-level MIT `LICENSE` + `docs/THIRD_PARTY_LICENSES.md`
    (mediabunny MPL-2.0, mp4box BSD-3). The generic multi-hoster `site-adapter.js`
-   is **gated** (kept but no longer loaded on the two rule34 sites; its
-   background fallback is inert) and `host_permissions` narrowed to the two sites
+   has been **moved out of the packaged extension** to `legacy/site-adapter.js`
+   (still in the repo for reference; its background fallback is inert) and
+   `host_permissions` narrowed to the two sites
    + BunnyCDN + `api.github.com`. New **Smart Library** auto-organization
    (configurable `{site}/{artist}/{title}` download-path template) and **bulk
    "download by tag / playlist"** for rule34.world (cursor-paginated search API).
@@ -91,8 +92,9 @@ All third-party paywall/auth/trial machinery from the original generator
 ### 3.1 Extension surfaces (`manifest.json`)
 - **Service worker (module):** `background-enhanced.js` — imports
   `site-config.js`, `logger.js`, `background-bridge.js`. (The generic
-  multi-hoster `site-adapter.js` is **gated** — kept in the repo but no longer
-  imported or injected; the rule34 resolvers handle both target sites.) Holds
+  multi-hoster `site-adapter.js` has been **moved out of the packaged extension**
+  to `legacy/site-adapter.js` (still in the repo for reference); the rule34
+  resolvers handle both target sites.) Holds
   the download queue, post resolvers, batch engine, the Smart Library path
   builder, the rule34.world tag/playlist search, and the central
   `chrome.runtime.onMessage` router.
@@ -185,9 +187,10 @@ All third-party paywall/auth/trial machinery from the original generator
   a whole rule34.world tag search or playlist via the cursor-paginated
   `/api/v2/post/search/root` (and `/v2/post/search/playlist/{id}`) API, reusing
   the existing batch engine. (rule34video.com tag search not yet wired — see §6.)
-- **Generic multi-hoster surface gated (session 4):** `site-adapter.js` is no
-  longer injected into rule34 pages and its background fallback is inert;
-  `host_permissions` narrowed to the two sites + BunnyCDN + api.github.com.
+- **Generic multi-hoster surface removed from the package (session 4):**
+  `site-adapter.js` moved to `legacy/` (repo-only, excluded from the extension);
+  its background fallback is inert; `host_permissions` narrowed to the two sites +
+  BunnyCDN + api.github.com.
 - **Licensing clarity (session 4):** top-level `LICENSE` (MIT) +
   `docs/THIRD_PARTY_LICENSES.md`.
 
@@ -320,7 +323,7 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `background-enhanced.js` | SW: queue, post resolvers, batch, message router, download routing |
 | `background-bridge.js` | SW helpers (offscreen doc, DNR rules, progress forwarders, response wrappers) |
 | `site-config.js` | SITE_NAME, folder, player-button selectors, context-menu patterns, update-check config, colors |
-| `site-adapter.js` | Generic multi-hoster media-detection hook module (many hosters); **gated** — kept but not loaded on rule34 sites (`Rule34SiteAdapter`) |
+| `site-adapter.js` | Generic multi-hoster media-detection hook module (many hosters); **moved out of the packaged extension** to `legacy/` (repo-only, for reference) (`Rule34SiteAdapter`) |
 | `content.js` | Generic content adapter; `getVideoInfo` extractor |
 | `content-bridge.js` | Content-side message bridge / progress UI glue (`Rule34ContentBridge`) |
 | `post-actions.js` | **Corner buttons + batch toolbar + toasts** (new in PR #1) |
