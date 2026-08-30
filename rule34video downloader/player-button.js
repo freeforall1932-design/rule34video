@@ -58,7 +58,7 @@
         attributeFilter: toArray(observer.attributeFilter, ["class", "style", "src"]),
         urlPollingMs: Number(observer.urlPollingMs || 0),
         hookHistory: Boolean(observer.hookHistory),
-        historyEventName: observer.historyEventName || "serp-player-button-locationchange",
+        historyEventName: observer.historyEventName || "rule34-player-button-locationchange",
         settleDelayMs: Number(observer.settleDelayMs || 50),
       },
       button: {

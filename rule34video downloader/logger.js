@@ -72,7 +72,7 @@
         maybePromise.catch((error) => {
           if (!ignoredRuntimeSendError(error)) {
             try {
-              console.debug("[SERP Logger] LOG_MIRROR failed:", error);
+              console.debug("[RULE34 Logger] LOG_MIRROR failed:", error);
             } catch {}
           }
         });

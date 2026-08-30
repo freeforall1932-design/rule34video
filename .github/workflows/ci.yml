@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "arena/**"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate extension (syntax, JSON, branding)
+        working-directory: "rule34video downloader"
+        run: |
+          for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
+                   content.js content-bridge.js download-manager.js logger.js background-bridge.js \
+                   inject.js post-actions.js; do
+            node --check "$f" || { echo "FAIL $f"; exit 1; }
+          done
+          node --input-type=module --check < background-enhanced.js || { echo "FAIL background-enhanced.js"; exit 1; }
+          for j in manifest.json app.config.json unified-app.config.json factory-candidate.config.json; do
+            python3 -m json.tool "$j" >/dev/null || { echo "FAIL $j"; exit 1; }
+          done
+          # Forbidden paywall/auth remnants must print NOTHING:
+          if grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivated|isActivated|auth-ui\.js|trial-banner\.js|gumroad|activationTitle' \
+            --include='*.js' --include='*.json' --include='*.html' --include='*.css' . \
+            | grep -viE 'Rule34'; then
+            echo "FORBIDDEN PAYWALL REMNANTS FOUND"; exit 1
+          fi
+          echo "validation OK"
+      - name: Smoke test (mocked chrome + fetch)
+        run: node tests/smoke.mjs

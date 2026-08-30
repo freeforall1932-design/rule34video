@@ -2,8 +2,8 @@
 // Generated generic direct-video content adapter stub.
 (function () {
   const SiteConfig = globalThis.SiteConfig || {};
-  const Bridge = globalThis.SerpContentBridge || {};
-  const Adapter = globalThis.SerpSiteAdapter || {};
+  const Bridge = globalThis.Rule34ContentBridge || {};
+  const Adapter = globalThis.Rule34SiteAdapter || {};
   const logger = (globalThis.Logger && globalThis.Logger.createLogger("[Rule 34 Content]")) || { log() {}, warn() {}, error() {} };
   const selectors = Object.assign({
     "title": [
@@ -258,7 +258,7 @@
     Bridge.runInitialVideoCheck({ extractVideoInfo, logger });
     if (injectPageDataRelay && Bridge.listenForPageData && Bridge.injectPageScript) {
       Bridge.listenForPageData({
-        dataType: "SERP_GENERATED_PAGE_DATA",
+        dataType: "RULE34_GENERATED_PAGE_DATA",
         updatedAction: false,
         onData(payload) {
           generatedPageData = payload || null;
@@ -267,14 +267,14 @@
           } catch {}
         },
       });
-      Bridge.injectPageScript({ script: "inject.js", requestType: "REQUEST_SERP_GENERATED_PAGE_DATA", logger });
+      Bridge.injectPageScript({ script: "inject.js", requestType: "REQUEST_RULE34_GENERATED_PAGE_DATA", logger });
     }
     if (videoInfoPollMs > 0 && videoInfoPollCount > 0) {
       let remainingPolls = videoInfoPollCount;
       const pollTimer = setInterval(() => {
         remainingPolls -= 1;
         try {
-          if (injectPageDataRelay) globalThis.postMessage({ type: "REQUEST_SERP_GENERATED_PAGE_DATA" }, "*");
+          if (injectPageDataRelay) globalThis.postMessage({ type: "REQUEST_RULE34_GENERATED_PAGE_DATA" }, "*");
           Bridge.safeSendMessage({ action: "videoDetected", data: extractVideoInfo() }).catch(function () {});
         } catch (error) {
           logger.warn("Video info poll failed", error);
@@ -283,6 +283,6 @@
       }, videoInfoPollMs);
     }
   } else {
-    logger.warn("SerpContentBridge unavailable; generated content adapter stub was not registered.");
+    logger.warn("Rule34ContentBridge unavailable; generated content adapter stub was not registered.");
   }
 })();

@@ -52,6 +52,32 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 - [x] **(PR #3) TELEMETRY_LOG** now acks into the SW log (was a no-op).
 - [x] **(PR #3)** Bump version to `4.2.0`; refresh docs; Node harness
       (mocked chrome + fetch) validates 23 queue/host behaviors.
+- [x] **(Session 4) Retrofit audit + rebrand:** removed stale paywall/branding
+      (`license_code` in `inject.js`, `.activation-section`/`.activate-btn`/
+      `.buy-key-link` CSS, dead `chrome.action.onClicked` listener); renamed
+      `Serp*` → `Rule34*` identifiers across 8 files + `SERP`/`serp` strings;
+      added top-level MIT `LICENSE` and `docs/THIRD_PARTY_LICENSES.md`
+      (mediabunny MPL-2.0, mp4box BSD-3).
+- [x] **(Session 4) Move generic multi-hoster out of package:** `site-adapter.js`
+      moved to `legacy/` (excluded from the extension package); its background
+      fallback is inert; `host_permissions` narrowed to the two sites +
+      `rule34storage.b-cdn.net` + `api.github.com` (wildcards dropped).
+- [x] **(Session 5) Privacy + CI + rule34video.com tag search:**
+      - `docs/privacy.md` (no telemetry; only the two sites + BunnyCDN + GitHub).
+      - `.github/workflows/ci.yml` runs `node --check` (classic + background ESM),
+        JSON parse, forbidden-paywall grep, and a committed `tests/smoke.mjs`
+        (mocked chrome + fetch exercising `getVideoFormats` + `bulkDownloadTag`).
+      - Wired rule34video.com tag search (`searchRule34VideoTag` scrapes
+        `rule34video.com/search/<tag>/` post links) into the bulk-by-tag popup
+        (active-tab site auto-detected).
+      - Bump version to `4.4.0`.
+- [x] **(Session 4) Smart Library:** configurable `{site}/{artist}/{title}`
+      download-path template (popup UI + presets), stored in `downloadPathTemplate`;
+      artist supplied by the rule34.world resolver.
+- [x] **(Session 4) Bulk by tag / playlist:** rule34.world cursor-paginated
+      search (`/api/v2/post/search/root`, `/v2/post/search/playlist/{id}`) wired
+      to the batch engine via a new `bulkDownloadTag` popup control.
+- [x] **(Session 4)** Bump version to `4.3.0`; `docs/RETROFIT_AUDIT.md` written.
 
 ## Manual browser test matrix (MOST IMPORTANT remaining work)
 

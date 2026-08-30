@@ -4,6 +4,10 @@
 (function () {
   const SiteConfig = {
       "SITE_NAME": "Rule 34",
+      "DOWNLOADS": {
+          "pathTemplate": "{site}/{artist}/{title}",
+          "defaultFolder": "Rule 34"
+      },
       "POPUP_TITLE": "Downloader for Rule 34",
       "OFFSCREEN": {
           "downloadFolder": "Rule 34",

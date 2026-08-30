@@ -39,68 +39,6 @@ body {
   color: #888;
 }
 
-.activation-section {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
-}
-
-.activation-section label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-  color: #333;
-  font-size: 13px;
-}
-
-.activation-section input {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
-  font-size: 13px;
-  margin-bottom: 12px;
-  transition: border-color 0.2s ease;
-}
-
-.activation-section input:focus {
-  outline: none;
-  border-color: #ff7700;
-  box-shadow: 0 0 0 2px rgba(94, 53, 177, 0.1);
-}
-
-.activate-btn {
-  width: 100%;
-  padding: 10px 16px;
-  background: #ff7700;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-bottom: 12px;
-}
-
-.activate-btn:hover {
-  background: #512da8;
-}
-
-.buy-key-link {
-  display: block;
-  text-align: center;
-  font-size: 12px;
-  color: #ff7700;
-  text-decoration: none;
-}
-
-.buy-key-link:hover {
-  text-decoration: underline;
-}
-
 .status {
   padding: 12px 16px;
   background: #f8f9fa;
@@ -417,4 +355,61 @@ body {
     rgba(255, 255, 255, 0) 100%
   );
   animation: shimmer 1.5s infinite;
+}
+
+.path-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.path-preset {
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.path-preset:hover {
+  background: #f5f5f5;
+}
+
+#path-template,
+#bulk-tag,
+#bulk-playlist {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  font-size: 13px;
+  box-sizing: border-box;
+  margin-top: 4px;
+}
+
+.bulk-btn {
+  width: auto;
+  padding: 8px 14px;
+  margin-top: 0;
+  flex-shrink: 0;
+}
+
+#bulk-status.error {
+  color: #c62828;
+  background: #ffebee;
+}
+
+#bulk-status.success {
+  color: #2e7d32;
+  background: #e8f5e9;
+}
+
+code {
+  background: #eef1f5;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
 }

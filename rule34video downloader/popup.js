@@ -2,8 +2,8 @@
 (function () {
   "use strict";
 
-  if (globalThis.__SERP_UNIFIED_POPUP__) return;
-  globalThis.__SERP_UNIFIED_POPUP__ = true;
+  if (globalThis.__RULE34_UNIFIED_POPUP__) return;
+  globalThis.__RULE34_UNIFIED_POPUP__ = true;
 
   const SiteConfig = () => globalThis.SiteConfig || {};
   const DEFAULT_TIMEOUT_MS = Math.max(
@@ -75,6 +75,12 @@
       queueSummary: document.getElementById("queue-summary"),
       queueList: document.getElementById("queue-list"),
       clearQueueBtn: document.getElementById("clear-queue-btn"),
+      pathTemplate: document.getElementById("path-template"),
+      pathPresets: Array.from(document.querySelectorAll(".path-preset")),
+      bulkTag: document.getElementById("bulk-tag"),
+      bulkPlaylist: document.getElementById("bulk-playlist"),
+      bulkBtn: document.getElementById("bulk-btn"),
+      bulkStatus: document.getElementById("bulk-status"),
     };
   }
 
@@ -277,7 +283,7 @@
   }
 
   async function requestVideoInfo(tabId) {
-    const overrideInfo = globalThis.__SERP_TEST_VIDEO_INFO_OVERRIDE__;
+    const overrideInfo = globalThis.__RULE34_TEST_VIDEO_INFO_OVERRIDE__;
     if (hasUsableVideoInfo(overrideInfo)) {
       telemetry("popup.videoInfo.override", { tabId });
       return overrideInfo;
@@ -619,9 +625,9 @@
       await loadFormats(elements, state);
     } catch (error) {
       logger.error("popup initialization failed", error);
-      if (hasUsableVideoInfo(globalThis.__SERP_TEST_VIDEO_INFO_OVERRIDE__)) {
+      if (hasUsableVideoInfo(globalThis.__RULE34_TEST_VIDEO_INFO_OVERRIDE__)) {
         try {
-          state.currentVideoInfo = globalThis.__SERP_TEST_VIDEO_INFO_OVERRIDE__;
+          state.currentVideoInfo = globalThis.__RULE34_TEST_VIDEO_INFO_OVERRIDE__;
           applyVideoInfo(elements, state.currentVideoInfo, state.currentTabId);
           await loadFormats(elements, state);
           return;
@@ -923,6 +929,88 @@
     });
   }
 
+  // --- Smart Library: download-path template (persisted) ---
+  const PATH_TEMPLATE_STORAGE_KEY = "downloadPathTemplate";
+
+  let savePathTimer = null;
+  function savePathTemplate(value) {
+    if (savePathTimer) clearTimeout(savePathTimer);
+    savePathTimer = setTimeout(() => {
+      try { chrome.storage.local.set({ [PATH_TEMPLATE_STORAGE_KEY]: value || "" }); } catch {}
+    }, 250);
+  }
+
+  async function initPathTemplateControl(elements) {
+    if (!elements.pathTemplate) return;
+    let stored = "";
+    try {
+      const data = await chrome.storage.local.get([PATH_TEMPLATE_STORAGE_KEY]);
+      stored = (data && data[PATH_TEMPLATE_STORAGE_KEY]) || "";
+    } catch {}
+    elements.pathTemplate.value = stored;
+    elements.pathTemplate.placeholder = "{site}/{artist}/{title}";
+    elements.pathTemplate.addEventListener("input", () => {
+      savePathTemplate(elements.pathTemplate.value.trim());
+    });
+    if (Array.isArray(elements.pathPresets)) {
+      elements.pathPresets.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const tpl = btn.getAttribute("data-template") || "";
+          elements.pathTemplate.value = tpl;
+          savePathTemplate(tpl);
+        });
+      });
+    }
+  }
+
+  // --- Bulk download by tag / playlist (rule34.world) ---
+  async function initBulkTagControl(elements) {
+    if (!elements.bulkBtn) return;
+    const setStatus = (text, kind) => {
+      if (!elements.bulkStatus) return;
+      elements.bulkStatus.textContent = text || "";
+      elements.bulkStatus.classList.remove("error", "success");
+      if (kind) elements.bulkStatus.classList.add(kind);
+    };
+    elements.bulkBtn.addEventListener("click", async () => {
+      const tags = (elements.bulkTag && elements.bulkTag.value || "").trim();
+      const playlistUrl = (elements.bulkPlaylist && elements.bulkPlaylist.value || "").trim();
+      if (!tags && !playlistUrl) {
+        setStatus("Enter a tag/artist or a playlist URL first.", "error");
+        return;
+      }
+      elements.bulkBtn.disabled = true;
+      setStatus("Searching and queuing posts...");
+      let site = "";
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        site = (tab && tab.url) || "";
+      } catch {}
+      try {
+        const response = await runtimeMessage(
+          { action: "bulkDownloadTag", tags, playlistUrl, site },
+          { timeoutMs: 25000 },
+        );
+        if (!response || !response.success) {
+          throw new Error((response && response.error) || "Bulk download failed.");
+        }
+        const accepted = Number(response.accepted) || 0;
+        const skipped = Number(response.skipped) || 0;
+        setStatus(
+          `Queued ${accepted} post(s)${skipped ? `, ${skipped} already queued/skipped` : ""}.`,
+          "success",
+        );
+        telemetry("popup.bulk.tag", { accepted, skipped });
+        refreshQueueStatus(elements);
+        refreshQueueItems(elements);
+      } catch (error) {
+        setStatus(error && error.message ? error.message : "Bulk download failed.", "error");
+      } finally {
+        elements.bulkBtn.disabled = false;
+      }
+    });
+  }
+
   function startQueueStatusPolling(elements) {
     refreshQueueStatus(elements);
     refreshQueueItems(elements);
@@ -976,7 +1064,7 @@
       const header = document.querySelector(".header h1, .header h2");
       if (header) header.textContent = `Video ${popupTitle()}`;
       const title = document.getElementById("video-title");
-      if (title && !title.dataset.serpTouched) title.textContent = `Video ${popupTitle()}`;
+      if (title && !title.dataset.rule34Touched) title.textContent = `Video ${popupTitle()}`;
     } catch {}
   }
 
@@ -992,6 +1080,8 @@
     applyTitles();
     bindUi(elements, state);
     initLimitControls(elements);
+    initPathTemplateControl(elements);
+    initBulkTagControl(elements);
     startQueueStatusPolling(elements);
 
     try {
@@ -1004,7 +1094,7 @@
     }
   }
 
-  globalThis.SerpUnifiedPopup = {
+  globalThis.Rule34UnifiedPopup = {
     initializePopup,
     normalizeFormats,
     formatDuration,

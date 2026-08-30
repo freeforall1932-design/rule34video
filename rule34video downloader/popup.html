@@ -105,6 +105,36 @@
         <ul id="queue-list" class="queue-list"></ul>
       </div>
 
+      <div id="path-section" class="limit-section">
+        <div class="limit-header">
+          <label for="path-template">Save location (folder template)</label>
+        </div>
+        <input type="text" id="path-template" autocomplete="off" spellcheck="false" placeholder="{site}/{artist}/{title}" />
+        <div class="limit-row">
+          <div class="path-presets">
+            <button type="button" class="path-preset" data-template="{site}/{artist}/{title}">Site / Artist / Title</button>
+            <button type="button" class="path-preset" data-template="{site}/{title}">Site / Title</button>
+            <button type="button" class="path-preset" data-template="{title}">Title only</button>
+          </div>
+        </div>
+        <div class="limit-hint">
+          Tokens: <code>{site}</code> <code>{artist}</code> <code>{title}</code> <code>{id}</code>.
+          Folders are created under your Downloads folder.
+        </div>
+      </div>
+
+      <div id="bulk-section" class="limit-section">
+        <div class="limit-header">
+          <label for="bulk-tag">Bulk download by tag / playlist (rule34.world / rule34video.com)</label>
+        </div>
+        <input type="text" id="bulk-tag" autocomplete="off" placeholder="tag or artist, e.g. touhou" />
+        <div class="limit-row">
+          <input type="text" id="bulk-playlist" autocomplete="off" placeholder="playlist URL (optional)" />
+          <button id="bulk-btn" type="button" class="download-btn bulk-btn">Download tag</button>
+        </div>
+        <div id="bulk-status" class="limit-hint" role="status" aria-live="polite"></div>
+      </div>
+
       <div class="popup-compat-nodes" hidden>
         <span id="retry-btn" hidden></span>
       </div>
