@@ -96,6 +96,15 @@
         <div class="limit-hint">Extra downloads wait in a queue and start automatically when a slot frees up.</div>
       </div>
 
+      <div id="queue-section" class="queue-section hidden">
+        <div class="queue-header">
+          <span class="queue-title">Download queue</span>
+          <span id="queue-summary" class="queue-summary" role="status" aria-live="polite"></span>
+          <button id="clear-queue-btn" class="clear-queue-btn" type="button" title="Cancel all waiting downloads and batch posts">Clear</button>
+        </div>
+        <ul id="queue-list" class="queue-list"></ul>
+      </div>
+
       <div class="popup-compat-nodes" hidden>
         <span id="retry-btn" hidden></span>
       </div>

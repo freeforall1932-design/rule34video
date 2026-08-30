@@ -71,6 +71,10 @@
       limitInput: document.getElementById("limit-input"),
       limitValue: document.getElementById("limit-value"),
       queueStatus: document.getElementById("queue-status"),
+      queueSection: document.getElementById("queue-section"),
+      queueSummary: document.getElementById("queue-summary"),
+      queueList: document.getElementById("queue-list"),
+      clearQueueBtn: document.getElementById("clear-queue-btn"),
     };
   }
 
@@ -732,12 +736,14 @@
         setTimeout(() => resetDownloadButton(elements), 4000);
         telemetry("popup.download.queued", { position: result.queuePosition || 0 });
         refreshQueueStatus(elements);
+        refreshQueueItems(elements);
         return;
       }
       flashDownloadStarted(elements);
       startProgressPolling(elements, downloadId, isHlsFormat(format) || Boolean(result.isHLS));
       telemetry("popup.download.started", { hasDownloadId: Boolean(downloadId), isHls: isHlsFormat(format) });
       refreshQueueStatus(elements);
+        refreshQueueItems(elements);
     } catch (error) {
       logger.error("download failed", error);
       showError(elements, error && error.message ? error.message : "Download failed.");
@@ -830,9 +836,101 @@
     elements.queueStatus.textContent = parts.join(" \u2022 ");
   }
 
+  // --- Queue list (active + waiting downloads, persisted across reloads) ---
+
+  function renderQueueItems(elements, response) {
+    if (!elements.queueSection || !elements.queueList) return;
+    const active = Array.isArray(response.active) ? response.active : [];
+    const queued = Array.isArray(response.queued) ? response.queued : [];
+    const batchPending = Number(response.batchPending) || 0;
+    if (!active.length && !queued.length && !batchPending) {
+      hide(elements.queueSection);
+      if (elements.queueSummary) elements.queueSummary.textContent = "";
+      return;
+    }
+    show(elements.queueSection);
+    const parts = [];
+    if (active.length) parts.push(`${active.length} active`);
+    if (queued.length) parts.push(`${queued.length} queued`);
+    if (batchPending) parts.push(`${batchPending} resolving`);
+    if (elements.queueSummary) elements.queueSummary.textContent = parts.join(" \u2022 ");
+
+    elements.queueList.innerHTML = "";
+    const addItem = (kind, title, posLabel, cancelable, onCancel) => {
+      const item = document.createElement("li");
+      item.className = `queue-item qi-${kind}`;
+      const dot = document.createElement("span");
+      dot.className = "qi-dot";
+      const label = document.createElement("span");
+      label.className = "qi-title";
+      label.textContent = title || "Download";
+      label.title = title || "";
+      item.appendChild(dot);
+      item.appendChild(label);
+      if (posLabel) {
+        const pos = document.createElement("span");
+        pos.className = "qi-pos";
+        pos.textContent = posLabel;
+        item.appendChild(pos);
+      }
+      if (cancelable) {
+        const cancel = document.createElement("button");
+        cancel.className = "qi-cancel";
+        cancel.type = "button";
+        cancel.textContent = "\u2715";
+        cancel.title = "Cancel this queued download";
+        cancel.setAttribute("aria-label", "Cancel this queued download");
+        cancel.addEventListener("click", () => {
+          if (onCancel) onCancel();
+        });
+        item.appendChild(cancel);
+      }
+      elements.queueList.appendChild(item);
+    };
+
+    for (const item of active) {
+      addItem("active", item.title, null, false, null);
+    }
+    for (const item of queued) {
+      addItem(
+        "queued",
+        item.title,
+        `#${item.position || "?"}`,
+        true,
+        () => {
+          runtimeMessage({ action: "cancelDownload", downloadId: item.queuedId }, { timeoutMs: 3000 }).then(() => {
+            refreshQueueStatus(elements);
+            refreshQueueItems(elements);
+          });
+        },
+      );
+    }
+  }
+
+  function refreshQueueItems(elements) {
+    runtimeMessage({ action: "getQueueItems" }, { timeoutMs: 3000 }).then((response) => {
+      if (response && response.success) renderQueueItems(elements, response);
+    });
+  }
+
+  function clearQueue(elements) {
+    runtimeMessage({ action: "clearQueue" }, { timeoutMs: 3000 }).then((response) => {
+      if (response && response.success) {
+        telemetry("popup.queue.cleared", { removedQueued: response.removedQueued || 0, removedBatch: response.removedBatch || 0 });
+        refreshQueueStatus(elements);
+        refreshQueueItems(elements);
+      }
+    });
+  }
+
   function startQueueStatusPolling(elements) {
     refreshQueueStatus(elements);
-    setInterval(() => refreshQueueStatus(elements), 2000);
+    refreshQueueItems(elements);
+    const timer = setInterval(() => {
+      refreshQueueStatus(elements);
+      refreshQueueItems(elements);
+    }, 2000);
+    return timer;
   }
 
   function bindUi(elements, state) {
@@ -863,6 +961,11 @@
       elements.viewHistory.addEventListener("click", (event) => {
         event.preventDefault();
         try { chrome.tabs.create({ url: chrome.runtime.getURL("history.html") }); } catch {}
+      });
+    }
+    if (elements.clearQueueBtn) {
+      elements.clearQueueBtn.addEventListener("click", () => {
+        clearQueue(elements);
       });
     }
   }

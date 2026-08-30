@@ -6,30 +6,33 @@
 > pick up without re-deriving anything.
 >
 > Written: 2026-08-29 (Asia/Jakarta) by the Arena.ai coding agent.
+> Updated: 2026-08-30 (session 3 — review + missing-logic fixes).
 
 ---
 
-## 0. TL;DR — the "missing PR" mystery is resolved
+## 0. TL;DR — session 3: CDN outage found + persistent queue shipped
 
-The previous session **did** open a PR and merge it. Evidence:
+Session 3 (this one) did a **full codebase review with live-site verification**
+and fixed the biggest real-world bug found so far:
 
-- `origin/main` = `42cc212 Merge pull request #1 from freeforall1932-design/arena/01a04898-rule34video`
-- PR #1: **MERGED 2026-08-28T23:11:49Z**, title "Rebrand as free community
-  Rule34 downloader with batch queue", +5126 / −2025 across 26 files.
-- The feature branch `arena/01a04898-rule34video` still exists on the remote.
+1. **rule34.world's file CDN (`rule34storage.b-cdn.net`) is DOWN** — HTTP 500
+   for every post sampled (old + new, image + video) while the `rule34.world`
+   origin serves the identical files fine. The post API still flags the CDN,
+   so the old resolver produced **broken URLs for every rule34.world
+   download**. Fixed with a per-session host probe + `fallbackUrl` retry
+   (see §5 bug C). Verified live from the sandbox on 2026-08-30.
+2. **Persistent session queue** (explicit user request): the queue, batch
+   list, and active slots now survive MV3 service-worker restarts via
+   `chrome.storage.local` + restore-on-startup, with a queue list UI in the
+   popup (see §4/§5).
+3. Batch hardening (dedupe, parallel resolution, no notification spam),
+   signed-link re-resolve on dispatch failure, filename title fix,
+   TELEMETRY_LOG handler. Version bumped **4.1.1 → 4.2.0** (PR #3).
 
-This session's sandbox was initially checked out at the **old** pre-merge
-commit `5219397`, which made it look like nothing had landed. After
-`git fetch origin` + `git reset --hard origin/main`, all previous work is
-present. **New sessions must always `git fetch origin` and work from
-`origin/main` first** — do not trust the local checkout to be current.
-
-This session then:
-1. Synced the working branch to merged `main`.
-2. Did a full codebase review (architecture + end-to-end message/handler audit).
-3. Found & fixed **2 real logic bugs** (see §5).
-4. Refreshed these handoff docs.
-5. Opened PR #2 with the fixes (merge commit to `main`).
+Prior history: the "missing PR" mystery from session 2 is resolved —
+PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
+**New sessions must always `git fetch origin` and work from `origin/main`
+first** — do not trust the local checkout to be current.
 
 ---
 
@@ -39,11 +42,19 @@ This session then:
 - Working copy: `/home/user/rule34video`
 - Extension dir: `/home/user/rule34video/rule34video downloader`  (note the space)
 - Docs dir: `/home/user/rule34video/docs`
-- Session branch: `arena/01a048c4-rule34video`
-- Base: `origin/main` @ `42cc212` (PR #1 merge), version `4.1.0` → bumped to **`4.1.1`**.
+- Session branch (session 3): `arena/01a0507e-rule34video`
+- Base: `origin/main` @ `bb4ccca` (PR #2 merge), version `4.1.1` → bumped to **`4.2.0`**.
+- **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
+  `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
 - The two `page source*.txt|html` files at the repo root are saved reference
-  HTML for rule34.world / rule34video.com. They are not code.
+  HTML: `page source.txt` = rule34video.com **listing** page (cards, previews
+  only — no download links), `page source for rule34 world` = rule34.world
+  **Angular shell** (no SSR content). A live post page + API shapes were
+  verified directly in session 3.
+- Useful reference repo: `freeforall1932-design/gallery-dl` (user's fork) —
+  `gallery_dl/extractor/rule34xyz.py` is the canonical rule34.world/.xyz
+  extractor (format map, CDN flag logic, search/pagination API).
 
 ---
 
@@ -119,11 +130,32 @@ All third-party paywall/auth/trial machinery from the original generator
   (0/empty = Unlimited, max 99). Slider (0–10) + numeric input in the popup,
   live `N active • M queued`, auto-dispatch on slot free, re-pump on limit
   change, stale-job purge (3h), cancel handling.
+- **Persistent session queue (session 3)**: `downloadQueue` + `batchPending`
+  + `activeQueueJobs` mirrored to `chrome.storage.local`
+  (`r34.queueState.v1`) on every mutation (250ms debounce), flushed on
+  `onSuspend`, restored on SW startup (stale >3h dropped; numeric download
+  ids re-verified via `chrome.downloads.get`). 500-job cap. New messages:
+  `getQueueItems` (active/queued list for the popup) and `clearQueue`
+  (drops queued jobs + pending batch). Popup shows a live "Download queue"
+  list with per-item cancel + Clear.
 - **Batch backend** (`enqueueBatchDownloads`, `processBatchQueue`,
-  `sendBatchStatus`, `BATCH_MAX_URLS=300`) + `batchDownloadPosts` handler.
+  `sendBatchStatus`, `BATCH_MAX_URLS=300`, 5-wide parallel resolution) +
+  `batchDownloadPosts` handler. Dedupes against pending batch, queued jobs
+  AND active downloads (reports `skipped`); no per-item browser
+  notifications for batch-originated queue entries.
+- **rule34.world host probe + fallback retry (session 3)**: both file roots
+  (`rule34storage.b-cdn.net` CDN vs `rule34.world` origin) probed once per
+  session (HEAD → `GET Range` fallback, 10-min TTL); formats built on the
+  healthy root; `fallbackUrl` on the other healthy root. Interrupted
+  (non-user-cancelled) chrome downloads restart once on the fallback host.
+- **Re-resolve on dispatch failure (session 3)**: rule34 post jobs that fail
+  at dispatch re-resolve the post page/API once and retry with fresh
+  formats/signed links (signed-URL expiry safety).
 - **Per-card corner buttons + visible-batch toolbar + toasts** (`post-actions.js`),
   MutationObserver for infinite scroll / Angular re-renders, scroll-based count.
-- Extension-aware filenames (`.mp4` vs `.jpg`), download folder from config.
+  Toast distinguishes "already in queue" (skipped) from new enqueue.
+- Extension-aware filenames (`.mp4` vs `.jpg`), download folder from config;
+  `downloadVideo` applies resolver `apiTitle` when the caller had no title.
 - Rich generic media detection inherited from the generator (`site-adapter.js`):
   HLS/DASH, many third-party hosters (eporner, voe, streamtape, dood,
   nhplayer, xiaoshenke, byse/q8 proof-of-work, etc.) — mostly irrelevant to
@@ -162,34 +194,89 @@ the normal direct Chrome download path.
 - Re-validated: all JS passes `node --check` (bg as ESM), all JSON parses,
   forbidden-paywall grep is clean (see §8).
 
+### Bug C — rule34.world file CDN down → every world download 500s (session 3, PR #3)
+**Files:** `background-enhanced.js` (`resolveRule34WorldPost`, new
+`probeMediaUrl`/`getWorldHostStatus`, `retryInterruptedDownload`).
+Live check on 2026-08-30: `rule34storage.b-cdn.net` returns HTTP 500 for
+every sampled post (e.g. `/posts/1280/1280481/1280481.pic.jpg`,
+`/posts/3571/3571567/3571567.mov720.mp4`, `/posts/0/100/100.pic.jpg`) while
+`rule34.world` serves the same paths with 200. The post API's per-file flag
+(`files: { "10": [2], ... }`, flag[0] truthy = CDN) still points at the CDN,
+so the pre-fix resolver produced dead URLs for 100% of rule34.world posts.
+**Fix:** probe both roots once per session (10-min TTL, sampled on a real
+file) and build format URLs on the healthy root; attach `fallbackUrl` (other
+healthy root) per format; an interrupted, non-user-cancelled chrome download
+restarts once on that fallback. Also verified the rest of the world resolver
+against live API + the user's `gallery-dl` fork (`rule34xyz.py`): format map
+`100/101/102/10`, `{root}/posts/{id//1000}/{id}/{id}.{ext}`, artist tag
+`type===8`, video posts `type:1` + `duration`, no `filename` field on
+single-post responses.
+
+### Bug D — session queue lost on any service-worker restart (session 3, PR #3)
+**File:** `background-enhanced.js`. MV3 kills the SW after ~30s idle (and on
+reload/update/crash); `downloadQueue`/`batchPending`/`activeQueueJobs` were
+in-memory only, so a queued batch vanished. **Fix:** persist to
+`chrome.storage.local` (`r34.queueState.v1`) + restore on startup (see §4).
+
+### Bug E — batch spam + re-enqueue + serial resolution (session 3, PR #3)
+**Files:** `background-enhanced.js`, `post-actions.js`. (1) Each queued item
+fired a browser notification — a 300-post batch with limit 5 = 295
+notifications; batches are now quiet (page toasts remain). (2) Re-clicking
+"Download visible" re-enqueued posts already waiting/active; now deduped
+(`skipped` reported + toast). (3) Post resolution was strictly serial
+(300 posts ≈ minutes); now 5-wide. (4) Queued batch jobs kept stale signed
+rule34video links (fresh `rnd=` per page load); failed dispatch now
+re-resolves once. (5) `downloadVideo` dropped the resolver title when the
+caller had none → `video.mp4` filenames; now applied.
+
+### Also (session 3)
+- `TELEMETRY_LOG` pings now ack into the SW log (was a no-op).
+- Bumped `manifest.json` `4.1.1 → 4.2.0`.
+- Re-validated: all JS passes `node --check` (bg as ESM), all JSON parses,
+  forbidden-paywall grep clean (see §8), plus a 23-check Node harness
+  (mocked `chrome` + `fetch`) covering queue math, host selection
+  (healthy/degrading/dead CDN), fallback retry, persistence + restore,
+  dedupe, and stale purge — all green.
+
 ---
 
 ## 6. Known issues / things that still need attention
 
 Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 
-1. **MANUAL BROWSER TESTING IS THE #1 GAP.** Static analysis can't confirm
-   live behavior. Run the matrix in `WORKLIST.md` on both sites.
+1. **MANUAL BROWSER TESTING IS STILL THE #1 GAP.** Static analysis + mocked
+   Node harnesses can't confirm live behavior. Run the matrix in
+   `WORKLIST.md` on both sites (it grew: persistent-queue + fallback-retry
+   sections are new in session 3).
 2. **rule34.world listing-card selectors are inferred, not confirmed**
-   (`app-post-card` / `mat-card` / `[class*='post']`). Verify on a live
-   listing page and adjust `post-actions.js` `pinContainerFor` /
-   `processCards` if cards don't get buttons.
-3. **`popup.js` still sends `{ type: "TELEMETRY_LOG" }`** in `telemetry()`;
-   there is no background handler, so it's a harmless no-op. Optionally route
-   it to the existing `LOG_MIRROR` handler or drop it.
-4. **Broad host permissions** (`https://*/*`, `http://*/*`) remain from the
+   (`app-post-card` / `mat-card` / `[class*='post']`); the site is an Angular
+   shell with no SSR, so it can't be checked from static HTML. Verify on a
+   live listing page and adjust `post-actions.js` `pinContainerFor` /
+   `processCards` if cards don't get buttons. (The rule34video.com side WAS
+   verified live in session 3 — selectors are correct there.)
+3. **Broad host permissions** (`https://*/*`, `http://*/*`) remain from the
    generator. Narrow to rule34 + the BunnyCDN host once testing confirms no
    cross-origin media needs the wildcard.
-5. **Cosmetic namespace leftovers**: `SerpBackgroundBridge`, `SerpContentBridge`,
+4. **Cosmetic namespace leftovers**: `SerpBackgroundBridge`, `SerpContentBridge`,
    `SerpSiteAdapter`, `SerpUnifiedPopup` identifier names (generator branding).
    Not third-party integration; optional rename to `Rule34*`.
-6. Nice-to-haves: rule34video image posts; "already downloaded" dedupe via
-   `chrome.downloads` history; batch auto-paginate rule34.world (POST API with
-   `Skip`/`take`/`cursor`).
+5. **rule34.world CDN state is volatile** — as of 2026-08-30
+   `rule34storage.b-cdn.net` 500s on everything. The probe/fallback code
+   (PR #3) handles both directions automatically, but re-verify the probe
+   behavior if the CDN comes back (flag-preferred root should win again).
+6. **`chrome.action.onClicked` listener is dead code** (manifest sets a
+   default popup, so the event never fires). Harmless; optional removal.
+7. Nice-to-haves: rule34video image posts; "already downloaded" dedupe via
+   `chrome.downloads` history; batch auto-paginate rule34.world — session 3
+   pinned down the exact API from the gallery-dl fork: `POST
+   {root}/api/v2/post/search/root`, JSON
+   `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
+   OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
+   `/v2/post/search/playlist/{id}` for playlists.
 
-> Verified clean this session: `popup.html` does NOT reference the deleted
-> `auth-ui.js` / `trial-banner.js` (PR #1 removed those tags), and no file
-> references any deleted auth/trial file. The forbidden-paywall grep is empty.
+> Verified clean session 3: forbidden-paywall grep empty, all JS/JSON valid,
+> 23-check mocked harness green (see §8). `TELEMETRY_LOG` from the popup now
+> has a background handler (SW-log ack).
 
 ---
 
@@ -242,8 +329,17 @@ grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivated
   --include='*.js' --include='*.json' --include='*.html' --include='*.css' . \
   | grep -viE 'SerpBackground|SerpContent|SerpSite|SerpBridge|SerpUnifiedPopup'
 ```
-(NB: the last grep will still show the `popup.html` `<script src="auth-ui.js">`
-/ `trial-banner.js` tags until cleanup task #2 in §6 is done.)
+
+Session 3 additionally ran a **functional harness** (`/tmp/queue-test/harness.mjs`
+in that sandbox — scratch, not committed): it loads the real
+`background-enhanced.js` in Node with mocked `chrome.*` + `fetch` and asserts
+23 behaviors — concurrency/queue math, world host selection (both-healthy →
+flag-preferred CDN; CDN degrading → fallback retry exactly once; CDN fully
+dead → origin-only, no pointless retry), persistence to
+`chrome.storage.local`, restore after a simulated SW restart (chrome download
+re-verification, no burst dispatch, auto-dispatch on slot free), batch dedupe
+(0 accepted / 3 skipped), user-cancel never retried, and 5h-stale job purge.
+Recreate it after big queue changes; all checks were green at `4.2.0`.
 
 ---
 
@@ -265,7 +361,10 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
 
 - **Always** use a merge commit (`--merge`), per the user's preference.
 - Do not switch/push to other branches; the session is tied to its `arena/*` branch.
-- PR #2 (this session): popup fallback + image-routing fix + docs refresh.
+- PR #2 (session 2): popup fallback + image-routing fix + docs refresh.
+- PR #3 (session 3, this session): CDN-outage host probe + fallback retry,
+  persistent session queue + popup queue list, batch hardening, re-resolve
+  on dispatch failure, filename title fix, version `4.2.0`, docs refresh.
 
 ---
 
@@ -276,11 +375,40 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   **preview MP4s — never final downloads**.
 - Final links are signed `get_file/.../{1080p|720p|480p|360p}.mp4/...&download=true&download_filename=...`
   in the post HTML.
+- **Verified live (session 3, post 4573905):** download tab links exist for
+  all four qualities; the 360p file is `..._360.mp4` (**no `p` suffix** — the
+  resolver regex `_(\d{3,4})p?` handles it). `rnd=` in signed URLs is a
+  "now" timestamp → links are fresh per page load (expiry risk for long
+  queues; PR #3 re-resolves on dispatch failure).
+- Listing pages contain **only** `_preview.mp4` links (0 `download=true`) →
+  batch mode must resolve each post page individually (it does).
+- Card structure: `div.item.thumb[data-video-card-id]` → `a.th.js-open-popup`
+  → `div.img.wrap_image` (corner-button pinning target) → `img.thumb`.
 
 ### rule34.world
 - Angular SPA (`<app-root>`); data via API, not static HTML.
-- `GET https://rule34.world/api/v2/post/{id}` → JSON `{ files: {"100":..,"101":..,"102":..,"10":..}, tags:[...], duration, width, height, type, filename }`.
-- Artist tag = `tag.type === 8`.
-- File URL: `https://rule34storage.b-cdn.net/posts/{floor(id/1000)}/{id}/{id}.{mov.mp4|mov720.mp4|mov480.mp4|pic.jpg}`.
+- `GET https://rule34.world/api/v2/post/{id}` → JSON
+  `{ id, type, files: { "100"|"101"|"102"|"10": [flag] }, tags:[...], duration, width, height, created, ... }`.
+  **No `filename` field** on single-post responses (resolver falls back to
+  `post {id}`).
+- `type: 1` = video (has `duration` + `101`/`102` [and sometimes `100`]),
+  `type: 0` = image (`10` + derivatives `11/12/13/14/31/34`).
+- Artist tag = `tag.type === 8`. (Other ids seen: `112`, `113` — unmapped
+  derivatives; ignore, gallery-dl does the same.)
+- File URL: `{root}/posts/{floor(id/1000)}/{id}/{id}.{mov.mp4|mov720.mp4|mov480.mp4|pic.jpg}`,
+  where `root` = `rule34storage.b-cdn.net` (CDN) or `rule34.world` (origin)
+  per the file flag — **session 3: the CDN was 500ing on every post while
+  the origin served fine, so the extension probes both roots and builds URLs
+  on the healthy one** (10-min TTL + `fallbackUrl` retry).
 - Thumbnail: `{...}/{id}.pic256.jpg`.
-- Listing pagination = POST API with `Skip`/`take`/`cursor` (not yet used).
+- Listing/search pagination (not yet used, confirmed from gallery-dl
+  `rule34xyz.py`): `POST {root}/api/v2/post/search/root` with JSON
+  `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
+  OrderBy:0, cursor }` → `{ items, cursor }`, 60/page;
+  `/v2/post/search/playlist/{id}` for playlists; login =
+  `POST /api/v2/auth/signin` → `Bearer {jwt}`.
+- Sample posts for testing: video `/post/3571567` (720p+480p, no source),
+  images `/post/100`, `/post/1280481` (2026). Old ids (100–250000) are
+  mostly image-only.
+- The sister domain `rule34.xyz` uses the same API/CDN pattern
+  (`rule34xyz.b-cdn.net`); the extension currently targets rule34.world only.
