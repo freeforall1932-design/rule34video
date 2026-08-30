@@ -62,6 +62,15 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
       moved to `legacy/` (excluded from the extension package); its background
       fallback is inert; `host_permissions` narrowed to the two sites +
       `rule34storage.b-cdn.net` + `api.github.com` (wildcards dropped).
+- [x] **(Session 5) Privacy + CI + rule34video.com tag search:**
+      - `docs/privacy.md` (no telemetry; only the two sites + BunnyCDN + GitHub).
+      - `.github/workflows/ci.yml` runs `node --check` (classic + background ESM),
+        JSON parse, forbidden-paywall grep, and a committed `tests/smoke.mjs`
+        (mocked chrome + fetch exercising `getVideoFormats` + `bulkDownloadTag`).
+      - Wired rule34video.com tag search (`searchRule34VideoTag` scrapes
+        `rule34video.com/search/<tag>/` post links) into the bulk-by-tag popup
+        (active-tab site auto-detected).
+      - Bump version to `4.4.0`.
 - [x] **(Session 4) Smart Library:** configurable `{site}/{artist}/{title}`
       download-path template (popup UI + presets), stored in `downloadPathTemplate`;
       artist supplied by the rule34.world resolver.

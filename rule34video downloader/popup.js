@@ -980,10 +980,15 @@
         return;
       }
       elements.bulkBtn.disabled = true;
-      setStatus("Searching rule34.world and queuing posts...");
+      setStatus("Searching and queuing posts...");
+      let site = "";
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        site = (tab && tab.url) || "";
+      } catch {}
       try {
         const response = await runtimeMessage(
-          { action: "bulkDownloadTag", tags, playlistUrl },
+          { action: "bulkDownloadTag", tags, playlistUrl, site },
           { timeoutMs: 25000 },
         );
         if (!response || !response.success) {

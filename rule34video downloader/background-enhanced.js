@@ -644,6 +644,30 @@ async function resolveKnownPost(url) {
   return null;
 }
 
+// rule34video.com tag search (different site/API than rule34.world). The listing
+// search page is `https://rule34video.com/search/<query>/`; we scrape the post
+// card links (`/video/{id}/...`) from the returned HTML. Single page for now —
+// the batch engine caps at BATCH_MAX_URLS and resolves each post individually.
+async function searchRule34VideoTag({ tags, maxUrls = BATCH_MAX_URLS } = {}) {
+  const query = String(tags || "").trim();
+  if (!query) return [];
+  const url = `https://rule34video.com/search/${encodeURIComponent(query)}/`;
+  const response = await fetch(url, {
+    credentials: "include",
+    headers: { Accept: "text/html,application/xhtml+xml,*/*" },
+  });
+  if (!response.ok) throw new Error(`rule34video.com search failed (${response.status})`);
+  const html = await response.text();
+  const ids = new Set();
+  const pattern = /https?:\/\/(?:www\.)?rule34video\.com\/video\/(\d+)/gi;
+  let match;
+  while ((match = pattern.exec(html)) !== null) {
+    if (ids.size >= maxUrls) break;
+    ids.add(match[1]);
+  }
+  return Array.from(ids).map((id) => `https://rule34video.com/video/${id}`);
+}
+
 // rule34.world cursor-paginated search (confirmed from the gallery-dl
 // rule34xyz extractor). Used by the "bulk download by tag / playlist" feature.
 async function searchRule34WorldPosts({ tags, playlistId, maxUrls = BATCH_MAX_URLS } = {}) {
@@ -2467,6 +2491,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     case "bulkDownloadTag": {
       const tabId = sender?.tab?.id || request?.tabId || currentDownloadTabId || null;
+      const isVideo = /rule34video\.com/i.test(request?.site || (sender?.tab?.url) || "");
       (async () => {
         try {
           let urls = [];
@@ -2476,7 +2501,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             if (!pid) throw new Error("Could not parse a playlist id from that URL.");
             urls = await searchRule34WorldPosts({ playlistId: pid, maxUrls: BATCH_MAX_URLS });
           } else if (request?.tags) {
-            urls = await searchRule34WorldPosts({ tags: request.tags, maxUrls: BATCH_MAX_URLS });
+            urls = isVideo
+              ? await searchRule34VideoTag({ tags: request.tags, maxUrls: BATCH_MAX_URLS })
+              : await searchRule34WorldPosts({ tags: request.tags, maxUrls: BATCH_MAX_URLS });
           } else {
             throw new Error("Enter a tag/artist or a playlist URL.");
           }

@@ -138,8 +138,11 @@ shaky networks** (already partly done via fallback retry). Applying that to
 - Subtitle/metadata embedding for saved files.
 - Local offline gallery/view (bigger — a built-in media library UI).
 
-**Recommendation:** ship **D1 (Smart Library)** next — highest QoL per unit of
-risk, and it reuses data we already have. D2 right after.
+**Status:** implemented in session 4 — **D1 (Smart Library)** and **D2 (tag/playlist
+bulk)** are both done. D2 covers **rule34.world** (cursor-paginated search API) and,
+as of session 5, **rule34video.com** (`searchRule34VideoTag` scrapes
+`rule34video.com/search/<tag>/` post links). Both route through the existing batch
+engine.
 
 ---
 
@@ -152,10 +155,13 @@ risk, and it reuses data we already have. D2 right after.
    (`app.config.json`, `unified-app.config.json`, `factory-candidate.config.json`)
    + `manifest.json` can drift. Generate `manifest.json` from one config, or
    delete the unused two.
-4. **Commit the test harness.** The 23-check Node harness from PR #3 lives in
-   `/tmp` (scratch). Move it to `tests/` so it survives and is run in CI.
-5. **CI on GitHub Actions:** on every PR run `node --check` (bg as ESM) + JSON
-   parse + the forbidden-paywall/stale grep + the harness. Catches regressions
+4. **Commit the test harness — DONE (session 5):** `tests/smoke.mjs` loads the
+   real `background-enhanced.js` under mocked `chrome`/`fetch` and asserts
+   `getVideoFormats` + `bulkDownloadTag` behavior (the PR #3 `/tmp` harness concept,
+   committed so it survives).
+5. **CI on GitHub Actions — DONE (session 5):** `.github/workflows/ci.yml` runs
+   `node --check` (bg as ESM) + JSON parse + the forbidden-paywall/stale grep +
+   `tests/smoke.mjs` on every push/PR. Catches regressions
    before merge (the docs stress manual testing is the #1 gap; CI narrows it).
 6. **Lint/format baseline:** ESLint + Prettier with an `npm` wrapper, so the
    `Serp*`→`Rule34*` rename and future edits stay consistent.
@@ -201,3 +207,7 @@ See `docs/SESSION_HANDOFF.md §8` for the full command set.
 - **Licensing**: top-level `LICENSE` (MIT) + `docs/THIRD_PARTY_LICENSES.md`.
 - Version **4.2.0 → 4.3.0**. Validation: all `node --check` (classic + BG as ESM),
   JSON parse, forbidden-paywall grep, and `Serp`/`SERP` grep pass.
+- **(Session 5) privacy.md + CI + rule34video.com tag search added.** `docs/privacy.md`;
+  `.github/workflows/ci.yml` + `tests/smoke.mjs` (real background module under mocks);
+  `searchRule34VideoTag` scrapes `rule34video.com/search/<tag>/`. Version **4.3.0 → 4.4.0**;
+  `node tests/smoke.mjs` passes.

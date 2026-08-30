@@ -214,6 +214,37 @@ third-party involvement.
   code (only `rule34` remains); the `RULE34_GENERATED_PAGE_DATA` message contract
   is preserved on both sides. Version bumped **4.2.0 → 4.3.0**.
 
+## Session 5 — privacy.md + CI + rule34video.com tag search (2026-08-30)
+
+Context: user approved (b) add `privacy.md` + GitHub Actions CI + wire rule34video.com
+tag search, then update the three docs and (a) open the merge-commit PR.
+
+### privacy.md
+- `docs/privacy.md`: no telemetry/analytics; exact network destinations
+  (rule34.world, rule34video.com, BunnyCDN host, api.github.com for update checks);
+  local-only storage. Supports the Web Store listing.
+
+### GitHub Actions CI
+- `.github/workflows/ci.yml`: on push/PR runs syntax checks (all classic scripts +
+  background as ESM), JSON validation, a forbidden-paywall grep, and a committed
+  `tests/smoke.mjs`.
+- `tests/smoke.mjs`: loads the REAL `background-enhanced.js` in Node with mocked
+  `chrome.*` + `fetch`, then exercises `getVideoFormats` (rule34.world resolver →
+  artist + formats) and `bulkDownloadTag` (search → batch enqueue) end-to-end.
+  Commits the PR #3 harness concept into the repo so it survives and runs in CI
+  (the original was scratch in /tmp).
+
+### rule34video.com tag search
+- `searchRule34VideoTag({ tags })` fetches `https://rule34video.com/search/<tag>/`
+  (confirmed from the saved listing HTML: `action="https://rule34video.com/search/"`)
+  and scrapes `/video/{id}/` card links. Wired into `bulkDownloadTag` via active-tab
+  site detection; the popup passes `site` from `chrome.tabs.query`.
+- rule34.world tag/playlist search was implemented in session 4.
+
+### Validation
+- `node tests/smoke.mjs` → ALL SMOKE TESTS PASSED; background ESM + all classic
+  scripts `node --check`; all JSON parses. Version bumped **4.3.0 → 4.4.0**.
+
 ## Known issues / notes
 
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not

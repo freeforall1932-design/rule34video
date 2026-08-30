@@ -41,6 +41,13 @@ and fixed the biggest real-world bug found so far:
    (configurable `{site}/{artist}/{title}` download-path template) and **bulk
    "download by tag / playlist"** for rule34.world (cursor-paginated search API).
    Version bumped **4.2.0 → 4.3.0**. Full write-up: `docs/RETROFIT_AUDIT.md`.
+5. **Session 5 — privacy, CI, full tag search:** added `docs/privacy.md`
+   (no telemetry; only the two sites + BunnyCDN + GitHub), a GitHub Actions
+   workflow (`.github/workflows/ci.yml`) that runs syntax/JSON/branding checks plus
+   a committed `tests/smoke.mjs` integration test (mocked chrome + fetch exercising
+   the real `background-enhanced.js`), and wired **rule34video.com tag search**
+   (`searchRule34VideoTag` scrapes `rule34video.com/search/<tag>/`) into the bulk-by-tag
+   popup. Version bumped **4.3.0 → 4.4.0**.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -193,6 +200,13 @@ All third-party paywall/auth/trial machinery from the original generator
   BunnyCDN + api.github.com.
 - **Licensing clarity (session 4):** top-level `LICENSE` (MIT) +
   `docs/THIRD_PARTY_LICENSES.md`.
+- **Privacy doc + CI (session 5):** `docs/privacy.md`; `.github/workflows/ci.yml`
+  + `tests/smoke.mjs` (loads the real background module under mocks; asserts
+  `getVideoFormats` + `bulkDownloadTag` behaviors end-to-end).
+- **rule34video.com bulk by tag (session 5):** `searchRule34VideoTag` scrapes
+  `rule34video.com/search/<tag>/` post links; the popup detects the active-tab site
+  and routes the tag/playlist control to the right backend. (Single-page scrape;
+  the search URL/pagination still needs a live check — see §6.)
 
 ---
 
@@ -306,8 +320,15 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
    OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
    `/v2/post/search/playlist/{id}` for playlists.
    **Session 4 implemented** the rule34.world bulk-by-tag/playlist flow on top of
-   this exact API (`searchRule34WorldPosts` + `bulkDownloadTag`); rule34video.com
-   tag search is still a future nice-to-have.
+   this exact API (`searchRule34WorldPosts` + `bulkDownloadTag`); **session 5 wired
+   rule34video.com tag search** (`searchRule34VideoTag`, single-page scrape of
+   `rule34video.com/search/<tag>/`) — still needs a live check of the search URL
+   and pagination.
+8. **(Session 5) Automated checks added:** `.github/workflows/ci.yml` +
+   `tests/smoke.mjs` load the real `background-enhanced.js` under mocked
+   `chrome`/`fetch` and assert `getVideoFormats` + `bulkDownloadTag` behavior. They
+   catch syntax/JSON/branding regressions but do **not** replace live browser
+   testing (item 1).
 
 > Verified clean session 3: forbidden-paywall grep empty, all JS/JSON valid,
 > 23-check mocked harness green (see §8). `TELEMETRY_LOG` from the popup now
