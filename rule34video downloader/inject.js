@@ -23,8 +23,8 @@
 
   try {
     const nativeFetch = window.fetch;
-    if (typeof nativeFetch === "function" && !window.__serpGeneratedFetchRelayInstalled) {
-      window.__serpGeneratedFetchRelayInstalled = true;
+    if (typeof nativeFetch === "function" && !window.__rule34GeneratedFetchRelayInstalled) {
+      window.__rule34GeneratedFetchRelayInstalled = true;
       window.fetch = function (...args) {
         try {
           const input = args[0];
@@ -41,12 +41,12 @@
 
   try {
     const NativeXHR = window.XMLHttpRequest;
-    if (typeof NativeXHR === "function" && !window.__serpGeneratedXhrRelayInstalled) {
-      window.__serpGeneratedXhrRelayInstalled = true;
+    if (typeof NativeXHR === "function" && !window.__rule34GeneratedXhrRelayInstalled) {
+      window.__rule34GeneratedXhrRelayInstalled = true;
       const nativeOpen = NativeXHR.prototype.open;
       NativeXHR.prototype.open = function (method, url, ...rest) {
         try {
-          this.__serpGeneratedUrl = url;
+          this.__rule34GeneratedUrl = url;
           rememberMediaUrl(url);
         } catch {}
         return nativeOpen.call(this, method, url, ...rest);
@@ -56,7 +56,7 @@
         try {
           this.addEventListener("loadend", () => {
             try {
-              rememberMediaUrl(this.responseURL || this.__serpGeneratedUrl);
+              rememberMediaUrl(this.responseURL || this.__rule34GeneratedUrl);
               postPageData();
             } catch {}
           });
@@ -84,7 +84,7 @@
     try {
       if (window.flashvars && typeof window.flashvars === "object") {
         flashvars = {};
-        ["video_id", "video_title", "license_code", "rnd", "video_url", "video_url_text", "video_alt_url", "video_alt_url_text", "video_alt_url2", "video_alt_url2_text", "video_alt_url3", "video_alt_url3_text", "preview_url"].forEach((key) => {
+        ["video_id", "video_title", "rnd", "video_url", "video_url_text", "video_alt_url", "video_alt_url_text", "video_alt_url2", "video_alt_url2_text", "video_alt_url3", "video_alt_url3_text", "preview_url"].forEach((key) => {
           const value = window.flashvars[key];
           if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") flashvars[key] = String(value);
         });

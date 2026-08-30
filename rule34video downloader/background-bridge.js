@@ -1,5 +1,5 @@
-(function initSerpBackgroundBridge(root) {
-  if (root.SerpBackgroundBridge?.version) return;
+(function initRule34BackgroundBridge(root) {
+  if (root.Rule34BackgroundBridge?.version) return;
 
   const fallbackLogger = {
     log() {},
@@ -1016,7 +1016,7 @@
     }, logger);
   }
 
-  root.SerpBackgroundBridge = Object.freeze({
+  root.Rule34BackgroundBridge = Object.freeze({
     version: "1.0.0",
     isNoReceiverError,
     fireAndForget,

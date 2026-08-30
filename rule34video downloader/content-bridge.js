@@ -1,7 +1,7 @@
 // Unified content-script bridge shared core.
-// Defines common helpers only; site adapters opt in by calling SerpContentBridge.
+// Defines common helpers only; site adapters opt in by calling Rule34ContentBridge.
 (function () {
-  if (globalThis.SerpContentBridge) return;
+  if (globalThis.Rule34ContentBridge) return;
 
   const noopLogger = {
     log: function () {},
@@ -970,9 +970,9 @@
   };
 
   try {
-    globalThis.SerpContentBridge = bridge;
+    globalThis.Rule34ContentBridge = bridge;
   } catch {}
   try {
-    window.SerpContentBridge = bridge;
+    window.Rule34ContentBridge = bridge;
   } catch {}
 })();

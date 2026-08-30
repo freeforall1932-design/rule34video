@@ -1004,7 +1004,7 @@
     }
   }
 
-  globalThis.SerpUnifiedPopup = {
+  globalThis.Rule34UnifiedPopup = {
     initializePopup,
     normalizeFormats,
     formatDuration,

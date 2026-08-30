@@ -2,8 +2,8 @@
 // Generated generic direct-video content adapter stub.
 (function () {
   const SiteConfig = globalThis.SiteConfig || {};
-  const Bridge = globalThis.SerpContentBridge || {};
-  const Adapter = globalThis.SerpSiteAdapter || {};
+  const Bridge = globalThis.Rule34ContentBridge || {};
+  const Adapter = globalThis.Rule34SiteAdapter || {};
   const logger = (globalThis.Logger && globalThis.Logger.createLogger("[Rule 34 Content]")) || { log() {}, warn() {}, error() {} };
   const selectors = Object.assign({
     "title": [
@@ -283,6 +283,6 @@
       }, videoInfoPollMs);
     }
   } else {
-    logger.warn("SerpContentBridge unavailable; generated content adapter stub was not registered.");
+    logger.warn("Rule34ContentBridge unavailable; generated content adapter stub was not registered.");
   }
 })();

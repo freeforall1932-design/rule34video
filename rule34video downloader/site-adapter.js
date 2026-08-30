@@ -3612,6 +3612,6 @@
   };
 
   try {
-    globalThis.SerpSiteAdapter = SiteAdapter;
+    globalThis.Rule34SiteAdapter = SiteAdapter;
   } catch {}
 })();

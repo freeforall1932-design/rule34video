@@ -6,8 +6,8 @@ import './background-bridge.js';
 import './site-adapter.js';
 
 const SiteConfig = globalThis.SiteConfig || {};
-const Bridge = globalThis.SerpBackgroundBridge || {};
-const Adapter = globalThis.SerpSiteAdapter || {};
+const Bridge = globalThis.Rule34BackgroundBridge || {};
+const Adapter = globalThis.Rule34SiteAdapter || {};
 const logger = (globalThis.Logger && globalThis.Logger.createLogger("[Rule 34 BG]")) || { log() {}, warn() {}, error() {} };
 const downloadProgress = new Map();
 const observedMediaByTab = new Map();
@@ -1122,8 +1122,8 @@ function isSourcePageFormat(format, videoInfo = {}) {
 }
 
 try {
-  if (chrome.webRequest && !globalThis.__serpObservedMediaListenerInstalled) {
-    globalThis.__serpObservedMediaListenerInstalled = true;
+  if (chrome.webRequest && !globalThis.__rule34ObservedMediaListenerInstalled) {
+    globalThis.__rule34ObservedMediaListenerInstalled = true;
     chrome.webRequest.onBeforeRequest.addListener(
       rememberObservedRequest,
       { urls: ["<all_urls>"] },
@@ -1533,7 +1533,7 @@ function startPlayerTabDownload(selectedFormat, filename, videoInfo = {}) {
 }
 
 async function forwardHLSProgress(message) {
-  return globalThis.SerpBackgroundBridge.forwardHLSProgress({
+  return globalThis.Rule34BackgroundBridge.forwardHLSProgress({
     tabId: currentDownloadTabId,
     message,
     downloadProgress,
@@ -1542,7 +1542,7 @@ async function forwardHLSProgress(message) {
 }
 
 async function forwardHLSComplete(message) {
-  return globalThis.SerpBackgroundBridge.forwardHLSComplete({
+  return globalThis.Rule34BackgroundBridge.forwardHLSComplete({
     tabId: currentDownloadTabId,
     message,
     downloadProgress,
@@ -1551,7 +1551,7 @@ async function forwardHLSComplete(message) {
 }
 
 async function forwardHLSError(message) {
-  return globalThis.SerpBackgroundBridge.forwardHLSError({
+  return globalThis.Rule34BackgroundBridge.forwardHLSError({
     tabId: currentDownloadTabId,
     message,
     downloadProgress,
@@ -1560,13 +1560,13 @@ async function forwardHLSError(message) {
 }
 
 async function ensureOffscreenDocument() {
-  return globalThis.SerpBackgroundBridge.ensureOffscreenDocument({
+  return globalThis.Rule34BackgroundBridge.ensureOffscreenDocument({
     logger,
   });
 }
 
 function parseM3U8Attributes(attrString) {
-  return globalThis.SerpBackgroundBridge.parseM3U8Attributes(attrString);
+  return globalThis.Rule34BackgroundBridge.parseM3U8Attributes(attrString);
 }
 
 function extractM3U8Formats(m3u8Content, baseUrl, videoId, ext = "mp4") {
@@ -2461,18 +2461,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     default:
       return false;
   }
-});
-
-chrome.action.onClicked.addListener((tab) => {
-  const patterns = SiteConfig.BACKGROUND?.contextMenu?.documentUrlPatterns || [];
-  Bridge.handleActionClick?.({
-    tab,
-    isAllowedTab: () => patterns.some((pattern) => {
-      const host = String(pattern || "").match(/^https?:\/\/(?:\*\.)?([^/*]+)/i)?.[1];
-      return !host || String(tab.url || "").includes(host);
-    }),
-    setCurrentDownloadTabId(tabId) { currentDownloadTabId = tabId; },
-    notify,
-    logger,
-  });
 });
