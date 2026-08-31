@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Downloader for Rule 34",
   "description": "Fast, private, one-click video downloads from Rule 34.",
-  "version": "4.4.0",
+  "version": "4.4.1",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -81,24 +81,16 @@
         "styles/player-button.css"
       ],
       "matches": [
-        "<all_urls>"
-      ]
-    },
-    {
-      "resources": [
-        "offscreen.html",
-        "offscreen.js"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    },
-    {
-      "resources": [
-        "modules/**/*"
-      ],
-      "matches": [
-        "<all_urls>"
+        "https://rule34.world/*",
+        "https://*.rule34.world/*",
+        "http://rule34.world/*",
+        "http://*.rule34.world/*",
+        "https://www.rule34.world/*",
+        "http://www.rule34.world/*",
+        "https://rule34video.com/*",
+        "https://*.rule34video.com/*",
+        "http://rule34video.com/*",
+        "http://*.rule34video.com/*"
       ]
     }
   ],

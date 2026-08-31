@@ -810,10 +810,6 @@ function sanitizeFilename(value) {
   return Bridge.sanitizeFilename ? Bridge.sanitizeFilename(value || "video") : String(value || "video").replace(/[<>:"/\\|?*\x00-\x1f]/g, "").trim().slice(0, 200);
 }
 
-function folderName() {
-  return sanitizeFilename(SiteConfig.OFFSCREEN?.downloadFolder || SiteConfig.SITE_NAME || "Videos") || "Videos";
-}
-
 // --- Smart Library: configurable download-path template -------------------
 // The user picks where files land via a {token}-based template stored in
 // chrome.storage.local ("downloadPathTemplate"). Tokens: {site} {artist}

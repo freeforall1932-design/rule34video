@@ -2,9 +2,10 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-08-30 (session 3). PR #1 merged (rebrand + queue + batch).
+Last updated: 2026-08-31 (session 6). PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
+Session 6 = dead-code purge + footprint reduction (extension 2.2 MB → 0.85 MB).
 
 ## Done
 
@@ -78,6 +79,35 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
       search (`/api/v2/post/search/root`, `/v2/post/search/playlist/{id}`) wired
       to the batch engine via a new `bulkDownloadTag` popup control.
 - [x] **(Session 4)** Bump version to `4.3.0`; `docs/RETROFIT_AUDIT.md` written.
+- [x] **(Session 6) Orphaned vendored modules deleted** (verified unreachable by
+      entry-point reachability trace — the only path into `modules/` is
+      `offscreen.js → hls2mp4/simple-converter.mjs`):
+      `modules/mediabunny/` (61 files, 798 KB), `modules/mp4box.mjs` (311 KB),
+      `modules/reencoder/` (207 KB), `modules/dash2mp4/` (15 KB),
+      `modules/utils/*` except `EnvUtils.mjs` (54 KB; several imported
+      `../enums/`/`../ui/` paths that don't exist in this repo),
+      duplicate `modules/eventemitter/` dir, `modules/Localize.mjs`,
+      `modules/hls/Mp4Sample.mjs`.
+- [x] **(Session 6) Repo-level dead files deleted:** both `page source*` HTML
+      dumps (243 KB), `legacy/site-adapter.js` (156 KB; `legacy/` dir removed),
+      `unified-app.config.json` (byte-identical to `app.config.json`),
+      `factory-candidate.config.json` (provenance pointing at paths not in this
+      repo). `ci.yml` JSON loop updated to `manifest.json app.config.json`.
+- [x] **(Session 6) Dead code removed:** `folderName()` in
+      `background-enhanced.js`, `anchorForCard()` in `post-actions.js`, and in
+      `background-bridge.js` the unreachable handlers `handleActionClick`,
+      `handleParseM3U8Message`, `handleFetchM3U8PlaylistMessage`,
+      `handleDownloadBlobMessage` (+ helpers `getDownloadFolder`,
+      `resolveSenderOrActiveTabId`, `getActiveTabId` whose only callers were
+      the removed code). Freeze-block public API trimmed 36 → 24 members
+      (everything exported is now actually called by a consumer).
+- [x] **(Session 6) `web_accessible_resources` narrowed:** offscreen + `modules/**`
+      blocks removed (extension-context loads never needed WAR) and the
+      remaining `inject.js` + 2 CSS block is restricted to the two supported
+      sites instead of `<all_urls>`. Version bumped **4.4.0 → 4.4.1**.
+- [x] **(Session 6) `docs/THIRD_PARTY_LICENSES.md` rewritten** for the surviving
+      vendored set (hls.js Apache-2.0 note added — it was previously missing);
+      mediabunny/mp4box notes dropped with their files.
 
 ## Manual browser test matrix (MOST IMPORTANT remaining work)
 
@@ -145,9 +175,35 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 - [ ] **Verify rule34.world listing-card selectors on a live page**; adjust
       `post-actions.js` `pinContainerFor()` / `processCards()` if needed.
       (rule34video.com selectors were verified against live HTML in session 3.)
-- [ ] Narrow broad host permissions (`https://*/*`) to rule34 sites +
-      `https://rule34storage.b-cdn.net/*` once cross-origin needs are confirmed.
-- [ ] Optional: rename `Serp*` namespace identifiers to `Rule34*` (cosmetic).
+- [ ] **(Session 6) Remux-only hls.js build** — `modules/hls/hls.mjs` is a ~400 KB
+      full-player hls.js bundle, but `transmuxer.mjs` only imports 6 symbols
+      (`TSDemuxer, MP4Remuxer, MP4Demuxer, AACDemuxer, MP3Demuxer,
+      PassThroughRemuxer`). A tree-shaken remux-only build is ~80–120 KB
+      (another ~300 KB off the package). Needs a minimal build step (repo has
+      no `package.json` today) + a real-browser HLS download regression test
+      before swapping the bundle.
+- [ ] **(Session 6) Consolidate dual-payload progress forwarding** —
+      `background-bridge.js` `forwardProgressMessages` sends a canonical AND a
+      legacy message per progress tick; `content-bridge.js` still listens to
+      both (`hlsProgress`/`mp4Progress`/…). Drop the legacy shape on both sides
+      (coordinated change; needs browser test of progress toasts).
+- [ ] **(Session 6) Queue-restore hardening** — `restoreQueueState()` restores
+      non-numeric `activeQueueJobs` keys (`queue-job-N`, persisted before the
+      chrome download id exists) without a liveness check (numeric keys DO get
+      `chrome.downloads.get` verification). A SW death mid-job can zombie a
+      concurrency slot for up to 3h. Drop temp keys on restore, or re-attempt
+      the job.
+- [ ] **(Session 6) Host-probe both-fail state** — when both rule34.world roots
+      fail a probe, `getWorldHostStatus()` caches `{cdnOk:false,originOk:false}`
+      for the full 10-min TTL with no log line. Log a warning; optionally use a
+      shorter TTL (e.g. 60 s) for the double-failure state so transient
+      outages self-heal faster.
+- [ ] **(Session 6) Minor nits:** offscreen.js message handlers `return true`
+      after already responding synchronously (harmless; `false` would be
+      cleaner); optionally hoist the `const batchPending = []` declaration in
+      `background-enhanced.js` above the queue helpers (verified NOT a bug —
+      nothing calls those helpers before evaluation reaches line ~715, but the
+      ordering is fragile).
 - [ ] Optional: batch pagination / auto-scroll for rule34.world. Session 3
       confirmed the exact API from gallery-dl's extractor: `POST
       {root}/api/v2/post/search/root` with JSON
@@ -157,7 +213,6 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 - [ ] Optional: image posts on rule34video.com (currently video-focused).
 - [ ] Optional: "already downloaded" dedupe via `chrome.downloads` history
       (match by filename; note signed rule34video URLs differ per resolve).
-- [ ] Optional: remove dead `chrome.action.onClicked` listener (popup set).
 
 ## Git notes
 
