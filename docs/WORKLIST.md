@@ -187,10 +187,18 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
 - [ ] **(Session 6) Remux-only hls.js build** — `modules/hls/hls.mjs` is a ~400 KB
       full-player hls.js bundle, but `transmuxer.mjs` only imports 6 symbols
       (`TSDemuxer, MP4Remuxer, MP4Demuxer, AACDemuxer, MP3Demuxer,
-      PassThroughRemuxer`). A tree-shaken remux-only build is ~80–120 KB
-      (another ~300 KB off the package). Needs a minimal build step (repo has
-      no `package.json` today) + a real-browser HLS download regression test
-      before swapping the bundle.
+      PassThroughRemuxer`).
+      **Measured in the session-6 sandbox (esbuild, hls.js@1.5.20):**
+      - Re-bundling the *vendored* minified file: **393 KB — no win** (the
+        single-file bundle defeats tree-shaking).
+      - Bundling the 6 classes from upstream `hls.js/src` TypeScript:
+        **67.0 KB, all 6 symbols exported** → ~340 KB off the package.
+      The win requires a build step (`esbuild` + pinned `hls.js` + `url-toolkit`)
+      and deep imports into non-public upstream paths (version-pinned; class
+      constructor/error-detail APIs must be re-verified against what
+      `hls2mp4/transmuxer.mjs` uses), plus a real-browser HLS download
+      regression test before swapping the bundle. Adoption recipe lives in
+      IMPROVEMENT_LOG session 6 close-out.
 - [ ] **(Session 6) Consolidate dual-payload progress forwarding** —
       `background-bridge.js` `forwardProgressMessages` sends a canonical AND a
       legacy message per progress tick; `content-bridge.js` still listens to

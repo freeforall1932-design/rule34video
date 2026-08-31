@@ -64,8 +64,9 @@ and fixed the biggest real-world bug found so far:
    site-matched `inject.js`+CSS only. Version bumped **4.4.0 → 4.4.1**.
    Extension folder 2.2 MB → **0.85 MB**; whole repo 2.6 MB → **0.93 MB**.
    `tests/smoke.mjs` + full `node --check` + reachability re-run all green.
-   Remaining optimization backlog lives in `WORKLIST.md` (hls.js remux-only
-   build ~300 KB, dual-payload progress consolidation, queue-restore
+   Remaining optimization backlog lives in `WORKLIST.md` (remux-only
+   hls.js build — measured 67 KB achievable from upstream src vs the 407 KB
+   bundle, dual-payload progress consolidation, queue-restore
    temp-key hardening, host-probe both-fail logging).
 7. **Session 6 amendment — scrapyard retention.** After a review pass, the
    owner asked that retired-but-potentially-useful material be kept rather
@@ -89,9 +90,11 @@ and fixed the biggest real-world bug found so far:
    roots fail, and the three offscreen sync-ack branches close the message
    channel (`return false`); `batchPending` hoisted above the queue helpers
    (fragility removal, was not a live bug). Still open in `WORKLIST.md`:
-   remux-only hls.js build (~300 KB) and dual-payload progress consolidation —
-   both need a build step / browser testing, so they were deliberately NOT
-   done blind.
+   remux-only hls.js build and dual-payload progress consolidation — both
+   need a build step / browser testing, so they were deliberately NOT done
+   blind. (Session 6 also *measured* the hls.js item: 67.0 KB from upstream
+   `hls.js/src` with all 6 needed symbols vs 407 KB shipped — but re-bundling
+   the vendored minified file yields no win at 393 KB; details in WORKLIST.)
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.

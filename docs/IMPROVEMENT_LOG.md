@@ -315,7 +315,10 @@ only, all verified behavior-neutral.
   (byte-identical to the kept `modules/eventemitter.mjs`).
 
 ### Optimization backlog added to WORKLIST.md
-- Remux-only hls.js build (~300 KB more off; needs a minimal build step).
+- Remux-only hls.js build (measured: **67 KB** achievable from upstream
+  `hls.js/src` vs the shipped 407 KB bundle — but a re-bundle of the vendored
+  file gives no win at 393 KB; needs a build step + browser regression test;
+  see WORKLIST for the measured details).
 - Dual-payload progress consolidation (canonical + legacy messages per tick).
 - Queue-restore temp-key hardening (non-numeric `activeQueueJobs` keys restore
   without a liveness check).
