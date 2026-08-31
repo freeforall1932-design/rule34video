@@ -227,8 +227,8 @@ tag search, then update the three docs and (a) open the merge-commit PR.
 ### GitHub Actions CI
 - `.github/workflows/ci.yml`: on push/PR runs syntax checks (all classic scripts +
   background as ESM), JSON validation, a forbidden-paywall grep, and a committed
-  `tests/smoke.mjs`.
-- `tests/smoke.mjs`: loads the REAL `background-enhanced.js` in Node with mocked
+  `source/tests/smoke.mjs`.
+- `source/tests/smoke.mjs`: loads the REAL `background-enhanced.js` in Node with mocked
   `chrome.*` + `fetch`, then exercises `getVideoFormats` (rule34.world resolver →
   artist + formats) and `bulkDownloadTag` (search → batch enqueue) end-to-end.
   Commits the PR #3 harness concept into the repo so it survives and runs in CI
@@ -242,7 +242,7 @@ tag search, then update the three docs and (a) open the merge-commit PR.
 - rule34.world tag/playlist search was implemented in session 4.
 
 ### Validation
-- `node tests/smoke.mjs` → ALL SMOKE TESTS PASSED; background ESM + all classic
+- `node source/tests/smoke.mjs` → ALL SMOKE TESTS PASSED; background ESM + all classic
   scripts `node --check`; all JSON parses. Version bumped **4.3.0 → 4.4.0**.
 
 ## Session 6 — dead-code purge + footprint reduction (2026-08-31)
@@ -270,7 +270,7 @@ only, all verified behavior-neutral.
 - Byte-identical duplicate `modules/eventemitter/eventemitter.mjs`,
   `modules/Localize.mjs`, `modules/hls/Mp4Sample.mjs`.
 
-### Removed — repo-level dead files (≈407 KB; page dumps + `legacy/` later retained in `scrapyard/`, see below)
+### Removed — repo-level dead files (≈407 KB; page dumps + `legacy/` later retained in `source/`, see below)
 - Root `page source.txt` + `page source for rule34 world` (saved HTML dumps).
 - `legacy/site-adapter.js` (pre-rewrite multi-hoster adapter; `legacy/` removed).
 - `unified-app.config.json` (byte-identical dupe of `app.config.json`) and
@@ -301,15 +301,15 @@ only, all verified behavior-neutral.
 - Owner review asked for retired-but-potentially-useful material to be kept
   (future sites / formats may need it) instead of deleted. All purged files
   except byte-identical duplicates were restored from `f1c5dcc` into
-  **`scrapyard/`** (repo root; 74 files, ~2.0 MB; outside the extension
+  **`source/`** (repo root; 74 files, ~2.0 MB; outside the extension
   folder, so the shipped package stays 0.85 MB and CI's branding grep never
   scans it).
-- Contents + per-file rationale + restore paths: `scrapyard/README.md`.
+- Contents + per-file rationale + restore paths: `source/README.md`.
   Highlights: `site-adapter.js` (multi-hoster detector; adapter hook points
   at `background-enhanced.js:9,1296,2229` remain live), the DASH/WebM→MP4
   pipeline (`mp4box.mjs` + `dash2mp4/` + `reencoder/` + `Mp4Sample.mjs`),
   `mediabunny/` (MPL-2.0 TS mux/demux lib), orphaned `utils/`, and the two
-  page-source HTML dumps (renamed `scrapyard/page-source/*`).
+  page-source HTML dumps (renamed `source/page-source/*`).
 - Not restored (zero unique content): `unified-app.config.json` (byte-identical
   to `app.config.json`, verified with `cmp`) and `modules/eventemitter/`
   (byte-identical to the kept `modules/eventemitter.mjs`).
@@ -326,7 +326,7 @@ only, all verified behavior-neutral.
 
 ### Validation
 - All `.js`/`.mjs` `node --check` OK; JSON parses; forbidden-paywall grep clean;
-  `node tests/smoke.mjs` → **ALL SMOKE TESTS PASSED** (getVideoFormats + bulk
+  `node source/tests/smoke.mjs` → **ALL SMOKE TESTS PASSED** (getVideoFormats + bulk
   enqueue against the real background module); post-edit reachability re-run →
   0 broken imports; extension dir **2.2 MB → 0.85 MB**, repo **2.6 MB → 0.93 MB**
   (124 → 44 files). After the scrapyard amendment: extension folder diff vs
@@ -373,7 +373,7 @@ browser testing):
 - Version bumped **4.4.1 → 4.4.2**.
 
 Validation: `node --check` all extension JS/MJS; JSON parse; branding grep
-clean; `tests/smoke.mjs` ALL PASSED; reachability 0 broken imports; plus a
+clean; `source/tests/smoke.mjs` ALL PASSED; reachability 0 broken imports; plus a
 functional mocked-chrome restore test asserting: temp key dropped, live
 numeric key re-tracked (`getQueueStatus` → `active === 1`), dead numeric key
 dropped, module evaluates clean after the hoist.
@@ -385,35 +385,35 @@ genuinely **were used as extension files** (retired from the shipped
 extension) and files that **never were** (source-project code + saved
 reference dumps). Per owner request they are now split into two subfolders:
 
-- **`scrapyard/extension/`** (13 files, ~708 KB) — retired extension code:
+- **`source/retired/`** (13 files, ~708 KB) — retired extension code:
   `site-adapter.js` (multi-hoster detector, removed session 4),
   `modules/mp4box.mjs`, `modules/dash2mp4/`, `modules/hls/Mp4Sample.mjs`,
   `modules/reencoder/`, and `modules/utils/BlobManager.mjs` (kept on this
   side because `reencoder.mjs`/`mp4merger.mjs` live-import it — the retired
   DASH/WebM load graph stays intact here).
-- **`scrapyard/source/`** (61 files, ~1.12 MB) — never used as extension:
-  `modules/mediabunny/` (45 TS files + MPL-2.0 LICENSE), `modules/Localize.mjs`,
-  the 13 source-project `modules/utils/` fragments (imports `../enums/`,
-  `../options/`, `../ui/`, `sweetalert.mjs` — absent from this repo), and
-  `page-source/*.html` reference dumps.
+- **`source/vendor/` + `source/page-source/`** (61 files, ~1.12 MB) — never
+  used as extension: `vendor/mediabunny/` (45 TS files + MPL-2.0 LICENSE),
+  `vendor/Localize.mjs`, the 13 source-project `vendor/utils/` fragments
+  (imports `../enums/`, `../options/`, `../ui/`, `sweetalert.mjs` — absent
+  from this repo), and `page-source/*.html` reference dumps.
 
 Classification basis: the session-6 reachability audit plus per-file import
 analysis. All 74 moves were `git mv` renames (history preserved). Docs
 (`SESSION_HANDOFF.md`, `RETROFIT_AUDIT.md`, `WORKLIST.md`) updated to the new
-paths. Full inventory + restore paths: `scrapyard/README.md`.
+paths. Full inventory + restore paths: `source/README.md`.
 
 ### Session 7 follow-up (2026-08-31) — tools split + session-6 regression validation
 
-- **`tools/` split:** the last two non-runtime files in the extension folder
+- **`source/tools/` split:** the last two non-runtime files in the extension folder
   (`app.config.json` — generator provenance artifact, and `generate-icons.js`
-  — Node icon generator) moved to `tools/` at repo root. The extension folder
+  — Node icon generator) moved to `source/tools/`. The extension folder
   is now runtime-only. `generate-icons.js` writes into
-  `rule34video downloader/icons/`. CI needs the owner-applied one-line path
+  `extension/icons/`. CI needs the owner-applied path
   update (bot token lacks `workflows` permission — exact diff in PR #6
   description; same situation as session 6's `2ab56cf`): the JSON loop
   `for j in manifest.json app.config.json` →
-  `for j in manifest.json ../tools/app.config.json` and
-  `../tools/generate-icons.js` added to the `node --check` list.
+  `for j in manifest.json ../source/tools/app.config.json` and
+  `../source/tools/generate-icons.js` added to the `node --check` list.
 - **Session-6 regression validation against session 5 (`f1c5dcc`)** — verdict:
   session 6 did **not** break the project. Method + evidence in
   `docs/SESSION6_VALIDATION.md`. Summary: all 25 message actions of the real
@@ -426,9 +426,27 @@ paths. Full inventory + restore paths: `scrapyard/README.md`.
   in s6; WAR narrowing verified safe (nothing loads offscreen/modules from
   page context); syntax checks clean on both commits.
 
-Validation: `node tests/smoke.mjs` ALL PASSED; extension folder byte-identical
-(no change); zero references to the old `scrapyard/modules/...` /
-`scrapyard/page-source/...` paths outside this historical record.
+### Session 7 close-out (2026-08-31) — top-level restructure: `extension/` + `source/`
+
+Per owner direction, the repo root now contains only two code folders:
+
+- **`extension/`** — the shipped extension (renamed from
+  `rule34video downloader/`; no more space in the folder name).
+- **`source/`** — all development-use code: `source/retired/` (retired
+  extension code), `source/vendor/` + `source/page-source/` (never-used
+  sources), `source/tools/` (`app.config.json`, `generate-icons.js`),
+  `source/tests/` (`smoke.mjs`), `source/docs/` (all project docs).
+
+Workflow: develop in `source/`, ship the result into `extension/`, debug
+against live-test findings by reading the extension files. All moves were
+`git mv` renames. `source/tests/smoke.mjs` and `source/tools/generate-icons.js`
+paths updated to the new layout; CI (`.github/workflows/ci.yml`) needs the
+owner-applied update — working dir `extension`, tools paths
+`../source/tools/...`, smoke step `node source/tests/smoke.mjs` (full file
+posted in PR #6).
+
+Validation: `node source/tests/smoke.mjs` ALL PASSED; extension folder
+byte-identical (no change).
 
 ## Known issues / notes
 

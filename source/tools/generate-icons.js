@@ -14,9 +14,9 @@ const svgIcon = `
 `;
 
 const sizes = [16, 32, 48, 128];
-// Moved out of the extension folder (session 7): write into the shipped
-// extension's icons/ directory.
-const outputDir = path.join(__dirname, "..", "rule34video downloader", "icons");
+// Moved into source/tools (session 7): write into the shipped extension's
+// icons/ directory.
+const outputDir = path.join(__dirname, "..", "extension", "icons");
 
 if (!fs.existsSync(outputDir)) {
   fs.mkdirSync(outputDir);

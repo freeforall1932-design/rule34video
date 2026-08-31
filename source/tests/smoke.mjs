@@ -5,7 +5,7 @@
 //   1. getVideoFormats for a rule34.world post (real resolver logic)
 //   2. bulkDownloadTag (rule34.world cursor-paginated search -> batch enqueue)
 //
-// Run from the repo root:  node tests/smoke.mjs
+// Run from the repo root:  node source/tests/smoke.mjs
 // CI runs this on every push/PR.
 
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
@@ -89,7 +89,7 @@ globalThis.fetch = async (url) => {
 // ---------------------------------------------------------------------------
 const tmp = join(tmpdir(), "r34-smoke-" + Date.now());
 mkdirSync(tmp, { recursive: true });
-const srcDir = join(process.cwd(), "rule34video downloader");
+const srcDir = join(process.cwd(), "extension");
 const files = {
   "background-enhanced.js": "background-enhanced.mjs",
   "site-config.js": "site-config.mjs",

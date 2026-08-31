@@ -15,7 +15,7 @@ change.
 ## 1. Functional equivalence — full message-API battery
 
 A mocked-chrome harness loaded the **real** `background-enhanced.js` from each
-commit (same temp-copy + ESM-rewrite mechanism as `tests/smoke.mjs`) and fired
+commit (same temp-copy + ESM-rewrite mechanism as `source/tests/smoke.mjs`) and fired
 all 25 message actions through the real `chrome.runtime.onMessage` handler
 with identical fixtures: `getVideoFormats` (world + rule34video),
 `downloadVideo` (image / direct MP4 / HLS→offscreen), queue controls,
@@ -34,7 +34,7 @@ including the deep paths:
 
 The handful of failing assertions were **identical in session 5**, i.e.
 harness fixture gaps (missing mock fields like `downloads.cancel`), not
-regressions. `node tests/smoke.mjs` passes on both commits (the session-6
+regressions. `node source/tests/smoke.mjs` passes on both commits (the session-6
 smoke file is byte-identical to session 5's).
 
 ## 2. Message surface identical
@@ -87,9 +87,9 @@ For each of the 13 removed members (`handleActionClick`,
 
 ## 6. What session 6 actually changed in the extension folder
 
-`git diff f1c5dcc..117d0c5 -- "rule34video downloader"`:
+`git diff f1c5dcc..117d0c5 -- "extension"`:
 
-- **Deleted** (all verified unreachable; retained in `scrapyard/`):
+- **Deleted** (all verified unreachable; retained in `source/`):
   `mediabunny/`, `mp4box.mjs`, `reencoder/`, `dash2mp4/`, `modules/utils/*`
   except `EnvUtils.mjs`, `Localize.mjs`, `hls/Mp4Sample.mjs`, duplicate
   `eventemitter/`, `unified-app.config.json` (byte-identical dupe),
@@ -104,4 +104,4 @@ For each of the 13 removed members (`handleActionClick`,
 
 The harness used for this validation is reproducible but was written for a
 one-off diff (it lives outside the repo, as session 7's deliverable is the
-report). Committed regression coverage remains `tests/smoke.mjs` (CI).
+report). Committed regression coverage remains `source/tests/smoke.mjs` (CI).

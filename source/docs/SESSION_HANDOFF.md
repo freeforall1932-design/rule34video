@@ -8,7 +8,7 @@
 > Written: 2026-08-29 (Asia/Jakarta) by the Arena.ai coding agent.
 > Updated: 2026-08-30 (session 3 — review + missing-logic fixes).
 > Updated: 2026-08-31 (session 6 — dead-code purge, extension 2.2 MB → 0.85 MB).
-> Updated: 2026-08-31 (session 7 — scrapyard split into `extension/` vs `source/`).
+> Updated: 2026-08-31 (session 7 — top-level restructure: `extension/` + `source/`).
 
 ---
 
@@ -46,7 +46,7 @@ and fixed the biggest real-world bug found so far:
 5. **Session 5 — privacy, CI, full tag search:** added `docs/privacy.md`
    (no telemetry; only the two sites + BunnyCDN + GitHub), a GitHub Actions
    workflow (`.github/workflows/ci.yml`) that runs syntax/JSON/branding checks plus
-   a committed `tests/smoke.mjs` integration test (mocked chrome + fetch exercising
+   a committed `source/tests/smoke.mjs` integration test (mocked chrome + fetch exercising
    the real `background-enhanced.js`), and wired **rule34video.com tag search**
    (`searchRule34VideoTag` scrapes `rule34video.com/search/<tag>/`) into the bulk-by-tag
    popup. Version bumped **4.3.0 → 4.4.0**.
@@ -64,7 +64,7 @@ and fixed the biggest real-world bug found so far:
    `web_accessible_resources` narrowed from `<all_urls>` ×3 blocks to
    site-matched `inject.js`+CSS only. Version bumped **4.4.0 → 4.4.1**.
    Extension folder 2.2 MB → **0.85 MB**; whole repo 2.6 MB → **0.93 MB**.
-   `tests/smoke.mjs` + full `node --check` + reachability re-run all green.
+   `source/tests/smoke.mjs` + full `node --check` + reachability re-run all green.
    Remaining optimization backlog lives in `WORKLIST.md` (remux-only
    hls.js build — measured 67 KB achievable from upstream src vs the 407 KB
    bundle, dual-payload progress consolidation, queue-restore
@@ -73,16 +73,16 @@ and fixed the biggest real-world bug found so far:
    owner asked that retired-but-potentially-useful material be kept rather
    than deleted (concern: dead code from the previous version may be useful
    for future sites/formats). Everything from the purge except byte-identical
-   duplicates was restored from `f1c5dcc` into **`scrapyard/`** (repo root,
+   duplicates was restored from `f1c5dcc` into **`source/`** (repo root,
    74 files, ~2.0 MB):
-   `scrapyard/extension/site-adapter.js` (multi-hoster detector — hook points in
+   `source/retired/site-adapter.js` (multi-hoster detector — hook points in
    `background-enhanced.js` lines 9/1296/2229 remain), the DASH pipeline
    (`modules/{mp4box.mjs,dash2mp4/,reencoder/,hls/Mp4Sample.mjs,Localize.mjs,utils/ except EnvUtils}`),
    `mediabunny/` (MPL-2.0 TS mux/demux lib), and both page-source HTML dumps
-   (renamed under `scrapyard/source/page-source/`). Rules: nothing in `scrapyard/`
+   (renamed under `source/page-source/`). Rules: nothing in `source/`
    is imported, packaged, or scanned by CI (it lives outside the extension
    working dir); revive by moving files back per the table in
-   `scrapyard/README.md`. Shipped extension folder remains **0.85 MB**.
+   `source/README.md`. Shipped extension folder remains **0.85 MB**.
 8. **Session 6 close-out — CI fixed + hardening pass (v4.4.2).** The owner
    applied the `ci.yml` JSON-loop fix manually (commit `2ab56cf`); Actions run
    `33371030852` = **success**. Three backlog items were then implemented:
@@ -99,23 +99,23 @@ and fixed the biggest real-world bug found so far:
 9. **Session 7 (2026-08-31) — scrapyard split by provenance.** The session-6
    scrapyard mixed retired **extension files** with files that were **never
    used as extension** (source-project code + reference dumps). Now split
-   into two folders, per-file rationale in `scrapyard/README.md`:
-   - **`scrapyard/extension/`** (13 files, ~708 KB) — code that WAS part of
+   into two folders, per-file rationale in `source/README.md`:
+   - **`source/retired/`** (13 files, ~708 KB) — code that WAS part of
      the shipped extension: `site-adapter.js`, `modules/mp4box.mjs`,
      `modules/dash2mp4/`, `modules/hls/Mp4Sample.mjs`, `modules/reencoder/`,
      `modules/utils/BlobManager.mjs` (live-imported by the retired pipeline).
-     Restore = move back into `rule34video downloader/`.
-   - **`scrapyard/source/`** (61 files, ~1.12 MB) — never used as extension:
-     `modules/mediabunny/` (TS sources), `modules/Localize.mjs`, the 13
-     source-project `modules/utils/` fragments (imports absent from this
+     Restore = move back into `extension/`.
+   - **`source/vendor/` + `source/page-source/`** (61 files, ~1.12 MB) — never
+     used as extension: `vendor/mediabunny/` (TS sources), `vendor/Localize.mjs`,
+     the 13 source-project `vendor/utils/` fragments (imports absent from this
      repo), `page-source/*.html` dumps. Reuse = port, don't just move.
    All moves were `git mv` renames; live extension untouched; smoke tests
    green.
 10. **Session 7 follow-up — tools split + session-6 regression validation.**
     - `app.config.json` (generator provenance) and `generate-icons.js` (Node
-      icon helper) moved out of the extension folder to **`tools/`** (repo
-      root). Extension folder is now runtime-only. CI needs the owner-applied
-      one-line path update (bot token lacks `workflows` permission — see PR
+      icon helper) moved out of the extension folder to **`source/tools/`**.
+      Extension folder is now runtime-only. CI needs the owner-applied
+      path update (bot token lacks `workflows` permission — see PR
       #6 description for the exact diff, same as session 6's `2ab56cf`).
     - **Validated that session 6 did NOT break the project** against session
       5's stable point (`f1c5dcc`): a mocked-chrome harness exercised all 25
@@ -127,6 +127,16 @@ and fixed the biggest real-world bug found so far:
       clusters) vs 1 pre-existing guarded one in s6; WAR narrowing verified
       safe (nothing loads offscreen/modules from page context). Full report:
       `docs/SESSION6_VALIDATION.md`.
+11. **Session 7 close-out — top-level restructure to `extension/` + `source/`.**
+    The repo root now contains only two code folders: **`extension/`** (the
+    shipped extension, renamed from `rule34video downloader/` — no more space
+    in the name) and **`source/`** (everything else for development use):
+    `source/retired/` (retired extension code), `source/vendor/` +
+    `source/page-source/` (never-used sources), `source/tools/`,
+    `source/tests/`, `source/docs/`. Workflow: develop in `source/`, ship the
+    result into `extension/`, debug against live-test findings by reading the
+    extension files. CI/smoke paths updated (`extension`, `source/tests/`,
+    `source/tools/`); `source/README.md` documents the layout.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -139,17 +149,17 @@ first** — do not trust the local checkout to be current.
 
 - Repo: `freeforall1932-design/rule34video`
 - Working copy: `/home/user/rule34video`
-- Extension dir: `/home/user/rule34video/rule34video downloader`  (note the space)
-- Docs dir: `/home/user/rule34video/docs`
+- Extension dir: `/home/user/rule34video/extension`  
+- Docs dir: `/home/user/rule34video/source/docs`
 - Session branch (session 6): `arena/01a056b7-rule34video` (branched from
   `origin/main` @ `f1c5dcc`, version `4.4.0` → **`4.4.2`**).
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
   `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
 - The two saved reference HTML dumps now live at
-  `scrapyard/source/page-source/rule34video-listing.html` (rule34video.com **listing**
+  `source/page-source/rule34video-listing.html` (rule34video.com **listing**
   page: cards, previews only — no download links) and
-  `scrapyard/source/page-source/rule34world-shell.html` (rule34.world **Angular
+  `source/page-source/rule34world-shell.html` (rule34.world **Angular
   shell**, no SSR content). Moved there in session 6. A live post page + API
   shapes were verified directly in session 3.
 - Useful reference repo: `freeforall1932-design/gallery-dl` (user's fork) —
@@ -180,7 +190,7 @@ All third-party paywall/auth/trial machinery from the original generator
 - **Service worker (module):** `background-enhanced.js` — imports
   `site-config.js`, `logger.js`, `background-bridge.js`. (The generic
   multi-hoster `site-adapter.js` was moved to `legacy/` in session 4 and to
-  **`scrapyard/extension/site-adapter.js`** in session 6 — retained, never packaged;
+  **`source/retired/site-adapter.js`** in session 6 — retained, never packaged;
   the rule34 resolvers handle both target sites.) Holds
   the download queue, post resolvers, batch engine, the Smart Library path
   builder, the rule34.world tag/playlist search, and the central
@@ -202,7 +212,7 @@ All third-party paywall/auth/trial machinery from the original generator
    **fast-path resolver** (`resolveKnownPost`) that hits the rule34.world API
    or scrapes the rule34video.com post HTML — this is the reliable path for
    these sites. It falls back to observed-media and webRequest detection
-   (the generic `site-adapter.js` detector is retired to `scrapyard/extension/site-adapter.js`).
+   (the generic `site-adapter.js` detector is retired to `source/retired/site-adapter.js`).
 4. User picks a quality → popup sends `downloadVideo` → background routes to
    chrome download / offscreen MP4 / HLS / tab-download / xiaoshenke resolver.
 5. All single downloads go through `queueDownloadRequest`, which honors the
@@ -275,14 +285,14 @@ All third-party paywall/auth/trial machinery from the original generator
   `/api/v2/post/search/root` (and `/v2/post/search/playlist/{id}`) API, reusing
   the existing batch engine. (rule34video.com tag search not yet wired — see §6.)
 - **Generic multi-hoster surface removed (sessions 4 + 6):** `site-adapter.js`
-  moved to `legacy/` in session 4, then to `scrapyard/extension/site-adapter.js` in
+  moved to `legacy/` in session 4, then to `source/retired/site-adapter.js` in
   session 6 (retained for future site support; hook points at
   `background-enhanced.js:9,1296,2229` remain); `host_permissions` narrowed to
   the two sites + BunnyCDN + api.github.com.
 - **Licensing clarity (session 4):** top-level `LICENSE` (MIT) +
   `docs/THIRD_PARTY_LICENSES.md`.
 - **Privacy doc + CI (session 5):** `docs/privacy.md`; `.github/workflows/ci.yml`
-  + `tests/smoke.mjs` (loads the real background module under mocks; asserts
+  + `source/tests/smoke.mjs` (loads the real background module under mocks; asserts
   `getVideoFormats` + `bulkDownloadTag` behaviors end-to-end).
 - **rule34video.com bulk by tag (session 5):** `searchRule34VideoTag` scrapes
   `rule34video.com/search/<tag>/` post links; the popup detects the active-tab site
@@ -406,7 +416,7 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
    `rule34video.com/search/<tag>/`) — still needs a live check of the search URL
    and pagination.
 8. **(Session 5) Automated checks added:** `.github/workflows/ci.yml` +
-   `tests/smoke.mjs` load the real `background-enhanced.js` under mocked
+   `source/tests/smoke.mjs` load the real `background-enhanced.js` under mocked
    `chrome`/`fetch` and assert `getVideoFormats` + `bulkDownloadTag` behavior. They
    catch syntax/JSON/branding regressions but do **not** replace live browser
    testing (item 1).
@@ -441,21 +451,21 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `modules/FSBlob.mjs`, `modules/network/IndexedDBManager.mjs`, `modules/eventemitter.mjs`, `modules/utils/EnvUtils.mjs` | Vendored helpers used by the transmux pipeline |
 
 > Session 7 moved the last two non-runtime files out of the extension folder
-> into **`tools/`** (repo root): `app.config.json` (generator provenance
+> into **`source/tools/`**: `app.config.json` (generator provenance
 > artifact, not loaded at runtime) and `generate-icons.js` (Node icon
 > generator). The extension folder is now runtime-only; `generate-icons.js`
-> writes into `rule34video downloader/icons/`.
-> ⚠️ **CI needs a one-line owner-applied update** (the arena bot token lacks
-> the `workflows` permission — same as session 6's `2ab56cf`): in
-> `.github/workflows/ci.yml`, change the JSON loop
-> `for j in manifest.json app.config.json` →
-> `for j in manifest.json ../tools/app.config.json` and add
-> `../tools/generate-icons.js` to the `node --check` list. Exact diff is in
-> the PR #6 description; until applied, CI on this branch fails on the
-> missing `app.config.json` path.
+> writes into `extension/icons/`.
+> ⚠️ **CI needs an owner-applied update** (the arena bot token lacks the
+> `workflows` permission — same as session 6's `2ab56cf`): in
+> `.github/workflows/ci.yml`, change the working directory to `extension`,
+> the JSON loop to `for j in manifest.json ../source/tools/app.config.json`,
+> add `../source/tools/generate-icons.js` to the `node --check` list, and the
+> smoke step to `node source/tests/smoke.mjs`. The full corrected file was
+> posted in the PR #6 discussion; until applied, CI on this branch fails on
+> the moved paths.
 
-> Session 6 moved the following out of the extension into **`scrapyard/`**
-> (repo root, retained on purpose — see `scrapyard/README.md` for the
+> Session 6 moved the following out of the extension into what is now
+> `source/` (retained on purpose — see `source/README.md` for the
 > inventory table + restore paths): `site-adapter.js`,
 > `modules/{mediabunny,reencoder,dash2mp4,utils(except EnvUtils),eventemitter/}`,
 > `mp4box.mjs`, `Localize.mjs`, `hls/Mp4Sample.mjs`, and the root
@@ -468,18 +478,18 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 ## 8. Validation commands (run these after any change)
 
 ```bash
-cd "/home/user/rule34video/rule34video downloader"
+cd "/home/user/rule34video/extension"
 
 # JS syntax (content scripts are classic; background is a module)
 for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
          content.js content-bridge.js download-manager.js logger.js background-bridge.js \
-         inject.js post-actions.js; do
+         inject.js post-actions.js ../source/tools/generate-icons.js; do
   node --check "$f" || echo "FAIL $f"
 done
 node --input-type=module --check < background-enhanced.js
 
 # JSON
-for j in manifest.json app.config.json; do
+for j in manifest.json ../source/tools/app.config.json; do
   python3 -m json.tool "$j" >/dev/null || echo "FAIL $j"
 done
 
@@ -487,6 +497,12 @@ done
 grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivated|isActivated|auth-ui\.js|trial-banner\.js|gumroad|activationTitle' \
   --include='*.js' --include='*.json' --include='*.html' --include='*.css' . \
   | grep -viE 'SerpBackground|SerpContent|SerpSite|SerpBridge|SerpUnifiedPopup'
+```
+
+Smoke test from the repo root:
+
+```bash
+node source/tests/smoke.mjs
 ```
 
 Session 3 additionally ran a **functional harness** (`/tmp/queue-test/harness.mjs`

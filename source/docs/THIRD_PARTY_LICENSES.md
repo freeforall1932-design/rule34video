@@ -1,7 +1,7 @@
 # Third-party licenses & attribution
 
 This document records the third-party code shipped inside
-`rule34video downloader/modules/`. The project itself is MIT
+`extension/modules/`. The project itself is MIT
 (see the top-level `LICENSE`); the items below are **vendored** and keep their
 own licenses. No third-party **service / API / telemetry** dependency was found
 in the extension — all network calls target rule34.world, rule34video.com,
@@ -9,17 +9,17 @@ their BunnyCDN file host, or `api.github.com` (update checker) only.
 
 > Session 6 removed the vendored code the extension never loaded from the
 > shipped package (`mediabunny/`, `mp4box.mjs`, `reencoder/`, `dash2mp4/`,
-> orphaned `utils/`, duplicate `eventemitter/`) and moved it to **`scrapyard/`**
+> orphaned `utils/`, duplicate `eventemitter/`) and moved it to **`source/`**
 > (repo-only, never packaged) — the license files travel with the code there.
 > Session 7 split the scrapyard by provenance: retired extension code in
-> `scrapyard/extension/`, never-used source in `scrapyard/source/`
+> `source/retired/`, never-used source in `source/vendor/` + `source/page-source/`
 > (e.g. the mediabunny MPL-2.0 `LICENSE` sits at
-> `scrapyard/source/modules/mediabunny/LICENSE`).
+> `source/vendor/mediabunny/LICENSE`).
 > Only the live set listed below ships in the extension.
 
 ## hls.js (`modules/hls/hls.mjs`) — Apache-2.0 (upstream)
 
-- Path: `rule34video downloader/modules/hls/hls.mjs` (~400 KB minified bundle).
+- Path: `extension/modules/hls/hls.mjs` (~400 KB minified bundle).
 - Upstream project: **hls.js** (https://github.com/video-dev/hls.js),
   licensed **Apache-2.0**. The minifier stripped the original header banner;
   upstream license text is not re-shipped inline — add it back if you
@@ -31,7 +31,7 @@ their BunnyCDN file host, or `api.github.com` (update checker) only.
 
 ## hls2mp4 / transmuxer (FastStream-style transmux pipeline)
 
-- Path: `rule34video downloader/modules/hls2mp4/`,
+- Path: `extension/modules/hls2mp4/`,
   `modules/hls/hls.mjs` (bundle), `modules/FSBlob.mjs`,
   `modules/network/IndexedDBManager.mjs`, `modules/eventemitter.mjs`,
   `modules/utils/EnvUtils.mjs`.
