@@ -378,6 +378,34 @@ functional mocked-chrome restore test asserting: temp key dropped, live
 numeric key re-tracked (`getQueueStatus` → `active === 1`), dead numeric key
 dropped, module evaluates clean after the hoist.
 
+## Session 7 (2026-08-31) — scrapyard split: extension-used vs unused source
+
+The session-6 scrapyard mixed two kinds of material in one pile: files that
+genuinely **were used as extension files** (retired from the shipped
+extension) and files that **never were** (source-project code + saved
+reference dumps). Per owner request they are now split into two subfolders:
+
+- **`scrapyard/extension/`** (13 files, ~708 KB) — retired extension code:
+  `site-adapter.js` (multi-hoster detector, removed session 4),
+  `modules/mp4box.mjs`, `modules/dash2mp4/`, `modules/hls/Mp4Sample.mjs`,
+  `modules/reencoder/`, and `modules/utils/BlobManager.mjs` (kept on this
+  side because `reencoder.mjs`/`mp4merger.mjs` live-import it — the retired
+  DASH/WebM load graph stays intact here).
+- **`scrapyard/source/`** (61 files, ~1.12 MB) — never used as extension:
+  `modules/mediabunny/` (45 TS files + MPL-2.0 LICENSE), `modules/Localize.mjs`,
+  the 13 source-project `modules/utils/` fragments (imports `../enums/`,
+  `../options/`, `../ui/`, `sweetalert.mjs` — absent from this repo), and
+  `page-source/*.html` reference dumps.
+
+Classification basis: the session-6 reachability audit plus per-file import
+analysis. All 74 moves were `git mv` renames (history preserved). Docs
+(`SESSION_HANDOFF.md`, `RETROFIT_AUDIT.md`, `WORKLIST.md`) updated to the new
+paths. Full inventory + restore paths: `scrapyard/README.md`.
+
+Validation: `node tests/smoke.mjs` ALL PASSED; extension folder byte-identical
+(no change); zero references to the old `scrapyard/modules/...` /
+`scrapyard/page-source/...` paths outside this historical record.
+
 ## Known issues / notes
 
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not

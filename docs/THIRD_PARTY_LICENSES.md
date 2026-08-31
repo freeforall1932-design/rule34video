@@ -11,6 +11,10 @@ their BunnyCDN file host, or `api.github.com` (update checker) only.
 > shipped package (`mediabunny/`, `mp4box.mjs`, `reencoder/`, `dash2mp4/`,
 > orphaned `utils/`, duplicate `eventemitter/`) and moved it to **`scrapyard/`**
 > (repo-only, never packaged) — the license files travel with the code there.
+> Session 7 split the scrapyard by provenance: retired extension code in
+> `scrapyard/extension/`, never-used source in `scrapyard/source/`
+> (e.g. the mediabunny MPL-2.0 `LICENSE` sits at
+> `scrapyard/source/modules/mediabunny/LICENSE`).
 > Only the live set listed below ships in the extension.
 
 ## hls.js (`modules/hls/hls.mjs`) — Apache-2.0 (upstream)

@@ -93,9 +93,15 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
       but potentially-useful code to be retained — all of the above except the
       byte-identical `eventemitter/` duplicate now lives in `scrapyard/`
       (repo-only, never packaged). See `scrapyard/README.md`.
+      **Session 7 amendment:** the scrapyard was split by provenance —
+      `scrapyard/extension/` (retired code that WAS used as extension files:
+      `site-adapter.js`, `mp4box.mjs`, `dash2mp4/`, `reencoder/`,
+      `hls/Mp4Sample.mjs`, `utils/BlobManager.mjs`) and `scrapyard/source/`
+      (never used as extension: `mediabunny/` TS sources, `Localize.mjs`, the
+      13 source-project `utils/` fragments, `page-source/*.html`).
 - [x] **(Session 6) Repo-level dead files removed:** both `page source*` HTML
-      dumps (243 KB → kept as `scrapyard/page-source/*` under descriptive
-      names), `legacy/site-adapter.js` (156 KB → `scrapyard/site-adapter.js`;
+      dumps (243 KB → kept as `scrapyard/source/page-source/*` under descriptive
+      names), `legacy/site-adapter.js` (156 KB → `scrapyard/extension/site-adapter.js`;
       `legacy/` dir removed), `unified-app.config.json` (byte-identical to
       `app.config.json` — deleted outright, no unique content),
       `factory-candidate.config.json` (provenance pointing at paths not in
