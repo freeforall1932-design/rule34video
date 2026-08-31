@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Validate extension (syntax, JSON, branding)
         working-directory: "rule34video downloader"
         run: |
@@ -20,6 +20,9 @@ jobs:
                    content.js content-bridge.js download-manager.js logger.js background-bridge.js \
                    inject.js post-actions.js; do
             node --check "$f" || { echo "FAIL $f"; exit 1; }
+          done
+          for m in modules/*.mjs modules/*/*.mjs; do
+            node --check "$m" || { echo "FAIL $m"; exit 1; }
           done
           node --input-type=module --check < background-enhanced.js || { echo "FAIL background-enhanced.js"; exit 1; }
           for j in manifest.json app.config.json; do
