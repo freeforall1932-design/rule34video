@@ -67,7 +67,7 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
 - [x] **(Session 5) Privacy + CI + rule34video.com tag search:**
       - `docs/privacy.md` (no telemetry; only the two sites + BunnyCDN + GitHub).
       - `.github/workflows/ci.yml` runs `node --check` (classic + background ESM),
-        JSON parse, forbidden-paywall grep, and a committed `tests/smoke.mjs`
+        JSON parse, forbidden-paywall grep, and a committed `source/tests/smoke.mjs`
         (mocked chrome + fetch exercising `getVideoFormats` + `bulkDownloadTag`).
       - Wired rule34video.com tag search (`searchRule34VideoTag` scrapes
         `rule34video.com/search/<tag>/` post links) into the bulk-by-tag popup
@@ -91,11 +91,18 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
       `modules/hls/Mp4Sample.mjs`.
       **Same-session amendment:** after review, the owner asked for retired
       but potentially-useful code to be retained — all of the above except the
-      byte-identical `eventemitter/` duplicate now lives in `scrapyard/`
-      (repo-only, never packaged). See `scrapyard/README.md`.
+      byte-identical `eventemitter/` duplicate now lives under `source/`
+      (repo-only, never packaged). See `source/README.md`.
+      **Session 7 amendment:** the scrapyard was split by provenance —
+      `source/retired/` (retired code that WAS used as extension files:
+      `site-adapter.js`, `mp4box.mjs`, `dash2mp4/`, `reencoder/`,
+      `hls/Mp4Sample.mjs`, `utils/BlobManager.mjs`) and
+      `source/vendor/` + `source/page-source/`
+      (never used as extension: `mediabunny/` TS sources, `Localize.mjs`, the
+      13 source-project `utils/` fragments, `page-source/*.html`).
 - [x] **(Session 6) Repo-level dead files removed:** both `page source*` HTML
-      dumps (243 KB → kept as `scrapyard/page-source/*` under descriptive
-      names), `legacy/site-adapter.js` (156 KB → `scrapyard/site-adapter.js`;
+      dumps (243 KB → kept as `source/page-source/*` under descriptive
+      names), `legacy/site-adapter.js` (156 KB → `source/retired/site-adapter.js`;
       `legacy/` dir removed), `unified-app.config.json` (byte-identical to
       `app.config.json` — deleted outright, no unique content),
       `factory-candidate.config.json` (provenance pointing at paths not in
@@ -120,7 +127,7 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
 
 ## Manual browser test matrix (MOST IMPORTANT remaining work)
 
-> Load the unpacked extension from `rule34video downloader/` at
+> Load the unpacked extension from `extension/` at
 > `chrome://extensions` (Developer mode), then test on the live sites.
 
 ### rule34video.com

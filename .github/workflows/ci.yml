@@ -14,18 +14,18 @@ jobs:
         with:
           node-version: "22"
       - name: Validate extension (syntax, JSON, branding)
-        working-directory: "rule34video downloader"
+        working-directory: "extension"
         run: |
           for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
                    content.js content-bridge.js download-manager.js logger.js background-bridge.js \
-                   inject.js post-actions.js; do
+                   inject.js post-actions.js ../source/tools/generate-icons.js; do
             node --check "$f" || { echo "FAIL $f"; exit 1; }
           done
           for m in modules/*.mjs modules/*/*.mjs; do
             node --check "$m" || { echo "FAIL $m"; exit 1; }
           done
           node --input-type=module --check < background-enhanced.js || { echo "FAIL background-enhanced.js"; exit 1; }
-          for j in manifest.json app.config.json; do
+          for j in manifest.json ../source/tools/app.config.json; do
             python3 -m json.tool "$j" >/dev/null || { echo "FAIL $j"; exit 1; }
           done
           # Forbidden paywall/auth remnants must print NOTHING:
@@ -36,4 +36,4 @@ jobs:
           fi
           echo "validation OK"
       - name: Smoke test (mocked chrome + fetch)
-        run: node tests/smoke.mjs
+        run: node source/tests/smoke.mjs

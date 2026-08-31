@@ -93,7 +93,7 @@ Web-Store-clean.
 
 **Status (session 4):** implemented as a *move* — `site-adapter.js` was moved out
 of the packaged extension to `legacy/` (since session 6 at
-`scrapyard/site-adapter.js`). This is
+`source/retired/site-adapter.js`). This is
 strictly better than a keep-loaded gate because the bytes are no longer shipped.
 The `host_permissions` narrowing and webRequest scoping from points 2–3 are also
 done.
@@ -155,14 +155,16 @@ engine.
 3. **Single source of truth for config.** Today 3 config JSONs
    (`app.config.json`, `unified-app.config.json`, `factory-candidate.config.json`)
    + `manifest.json` can drift. Generate `manifest.json` from one config, or
-   delete the unused two.
-4. **Commit the test harness — DONE (session 5):** `tests/smoke.mjs` loads the
+   delete the unused two. *(Status: session 6 deleted the two unused ones;
+   session 7 moved the provenance-only `app.config.json` to `source/tools/` — see
+   also item 1's current-state note.)*
+4. **Commit the test harness — DONE (session 5):** `source/tests/smoke.mjs` loads the
    real `background-enhanced.js` under mocked `chrome`/`fetch` and asserts
    `getVideoFormats` + `bulkDownloadTag` behavior (the PR #3 `/tmp` harness concept,
    committed so it survives).
 5. **CI on GitHub Actions — DONE (session 5):** `.github/workflows/ci.yml` runs
    `node --check` (bg as ESM) + JSON parse + the forbidden-paywall/stale grep +
-   `tests/smoke.mjs` on every push/PR. Catches regressions
+   `source/tests/smoke.mjs` on every push/PR. Catches regressions
    before merge (the docs stress manual testing is the #1 gap; CI narrows it).
 6. **Lint/format baseline:** ESLint + Prettier with an `npm` wrapper, so the
    `Serp*`→`Rule34*` rename and future edits stay consistent.
@@ -190,7 +192,7 @@ See `docs/SESSION_HANDOFF.md §8` for the full command set.
 ## Status (implemented this session, 2026-08-30)
 
 - **Moved the generic multi-hoster `site-adapter.js` out of the packaged
-  extension** to `legacy/` (since session 6: `scrapyard/site-adapter.js`);
+  extension** to `legacy/` (since session 6: `source/retired/site-adapter.js`);
   background `import`
   already removed; generic fallback now inert; `host_permissions` narrowed (the
   `"https://*/*"` / `"http://*/*"` wildcards dropped; `rule34storage.b-cdn.net` +
@@ -210,6 +212,6 @@ See `docs/SESSION_HANDOFF.md §8` for the full command set.
 - Version **4.2.0 → 4.3.0**. Validation: all `node --check` (classic + BG as ESM),
   JSON parse, forbidden-paywall grep, and `Serp`/`SERP` grep pass.
 - **(Session 5) privacy.md + CI + rule34video.com tag search added.** `docs/privacy.md`;
-  `.github/workflows/ci.yml` + `tests/smoke.mjs` (real background module under mocks);
+  `.github/workflows/ci.yml` + `source/tests/smoke.mjs` (real background module under mocks);
   `searchRule34VideoTag` scrapes `rule34video.com/search/<tag>/`. Version **4.3.0 → 4.4.0**;
-  `node tests/smoke.mjs` passes.
+  `node source/tests/smoke.mjs` passes.

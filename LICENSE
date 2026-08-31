@@ -22,8 +22,8 @@ SOFTWARE.
 
 ---
 
-Vendored third-party libraries in `rule34video downloader/modules/` carry their
-own licenses (see `docs/THIRD_PARTY_LICENSES.md`). In particular,
-`modules/mediabunny/` is distributed under the Mozilla Public License 2.0
+Vendored third-party libraries in `extension/modules/` carry their
+own licenses (see `source/docs/THIRD_PARTY_LICENSES.md`). In particular,
+`source/vendor/mediabunny/` is distributed under the Mozilla Public License 2.0
 (file-level copyleft); it is included in this repository in Source Code Form, so
 its source remains available to recipients of the extension.
