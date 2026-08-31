@@ -402,6 +402,30 @@ analysis. All 74 moves were `git mv` renames (history preserved). Docs
 (`SESSION_HANDOFF.md`, `RETROFIT_AUDIT.md`, `WORKLIST.md`) updated to the new
 paths. Full inventory + restore paths: `scrapyard/README.md`.
 
+### Session 7 follow-up (2026-08-31) — tools split + session-6 regression validation
+
+- **`tools/` split:** the last two non-runtime files in the extension folder
+  (`app.config.json` — generator provenance artifact, and `generate-icons.js`
+  — Node icon generator) moved to `tools/` at repo root. The extension folder
+  is now runtime-only. `generate-icons.js` writes into
+  `rule34video downloader/icons/`. CI needs the owner-applied one-line path
+  update (bot token lacks `workflows` permission — exact diff in PR #6
+  description; same situation as session 6's `2ab56cf`): the JSON loop
+  `for j in manifest.json app.config.json` →
+  `for j in manifest.json ../tools/app.config.json` and
+  `../tools/generate-icons.js` added to the `node --check` list.
+- **Session-6 regression validation against session 5 (`f1c5dcc`)** — verdict:
+  session 6 did **not** break the project. Method + evidence in
+  `docs/SESSION6_VALIDATION.md`. Summary: all 25 message actions of the real
+  `background-enhanced.js` behave byte-identically on both commits under a
+  mocked-chrome harness (including the HLS→offscreen pipeline);
+  onMessage switch cases identical; all 13 bridge members removed in session
+  6 have zero references in live code and were already unreachable in s5;
+  static audit shows s5 had ~20 broken import refs (the dead clusters
+  session 6 removed) vs 1 pre-existing try/catch-guarded `history.html` ref
+  in s6; WAR narrowing verified safe (nothing loads offscreen/modules from
+  page context); syntax checks clean on both commits.
+
 Validation: `node tests/smoke.mjs` ALL PASSED; extension folder byte-identical
 (no change); zero references to the old `scrapyard/modules/...` /
 `scrapyard/page-source/...` paths outside this historical record.

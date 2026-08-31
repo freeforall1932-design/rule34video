@@ -155,7 +155,9 @@ engine.
 3. **Single source of truth for config.** Today 3 config JSONs
    (`app.config.json`, `unified-app.config.json`, `factory-candidate.config.json`)
    + `manifest.json` can drift. Generate `manifest.json` from one config, or
-   delete the unused two.
+   delete the unused two. *(Status: session 6 deleted the two unused ones;
+   session 7 moved the provenance-only `app.config.json` to `tools/` — see
+   also item 1's current-state note.)*
 4. **Commit the test harness — DONE (session 5):** `tests/smoke.mjs` loads the
    real `background-enhanced.js` under mocked `chrome`/`fetch` and asserts
    `getVideoFormats` + `bulkDownloadTag` behavior (the PR #3 `/tmp` harness concept,

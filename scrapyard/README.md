@@ -76,7 +76,8 @@ copying into the extension; port it.
 
 Not restored (no unique content):
 - `unified-app.config.json` — byte-identical to the kept
-  `rule34video downloader/app.config.json` (verified with `cmp` at `f1c5dcc`).
+  `tools/app.config.json` (verified with `cmp` at `f1c5dcc`; the kept copy
+  moved to `tools/` in session 7).
 - `modules/eventemitter/eventemitter.mjs` — byte-identical duplicate of the
   kept `rule34video downloader/modules/eventemitter.mjs`.
 

@@ -111,6 +111,22 @@ and fixed the biggest real-world bug found so far:
      repo), `page-source/*.html` dumps. Reuse = port, don't just move.
    All moves were `git mv` renames; live extension untouched; smoke tests
    green.
+10. **Session 7 follow-up — tools split + session-6 regression validation.**
+    - `app.config.json` (generator provenance) and `generate-icons.js` (Node
+      icon helper) moved out of the extension folder to **`tools/`** (repo
+      root). Extension folder is now runtime-only. CI needs the owner-applied
+      one-line path update (bot token lacks `workflows` permission — see PR
+      #6 description for the exact diff, same as session 6's `2ab56cf`).
+    - **Validated that session 6 did NOT break the project** against session
+      5's stable point (`f1c5dcc`): a mocked-chrome harness exercised all 25
+      message actions of the real `background-enhanced.js` on both commits —
+      byte-identical behavior, including the full HLS→offscreen pipeline.
+      onMessage switch cases identical; all 13 bridge members session 6
+      removed have zero references in live code and were unreachable in s5
+      too; static audit shows s5 had ~20 broken import refs (the dead
+      clusters) vs 1 pre-existing guarded one in s6; WAR narrowing verified
+      safe (nothing loads offscreen/modules from page context). Full report:
+      `docs/SESSION6_VALIDATION.md`.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -423,8 +439,20 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `modules/hls/hls.mjs` | Vendored **hls.js** bundle (~400 KB, Apache-2.0) — only the demux/remux exports are used |
 | `modules/hls2mp4/*` | HLS → MP4 transmux pipeline (loaded by `offscreen.js` at runtime) |
 | `modules/FSBlob.mjs`, `modules/network/IndexedDBManager.mjs`, `modules/eventemitter.mjs`, `modules/utils/EnvUtils.mjs` | Vendored helpers used by the transmux pipeline |
-| `app.config.json` | Generator config artifact (provenance only; not loaded at runtime) |
-| `generate-icons.js` | Icon generator helper |
+
+> Session 7 moved the last two non-runtime files out of the extension folder
+> into **`tools/`** (repo root): `app.config.json` (generator provenance
+> artifact, not loaded at runtime) and `generate-icons.js` (Node icon
+> generator). The extension folder is now runtime-only; `generate-icons.js`
+> writes into `rule34video downloader/icons/`.
+> ⚠️ **CI needs a one-line owner-applied update** (the arena bot token lacks
+> the `workflows` permission — same as session 6's `2ab56cf`): in
+> `.github/workflows/ci.yml`, change the JSON loop
+> `for j in manifest.json app.config.json` →
+> `for j in manifest.json ../tools/app.config.json` and add
+> `../tools/generate-icons.js` to the `node --check` list. Exact diff is in
+> the PR #6 description; until applied, CI on this branch fails on the
+> missing `app.config.json` path.
 
 > Session 6 moved the following out of the extension into **`scrapyard/`**
 > (repo root, retained on purpose — see `scrapyard/README.md` for the
