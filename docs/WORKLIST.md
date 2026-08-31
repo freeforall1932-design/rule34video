@@ -2,9 +2,11 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-08-30 (session 3). PR #1 merged (rebrand + queue + batch).
+Last updated: 2026-08-31 (session 6). PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
+Session 6 = dead-code purge + scrapyard retention + hardening pass
+(extension 2.2 MB → 0.85 MB; v4.4.2; ci.yml fixed by owner, CI green).
 
 ## Done
 
@@ -78,6 +80,43 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
       search (`/api/v2/post/search/root`, `/v2/post/search/playlist/{id}`) wired
       to the batch engine via a new `bulkDownloadTag` popup control.
 - [x] **(Session 4)** Bump version to `4.3.0`; `docs/RETROFIT_AUDIT.md` written.
+- [x] **(Session 6) Orphaned vendored modules removed from the extension**
+      (verified unreachable by entry-point reachability trace — the only path
+      into `modules/` is `offscreen.js → hls2mp4/simple-converter.mjs`):
+      `modules/mediabunny/` (61 files, 798 KB), `modules/mp4box.mjs` (311 KB),
+      `modules/reencoder/` (207 KB), `modules/dash2mp4/` (15 KB),
+      `modules/utils/*` except `EnvUtils.mjs` (54 KB; several imported
+      `../enums/`/`../ui/` paths that don't exist in this repo),
+      duplicate `modules/eventemitter/` dir, `modules/Localize.mjs`,
+      `modules/hls/Mp4Sample.mjs`.
+      **Same-session amendment:** after review, the owner asked for retired
+      but potentially-useful code to be retained — all of the above except the
+      byte-identical `eventemitter/` duplicate now lives in `scrapyard/`
+      (repo-only, never packaged). See `scrapyard/README.md`.
+- [x] **(Session 6) Repo-level dead files removed:** both `page source*` HTML
+      dumps (243 KB → kept as `scrapyard/page-source/*` under descriptive
+      names), `legacy/site-adapter.js` (156 KB → `scrapyard/site-adapter.js`;
+      `legacy/` dir removed), `unified-app.config.json` (byte-identical to
+      `app.config.json` — deleted outright, no unique content),
+      `factory-candidate.config.json` (provenance pointing at paths not in
+      this repo — deleted outright). `ci.yml` JSON loop **must** be updated to
+      `manifest.json app.config.json` — see session 6 note in IMPROVEMENT_LOG
+      (the fix could not be pushed; owner applies it manually).
+- [x] **(Session 6) Dead code removed:** `folderName()` in
+      `background-enhanced.js`, `anchorForCard()` in `post-actions.js`, and in
+      `background-bridge.js` the unreachable handlers `handleActionClick`,
+      `handleParseM3U8Message`, `handleFetchM3U8PlaylistMessage`,
+      `handleDownloadBlobMessage` (+ helpers `getDownloadFolder`,
+      `resolveSenderOrActiveTabId`, `getActiveTabId` whose only callers were
+      the removed code). Freeze-block public API trimmed 36 → 24 members
+      (everything exported is now actually called by a consumer).
+- [x] **(Session 6) `web_accessible_resources` narrowed:** offscreen + `modules/**`
+      blocks removed (extension-context loads never needed WAR) and the
+      remaining `inject.js` + 2 CSS block is restricted to the two supported
+      sites instead of `<all_urls>`. Version bumped **4.4.0 → 4.4.1**.
+- [x] **(Session 6) `docs/THIRD_PARTY_LICENSES.md` rewritten** for the surviving
+      vendored set (hls.js Apache-2.0 note added — it was previously missing);
+      mediabunny/mp4box notes dropped with their files.
 
 ## Manual browser test matrix (MOST IMPORTANT remaining work)
 
@@ -145,9 +184,42 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 - [ ] **Verify rule34.world listing-card selectors on a live page**; adjust
       `post-actions.js` `pinContainerFor()` / `processCards()` if needed.
       (rule34video.com selectors were verified against live HTML in session 3.)
-- [ ] Narrow broad host permissions (`https://*/*`) to rule34 sites +
-      `https://rule34storage.b-cdn.net/*` once cross-origin needs are confirmed.
-- [ ] Optional: rename `Serp*` namespace identifiers to `Rule34*` (cosmetic).
+- [ ] **(Session 6) Remux-only hls.js build** — `modules/hls/hls.mjs` is a ~400 KB
+      full-player hls.js bundle, but `transmuxer.mjs` only imports 6 symbols
+      (`TSDemuxer, MP4Remuxer, MP4Demuxer, AACDemuxer, MP3Demuxer,
+      PassThroughRemuxer`).
+      **Measured in the session-6 sandbox (esbuild, hls.js@1.5.20):**
+      - Re-bundling the *vendored* minified file: **393 KB — no win** (the
+        single-file bundle defeats tree-shaking).
+      - Bundling the 6 classes from upstream `hls.js/src` TypeScript:
+        **67.0 KB, all 6 symbols exported** → ~340 KB off the package.
+      The win requires a build step (`esbuild` + pinned `hls.js` + `url-toolkit`)
+      and deep imports into non-public upstream paths (version-pinned; class
+      constructor/error-detail APIs must be re-verified against what
+      `hls2mp4/transmuxer.mjs` uses), plus a real-browser HLS download
+      regression test before swapping the bundle. Adoption recipe lives in
+      IMPROVEMENT_LOG session 6 close-out.
+- [ ] **(Session 6) Consolidate dual-payload progress forwarding** —
+      `background-bridge.js` `forwardProgressMessages` sends a canonical AND a
+      legacy message per progress tick; `content-bridge.js` still listens to
+      both (`hlsProgress`/`mp4Progress`/…). Drop the legacy shape on both sides
+      (coordinated change; needs browser test of progress toasts).
+- [x] **(Session 6 hardening pass, 4.4.2) Queue-restore temp keys** —
+      `restoreQueueState()` now drops non-numeric `activeQueueJobs` keys
+      (`queue-job-N` persisted before the chrome download id existed) instead
+      of zombie-blocking a concurrency slot for up to 3 h. Verified with a
+      mocked-chrome harness: temp key dropped, live numeric key re-tracked,
+      dead numeric key dropped.
+- [x] **(Session 6 hardening pass, 4.4.2) Host-probe both-fail state** —
+      `getWorldHostStatus()` now logs a warning when both rule34.world roots
+      fail, and the both-fail state re-probes after 60 s
+      (`WORLD_HOST_PROBE_FAIL_TTL_MS`) instead of pinning for the full 10 min.
+- [x] **(Session 6 hardening pass, 4.4.2) Minor nits** — offscreen sync-ack
+      branches (`processHLS`, `PROCESS_HLS_SEGMENTS`, `PROCESS_MP4_DOWNLOAD`)
+      now `return false` after the synchronous ack instead of holding the
+      channel open with `return true`; `const batchPending = []` hoisted above
+      the queue helpers it references (was verified not a bug — this removes
+      the fragility).
 - [ ] Optional: batch pagination / auto-scroll for rule34.world. Session 3
       confirmed the exact API from gallery-dl's extractor: `POST
       {root}/api/v2/post/search/root` with JSON
@@ -157,7 +229,6 @@ PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 - [ ] Optional: image posts on rule34video.com (currently video-focused).
 - [ ] Optional: "already downloaded" dedupe via `chrome.downloads` history
       (match by filename; note signed rule34video URLs differ per resolve).
-- [ ] Optional: remove dead `chrome.action.onClicked` listener (popup set).
 
 ## Git notes
 

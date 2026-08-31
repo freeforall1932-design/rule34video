@@ -217,26 +217,6 @@
     }
   }
 
-  // --- Card detection -------------------------------------------------------
-  // Returns the anchor (<a>) element that carries a supported post URL, if any,
-  // starting from the given card-ish element.
-  function anchorForCard(element) {
-    if (!element || element.nodeType !== Node.ELEMENT_NODE) return null;
-    const candidates = [];
-    if (element.matches && element.matches("a")) candidates.push(element);
-    try {
-      candidates.push(
-        ...Array.from(element.querySelectorAll("a[href]")),
-      );
-    } catch {}
-    for (const anchor of candidates) {
-      const href = anchor.getAttribute("href") || "";
-      const url = absoluteUrl(href);
-      if (isSupportedPostUrl(url)) return { anchor, url };
-    }
-    return null;
-  }
-
   // Pick the element we pin the corner button to.
   function pinContainerFor(anchor) {
     if (IS_VIDEO) {

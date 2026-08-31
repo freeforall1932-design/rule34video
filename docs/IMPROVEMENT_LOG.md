@@ -245,16 +245,147 @@ tag search, then update the three docs and (a) open the merge-commit PR.
 - `node tests/smoke.mjs` → ALL SMOKE TESTS PASSED; background ESM + all classic
   scripts `node --check`; all JSON parses. Version bumped **4.3.0 → 4.4.0**.
 
+## Session 6 — dead-code purge + footprint reduction (2026-08-31)
+
+Context: user asked for a full-codebase review focused on cutting the extension
+down and optimizing both extension and repo (reviews were slow compared to the
+same agent's passes over other repos). No new features — deletions + hardening
+only, all verified behavior-neutral.
+
+### Method
+- **Reachability trace** from `manifest.json` entry points (static imports,
+  dynamic `import()`, `chrome.runtime.getURL` loads): only **25 of ~124** repo
+  files are reachable. The sole path into `modules/` is
+  `offscreen.js:544 → modules/hls2mp4/simple-converter.mjs`.
+- **Cross-file + function-level dead-code scan** over all hand-written files.
+
+### Removed — orphaned vendored modules (≈1.36 MB, never loaded)
+- `modules/mediabunny/` (61 files, 798 KB — `.ts` sources that could never run
+  unpackaged), `modules/mp4box.mjs` (311 KB), `modules/reencoder/` (207 KB),
+  `modules/dash2mp4/` (15 KB) — the old DASH/WebM pipeline the current HLS
+  pipeline replaced.
+- `modules/utils/*` except `EnvUtils.mjs` (54 KB; several imported
+  `../enums/`, `../options/`, `../ui/`, `sweetalert.mjs` — paths absent from
+  this repo, i.e. they would throw if ever loaded).
+- Byte-identical duplicate `modules/eventemitter/eventemitter.mjs`,
+  `modules/Localize.mjs`, `modules/hls/Mp4Sample.mjs`.
+
+### Removed — repo-level dead files (≈407 KB; page dumps + `legacy/` later retained in `scrapyard/`, see below)
+- Root `page source.txt` + `page source for rule34 world` (saved HTML dumps).
+- `legacy/site-adapter.js` (pre-rewrite multi-hoster adapter; `legacy/` removed).
+- `unified-app.config.json` (byte-identical dupe of `app.config.json`) and
+  `factory-candidate.config.json` (provenance pointing at paths not in this
+  repo). `ci.yml` JSON-validation loop updated to `manifest.json app.config.json`.
+
+### Removed — in-file dead code
+- `background-enhanced.js`: `folderName()`.
+- `post-actions.js`: `anchorForCard()`.
+- `background-bridge.js`: unreachable handlers `handleActionClick`,
+  `handleParseM3U8Message`, `handleFetchM3U8PlaylistMessage`,
+  `handleDownloadBlobMessage` (175 lines per `git diff --numstat`) + helpers
+  whose only callers were the removed code (`getDownloadFolder`,
+  `resolveSenderOrActiveTabId`, `getActiveTabId`). Public freeze block trimmed
+  **36 → 24 members** — every exported bridge member is now actually called
+  by a consumer.
+
+### Hardening / manifest
+- `web_accessible_resources`: dropped the `offscreen.html/js` and
+  `modules/**/*` blocks (extension-context loads never needed WAR) and
+  restricted the remaining `inject.js` + CSS block to the two supported sites
+  (was `<all_urls>`). Less exposure surface.
+- `docs/THIRD_PARTY_LICENSES.md` rewritten for the surviving vendored set;
+  added the previously-missing hls.js (Apache-2.0) attribution.
+- Version bumped **4.4.0 → 4.4.1**.
+
+### Scrapyard retention (same session, post-review amendment)
+- Owner review asked for retired-but-potentially-useful material to be kept
+  (future sites / formats may need it) instead of deleted. All purged files
+  except byte-identical duplicates were restored from `f1c5dcc` into
+  **`scrapyard/`** (repo root; 74 files, ~2.0 MB; outside the extension
+  folder, so the shipped package stays 0.85 MB and CI's branding grep never
+  scans it).
+- Contents + per-file rationale + restore paths: `scrapyard/README.md`.
+  Highlights: `site-adapter.js` (multi-hoster detector; adapter hook points
+  at `background-enhanced.js:9,1296,2229` remain live), the DASH/WebM→MP4
+  pipeline (`mp4box.mjs` + `dash2mp4/` + `reencoder/` + `Mp4Sample.mjs`),
+  `mediabunny/` (MPL-2.0 TS mux/demux lib), orphaned `utils/`, and the two
+  page-source HTML dumps (renamed `scrapyard/page-source/*`).
+- Not restored (zero unique content): `unified-app.config.json` (byte-identical
+  to `app.config.json`, verified with `cmp`) and `modules/eventemitter/`
+  (byte-identical to the kept `modules/eventemitter.mjs`).
+
+### Optimization backlog added to WORKLIST.md
+- Remux-only hls.js build (measured: **67 KB** achievable from upstream
+  `hls.js/src` vs the shipped 407 KB bundle — but a re-bundle of the vendored
+  file gives no win at 393 KB; needs a build step + browser regression test;
+  see WORKLIST for the measured details).
+- Dual-payload progress consolidation (canonical + legacy messages per tick).
+- Queue-restore temp-key hardening (non-numeric `activeQueueJobs` keys restore
+  without a liveness check).
+- Host-probe both-fail state: log + shorter TTL.
+
+### Validation
+- All `.js`/`.mjs` `node --check` OK; JSON parses; forbidden-paywall grep clean;
+  `node tests/smoke.mjs` → **ALL SMOKE TESTS PASSED** (getVideoFormats + bulk
+  enqueue against the real background module); post-edit reachability re-run →
+  0 broken imports; extension dir **2.2 MB → 0.85 MB**, repo **2.6 MB → 0.93 MB**
+  (124 → 44 files). After the scrapyard amendment: extension folder diff vs
+  the purge commit is **empty** (byte-identical); scrapyard is additive-only.
+
+### CI fix applied by owner (2026-08-31, resolved)
+- The owner applied the `ci.yml` one-line fix manually as commit `2ab56cf`
+  ("Update CI workflow to check fewer JSON files", JSON loop →
+  `manifest.json app.config.json`). GitHub Actions run `33371030852` on that
+  commit completed **success** (validate + smoke, 16 s). The two earlier
+  failures (`8144074`, `73d55bf`) were the deleted-config names in the old
+  loop, as predicted. Remaining yml observations (non-blocking): `node-version:
+  "20"` deprecation annotation from `actions/checkout@v4`/`setup-node@v4`,
+  and `modules/**/*.mjs` files are not syntax-checked by CI (validated locally
+  only).
+
+### Session 6 hardening pass — post-CI-fix (2026-08-31, v4.4.2)
+
+Context: with CI green, the three cheap items from the WORKLIST backlog were
+implemented (the two expensive ones — remux-only hls.js build, dual-payload
+progress consolidation — stay on the backlog because they need a build step /
+browser testing):
+
+- **Queue-restore temp keys** (`background-enhanced.js` `restoreQueueState`):
+  non-numeric `activeQueueJobs` keys (`queue-job-N`, snapshotted while
+  `downloadVideo()` was still running) are no longer restored — after a worker
+  death no chrome download exists to track, so restoring only blocked a
+  concurrency slot for up to 3 h. Numeric keys keep the
+  `chrome.downloads.get` liveness check as before.
+- **Host-probe both-fail state** (`getWorldHostStatus`): logs
+  `"rule34.world host probe: BOTH file hosts unreachable"` when both roots
+  fail, and the both-fail cache re-probes after 60 s
+  (`WORLD_HOST_PROBE_FAIL_TTL_MS`) instead of holding for the full 10-min TTL
+  (healthy states keep the 10-min TTL).
+- **Offscreen ack channels** (`offscreen.js`): the three sync-ack branches
+  (`processHLS`, `PROCESS_HLS_SEGMENTS`, `PROCESS_MP4_DOWNLOAD`) now
+  `return false` — the ack is sent synchronously and consumed immediately by
+  the background, so holding the channel open with `return true` was
+  pointless (progress arrives via separate messages).
+- **`batchPending` hoist**: declaration moved next to the other queue state
+  since the queue helpers reference it. Was verified not a live bug (nothing
+  executed above the old line 715 during module evaluation); this removes the
+  ordering fragility.
+- Version bumped **4.4.1 → 4.4.2**.
+
+Validation: `node --check` all extension JS/MJS; JSON parse; branding grep
+clean; `tests/smoke.mjs` ALL PASSED; reachability 0 broken imports; plus a
+functional mocked-chrome restore test asserting: temp key dropped, live
+numeric key re-tracked (`getQueueStatus` → `active === 1`), dead numeric key
+dropped, module evaluates clean after the hoist.
+
 ## Known issues / notes
 
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not
   confirmed from a live page (Angular shell has no SSR; verified the
   rule34video.com side live). Verify during browser testing.
-- The `Serp*` namespace identifiers are generator leftovers (cosmetic only).
-- Broad `https://*/*` host permission remains (needed for cross-origin media
-  downloads); consider narrowing in a future cleanup.
 - rule34.world file CDN (b-cdn.net) was **fully down** at review time; if it
   comes back the probe will start using it again automatically (flag
   preferred when both roots are healthy).
-- `chrome.action.onClicked` listener is dead code (popup is set) — harmless.
+- `modules/hls/hls.mjs` ships the full hls.js player (~400 KB) while only the
+  demux/remux exports are used — remux-only build tracked in WORKLIST.md.
 - Manual browser testing is still the largest open item (see WORKLIST.md).

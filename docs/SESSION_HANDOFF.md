@@ -7,6 +7,7 @@
 >
 > Written: 2026-08-29 (Asia/Jakarta) by the Arena.ai coding agent.
 > Updated: 2026-08-30 (session 3 — review + missing-logic fixes).
+> Updated: 2026-08-31 (session 6 — dead-code purge, extension 2.2 MB → 0.85 MB).
 
 ---
 
@@ -48,6 +49,52 @@ and fixed the biggest real-world bug found so far:
    the real `background-enhanced.js`), and wired **rule34video.com tag search**
    (`searchRule34VideoTag` scrapes `rule34video.com/search/<tag>/`) into the bulk-by-tag
    popup. Version bumped **4.3.0 → 4.4.0**.
+6. **Session 6 (2026-08-31) — dead-code purge + footprint reduction.** A
+   manifest entry-point reachability trace showed only 25 of ~124 repo files
+   are ever loaded, and the sole path into `modules/` is
+   `offscreen.js:544 → hls2mp4/simple-converter.mjs`. Deleted the orphaned
+   vendored clusters (`mediabunny/` 798 KB, `mp4box.mjs` 311 KB,
+   `reencoder/` 207 KB, `dash2mp4/`, `utils/*` except `EnvUtils.mjs`,
+   duplicate `eventemitter/`, `Localize.mjs`, `hls/Mp4Sample.mjs` — ≈1.36 MB),
+   repo-level dead files (`page source*` dumps, `legacy/site-adapter.js`,
+   `unified-app.config.json` dupe, `factory-candidate.config.json`),
+   and in-file dead code (`folderName`, `anchorForCard`, 4 unreachable bridge
+   handlers + 3 orphaned helpers; bridge freeze block 36 → 24 members).
+   `web_accessible_resources` narrowed from `<all_urls>` ×3 blocks to
+   site-matched `inject.js`+CSS only. Version bumped **4.4.0 → 4.4.1**.
+   Extension folder 2.2 MB → **0.85 MB**; whole repo 2.6 MB → **0.93 MB**.
+   `tests/smoke.mjs` + full `node --check` + reachability re-run all green.
+   Remaining optimization backlog lives in `WORKLIST.md` (remux-only
+   hls.js build — measured 67 KB achievable from upstream src vs the 407 KB
+   bundle, dual-payload progress consolidation, queue-restore
+   temp-key hardening, host-probe both-fail logging).
+7. **Session 6 amendment — scrapyard retention.** After a review pass, the
+   owner asked that retired-but-potentially-useful material be kept rather
+   than deleted (concern: dead code from the previous version may be useful
+   for future sites/formats). Everything from the purge except byte-identical
+   duplicates was restored from `f1c5dcc` into **`scrapyard/`** (repo root,
+   74 files, ~2.0 MB):
+   `scrapyard/site-adapter.js` (multi-hoster detector — hook points in
+   `background-enhanced.js` lines 9/1296/2229 remain), the DASH pipeline
+   (`modules/{mp4box.mjs,dash2mp4/,reencoder/,hls/Mp4Sample.mjs,Localize.mjs,utils/ except EnvUtils}`),
+   `mediabunny/` (MPL-2.0 TS mux/demux lib), and both page-source HTML dumps
+   (renamed under `scrapyard/page-source/`). Rules: nothing in `scrapyard/`
+   is imported, packaged, or scanned by CI (it lives outside the extension
+   working dir); revive by moving files back per the table in
+   `scrapyard/README.md`. Shipped extension folder remains **0.85 MB**.
+8. **Session 6 close-out — CI fixed + hardening pass (v4.4.2).** The owner
+   applied the `ci.yml` JSON-loop fix manually (commit `2ab56cf`); Actions run
+   `33371030852` = **success**. Three backlog items were then implemented:
+   queue-restore drops non-numeric temp keys (no more zombie concurrency
+   slots), the rule34.world host probe logs + re-probes after 60 s when both
+   roots fail, and the three offscreen sync-ack branches close the message
+   channel (`return false`); `batchPending` hoisted above the queue helpers
+   (fragility removal, was not a live bug). Still open in `WORKLIST.md`:
+   remux-only hls.js build and dual-payload progress consolidation — both
+   need a build step / browser testing, so they were deliberately NOT done
+   blind. (Session 6 also *measured* the hls.js item: 67.0 KB from upstream
+   `hls.js/src` with all 6 needed symbols vs 407 KB shipped — but re-bundling
+   the vendored minified file yields no win at 393 KB; details in WORKLIST.)
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -62,16 +109,17 @@ first** — do not trust the local checkout to be current.
 - Working copy: `/home/user/rule34video`
 - Extension dir: `/home/user/rule34video/rule34video downloader`  (note the space)
 - Docs dir: `/home/user/rule34video/docs`
-- Session branch (session 3): `arena/01a0507e-rule34video`
-- Base: `origin/main` @ `bb4ccca` (PR #2 merge), version `4.1.1` → bumped to **`4.2.0`**.
+- Session branch (session 6): `arena/01a056b7-rule34video` (branched from
+  `origin/main` @ `f1c5dcc`, version `4.4.0` → **`4.4.2`**).
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
   `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
-- The two `page source*.txt|html` files at the repo root are saved reference
-  HTML: `page source.txt` = rule34video.com **listing** page (cards, previews
-  only — no download links), `page source for rule34 world` = rule34.world
-  **Angular shell** (no SSR content). A live post page + API shapes were
-  verified directly in session 3.
+- The two saved reference HTML dumps now live at
+  `scrapyard/page-source/rule34video-listing.html` (rule34video.com **listing**
+  page: cards, previews only — no download links) and
+  `scrapyard/page-source/rule34world-shell.html` (rule34.world **Angular
+  shell**, no SSR content). Moved there in session 6. A live post page + API
+  shapes were verified directly in session 3.
 - Useful reference repo: `freeforall1932-design/gallery-dl` (user's fork) —
   `gallery_dl/extractor/rule34xyz.py` is the canonical rule34.world/.xyz
   extractor (format map, CDN flag logic, search/pagination API).
@@ -99,9 +147,9 @@ All third-party paywall/auth/trial machinery from the original generator
 ### 3.1 Extension surfaces (`manifest.json`)
 - **Service worker (module):** `background-enhanced.js` — imports
   `site-config.js`, `logger.js`, `background-bridge.js`. (The generic
-  multi-hoster `site-adapter.js` has been **moved out of the packaged extension**
-  to `legacy/site-adapter.js` (still in the repo for reference); the rule34
-  resolvers handle both target sites.) Holds
+  multi-hoster `site-adapter.js` was moved to `legacy/` in session 4 and to
+  **`scrapyard/site-adapter.js`** in session 6 — retained, never packaged;
+  the rule34 resolvers handle both target sites.) Holds
   the download queue, post resolvers, batch engine, the Smart Library path
   builder, the rule34.world tag/playlist search, and the central
   `chrome.runtime.onMessage` router.
@@ -121,8 +169,8 @@ All third-party paywall/auth/trial machinery from the original generator
 3. Popup asks the **background** for `getVideoFormats`. Background has a
    **fast-path resolver** (`resolveKnownPost`) that hits the rule34.world API
    or scrapes the rule34video.com post HTML — this is the reliable path for
-   these sites. It falls back to the generic `site-adapter.js` detector, then
-   observed webRequest media.
+   these sites. It falls back to observed-media and webRequest detection
+   (the generic `site-adapter.js` detector is retired to `scrapyard/`).
 4. User picks a quality → popup sends `downloadVideo` → background routes to
    chrome download / offscreen MP4 / HLS / tab-download / xiaoshenke resolver.
 5. All single downloads go through `queueDownloadRequest`, which honors the
@@ -194,10 +242,11 @@ All third-party paywall/auth/trial machinery from the original generator
   a whole rule34.world tag search or playlist via the cursor-paginated
   `/api/v2/post/search/root` (and `/v2/post/search/playlist/{id}`) API, reusing
   the existing batch engine. (rule34video.com tag search not yet wired — see §6.)
-- **Generic multi-hoster surface removed from the package (session 4):**
-  `site-adapter.js` moved to `legacy/` (repo-only, excluded from the extension);
-  its background fallback is inert; `host_permissions` narrowed to the two sites +
-  BunnyCDN + api.github.com.
+- **Generic multi-hoster surface removed (sessions 4 + 6):** `site-adapter.js`
+  moved to `legacy/` in session 4, then to `scrapyard/site-adapter.js` in
+  session 6 (retained for future site support; hook points at
+  `background-enhanced.js:9,1296,2229` remain); `host_permissions` narrowed to
+  the two sites + BunnyCDN + api.github.com.
 - **Licensing clarity (session 4):** top-level `LICENSE` (MIT) +
   `docs/THIRD_PARTY_LICENSES.md`.
 - **Privacy doc + CI (session 5):** `docs/privacy.md`; `.github/workflows/ci.yml`
@@ -344,7 +393,6 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `background-enhanced.js` | SW: queue, post resolvers, batch, message router, download routing |
 | `background-bridge.js` | SW helpers (offscreen doc, DNR rules, progress forwarders, response wrappers) |
 | `site-config.js` | SITE_NAME, folder, player-button selectors, context-menu patterns, update-check config, colors |
-| `site-adapter.js` | Generic multi-hoster media-detection hook module (many hosters); **moved out of the packaged extension** to `legacy/` (repo-only, for reference) (`Rule34SiteAdapter`) |
 | `content.js` | Generic content adapter; `getVideoInfo` extractor |
 | `content-bridge.js` | Content-side message bridge / progress UI glue (`Rule34ContentBridge`) |
 | `post-actions.js` | **Corner buttons + batch toolbar + toasts** (new in PR #1) |
@@ -356,9 +404,20 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `inject.js` | Page-context injected script |
 | `logger.js` | Logging + log mirroring to SW |
 | `styles/*` | popup / player-button / download-manager CSS |
-| `modules/**` | Vendored libs (hls2mp4, dash2mp4, mediabunny, mp4box, utils) |
-| `app.config.json` / `unified-app.config.json` / `factory-candidate.config.json` | Generator config artifacts (edit in step) |
+| `modules/hls/hls.mjs` | Vendored **hls.js** bundle (~400 KB, Apache-2.0) — only the demux/remux exports are used |
+| `modules/hls2mp4/*` | HLS → MP4 transmux pipeline (loaded by `offscreen.js` at runtime) |
+| `modules/FSBlob.mjs`, `modules/network/IndexedDBManager.mjs`, `modules/eventemitter.mjs`, `modules/utils/EnvUtils.mjs` | Vendored helpers used by the transmux pipeline |
+| `app.config.json` | Generator config artifact (provenance only; not loaded at runtime) |
 | `generate-icons.js` | Icon generator helper |
+
+> Session 6 moved the following out of the extension into **`scrapyard/`**
+> (repo root, retained on purpose — see `scrapyard/README.md` for the
+> inventory table + restore paths): `site-adapter.js`,
+> `modules/{mediabunny,reencoder,dash2mp4,utils(except EnvUtils),eventemitter/}`,
+> `mp4box.mjs`, `Localize.mjs`, `hls/Mp4Sample.mjs`, and the root
+> `page source*` dumps. `unified-app.config.json` + `factory-candidate.config.json`
+> were deleted outright (byte-identical dupe / broken provenance). None of it
+> is reachable from the manifest entry points.
 
 ---
 
@@ -370,13 +429,13 @@ cd "/home/user/rule34video/rule34video downloader"
 # JS syntax (content scripts are classic; background is a module)
 for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
          content.js content-bridge.js download-manager.js logger.js background-bridge.js \
-         inject.js site-adapter.js post-actions.js; do
+         inject.js post-actions.js; do
   node --check "$f" || echo "FAIL $f"
 done
 node --input-type=module --check < background-enhanced.js
 
 # JSON
-for j in manifest.json app.config.json unified-app.config.json factory-candidate.config.json; do
+for j in manifest.json app.config.json; do
   python3 -m json.tool "$j" >/dev/null || echo "FAIL $j"
 done
 

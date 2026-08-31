@@ -43,20 +43,6 @@
     }
   }
 
-  async function getActiveTabId() {
-    if (!root.chrome?.tabs?.query) return null;
-    try {
-      const tabs = await root.chrome.tabs.query({ active: true, currentWindow: true });
-      return tabs?.[0]?.id || null;
-    } catch {
-      return null;
-    }
-  }
-
-  async function resolveSenderOrActiveTabId(sender) {
-    return sender?.tab?.id || await getActiveTabId();
-  }
-
   function getBackgroundConfig() {
     return root.SiteConfig?.BACKGROUND || {};
   }
@@ -343,80 +329,6 @@
     }
   }
 
-  function handleActionClick(options = {}) {
-    const {
-      tab,
-      isAllowedTab,
-      messageAction = "getVideoInfo",
-      setCurrentDownloadTabId,
-      afterSetCurrentDownloadTabId,
-      lastErrorContext,
-      expectResponse = true,
-      openPopup = true,
-      notifyOnNoVideo = true,
-      notifyOnWrongSite = true,
-      notify,
-      noVideoTitle = "No Video Found",
-      noVideoMessage = "Could not find a video on this page.",
-      wrongSiteTitle = "Wrong Site",
-      wrongSiteMessage = `This extension only works on ${root.SiteConfig?.SITE_NAME || "this site"} pages.`,
-      logger,
-    } = options;
-
-    let allowed = true;
-    if (typeof isAllowedTab === "function") {
-      try {
-        allowed = Boolean(isAllowedTab(tab));
-      } catch (error) {
-        allowed = false;
-        try {
-          getLogger(logger).warn("Action click tab predicate failed:", error);
-        } catch {}
-      }
-    }
-
-    if (!allowed) {
-      if (notifyOnWrongSite) notifyUser(notify, wrongSiteTitle, wrongSiteMessage);
-      return false;
-    }
-
-    const tabId = tab?.id || null;
-    if (typeof setCurrentDownloadTabId === "function") setCurrentDownloadTabId(tabId);
-    if (typeof afterSetCurrentDownloadTabId === "function") {
-      try {
-        afterSetCurrentDownloadTabId(tabId);
-      } catch {}
-    }
-
-    try {
-      if (!expectResponse) {
-        root.chrome.tabs.sendMessage(tabId, { action: messageAction });
-        return true;
-      }
-
-      root.chrome.tabs.sendMessage(tabId, { action: messageAction }, (response) => {
-        const lastError = root.chrome?.runtime?.lastError;
-        if (lastError) {
-          try {
-            getLogger(logger).log(lastErrorContext || "Action click getVideoInfo failed:", lastError.message || lastError);
-          } catch {}
-          return;
-        }
-        if (response && response.success) {
-          if (openPopup && root.chrome?.action?.openPopup) root.chrome.action.openPopup();
-        } else if (notifyOnNoVideo) {
-          notifyUser(notify, noVideoTitle, noVideoMessage);
-        }
-      });
-      return true;
-    } catch (error) {
-      try {
-        getLogger(logger).warn("Action click handling failed:", error);
-      } catch {}
-      return false;
-    }
-  }
-
   function getOffscreenDocumentConfig() {
     return getBackgroundConfig().offscreenDocument || {};
   }
@@ -572,30 +484,6 @@
     safeSendResponse(sendResponse, { progress });
   }
 
-  function handleParseM3U8Message(options = {}) {
-    const {
-      request,
-      sendResponse,
-      parseM3U8,
-      urlField = "url",
-      envelope = false,
-    } = options;
-    return respondWithPromise(
-      sendResponse,
-      parseM3U8(request?.[urlField], request?.videoId),
-      (result) => envelope ? { success: true, ...result } : result,
-    );
-  }
-
-  function handleFetchM3U8PlaylistMessage(options = {}) {
-    const { request, sendResponse, fetchM3U8Playlist } = options;
-    return respondWithPromise(
-      sendResponse,
-      fetchM3U8Playlist(request?.m3u8Url, request?.videoId),
-      (result) => ({ success: true, ...result }),
-    );
-  }
-
   function handleForwardAck(options = {}) {
     const { request, sendResponse, forwarder } = options;
     try {
@@ -618,56 +506,6 @@
       else targetLogger.log(pre, src, ...payload);
     } catch {}
     safeSendResponse(sendResponse, { ok: true });
-  }
-
-  function getDownloadFolder(explicitFolder) {
-    return explicitFolder || root.SiteConfig?.OFFSCREEN?.downloadFolder || root.SiteConfig?.SITE_NAME || "Downloads";
-  }
-
-  async function handleDownloadBlobMessage(options = {}) {
-    const {
-      request,
-      sendResponse,
-      downloadProgress,
-      monitorDownload,
-      logger,
-      downloadFolder,
-    } = options;
-
-    try {
-      const folder = getDownloadFolder(downloadFolder);
-      const chromeDownloadId = await root.chrome.downloads.download({
-        url: request?.blobUrl,
-        filename: `${folder}/${request?.filename || "video.mp4"}`,
-        saveAs: false,
-      });
-
-      const originalProgress = downloadProgress?.get?.(request?.originalDownloadId);
-      if (originalProgress) {
-        downloadProgress.delete(request.originalDownloadId);
-        downloadProgress.set(chromeDownloadId, {
-          ...originalProgress,
-          chromeDownloadId,
-        });
-
-        if (typeof monitorDownload === "function") {
-          monitorDownload(chromeDownloadId, request?.filename);
-        }
-      }
-
-      safeSendResponse(sendResponse, {
-        success: true,
-        chromeDownloadId,
-      });
-    } catch (error) {
-      try {
-        getLogger(logger).error("Error downloading blob:", error);
-      } catch {}
-      safeSendResponse(sendResponse, {
-        success: false,
-        error: getErrorMessage(error),
-      });
-    }
   }
 
   function getSegmentProgress(message) {
@@ -1016,36 +854,26 @@
     }, logger);
   }
 
+  // Public API surface: only what consumers (background-enhanced.js,
+  // offscreen.js, content scripts, popup) actually call. Everything else in
+  // this file is an internal implementation detail.
   root.Rule34BackgroundBridge = Object.freeze({
     version: "1.0.0",
-    isNoReceiverError,
     fireAndForget,
-    sendMessageToTabSafely,
-    getActiveTabId,
-    resolveSenderOrActiveTabId,
-    getBackgroundConfig,
-    getContextMenuConfig,
     createConfiguredContextMenu,
-    isConfiguredContextMenuClick,
     handleConfiguredContextMenuClick,
     showNotification,
     sanitizeFilename,
     monitorDownloadCompletion,
     installTemporaryRefererRule,
     downloadMp4WithOffscreen,
-    handleActionClick,
     ensureOffscreenDocument,
     parseM3U8Attributes,
-    safeSendResponse,
-    respondWithPromise,
     handleDownloadVideoMessage,
     handleGetVideoFormatsMessage,
     handleGetDownloadProgressMessage,
-    handleParseM3U8Message,
-    handleFetchM3U8PlaylistMessage,
     handleForwardAck,
     handleLogMirror,
-    handleDownloadBlobMessage,
     forwardHLSProgress,
     forwardHLSComplete,
     forwardHLSError,

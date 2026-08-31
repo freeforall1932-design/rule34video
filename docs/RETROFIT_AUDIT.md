@@ -92,7 +92,8 @@ Web-Store-clean.
    site-adapter cleanup).
 
 **Status (session 4):** implemented as a *move* — `site-adapter.js` was moved out
-of the packaged extension to `legacy/` (still in the repo for reference). This is
+of the packaged extension to `legacy/` (since session 6 at
+`scrapyard/site-adapter.js`). This is
 strictly better than a keep-loaded gate because the bytes are no longer shipped.
 The `host_permissions` narrowing and webRequest scoping from points 2–3 are also
 done.
@@ -189,7 +190,8 @@ See `docs/SESSION_HANDOFF.md §8` for the full command set.
 ## Status (implemented this session, 2026-08-30)
 
 - **Moved the generic multi-hoster `site-adapter.js` out of the packaged
-  extension** to `legacy/` (kept in the repo for reference); background `import`
+  extension** to `legacy/` (since session 6: `scrapyard/site-adapter.js`);
+  background `import`
   already removed; generic fallback now inert; `host_permissions` narrowed (the
   `"https://*/*"` / `"http://*/*"` wildcards dropped; `rule34storage.b-cdn.net` +
   `api.github.com` added).
