@@ -79,20 +79,28 @@ Session 6 = dead-code purge + footprint reduction (extension 2.2 MB → 0.85 MB)
       search (`/api/v2/post/search/root`, `/v2/post/search/playlist/{id}`) wired
       to the batch engine via a new `bulkDownloadTag` popup control.
 - [x] **(Session 4)** Bump version to `4.3.0`; `docs/RETROFIT_AUDIT.md` written.
-- [x] **(Session 6) Orphaned vendored modules deleted** (verified unreachable by
-      entry-point reachability trace — the only path into `modules/` is
-      `offscreen.js → hls2mp4/simple-converter.mjs`):
+- [x] **(Session 6) Orphaned vendored modules removed from the extension**
+      (verified unreachable by entry-point reachability trace — the only path
+      into `modules/` is `offscreen.js → hls2mp4/simple-converter.mjs`):
       `modules/mediabunny/` (61 files, 798 KB), `modules/mp4box.mjs` (311 KB),
       `modules/reencoder/` (207 KB), `modules/dash2mp4/` (15 KB),
       `modules/utils/*` except `EnvUtils.mjs` (54 KB; several imported
       `../enums/`/`../ui/` paths that don't exist in this repo),
       duplicate `modules/eventemitter/` dir, `modules/Localize.mjs`,
       `modules/hls/Mp4Sample.mjs`.
-- [x] **(Session 6) Repo-level dead files deleted:** both `page source*` HTML
-      dumps (243 KB), `legacy/site-adapter.js` (156 KB; `legacy/` dir removed),
-      `unified-app.config.json` (byte-identical to `app.config.json`),
-      `factory-candidate.config.json` (provenance pointing at paths not in this
-      repo). `ci.yml` JSON loop updated to `manifest.json app.config.json`.
+      **Same-session amendment:** after review, the owner asked for retired
+      but potentially-useful code to be retained — all of the above except the
+      byte-identical `eventemitter/` duplicate now lives in `scrapyard/`
+      (repo-only, never packaged). See `scrapyard/README.md`.
+- [x] **(Session 6) Repo-level dead files removed:** both `page source*` HTML
+      dumps (243 KB → kept as `scrapyard/page-source/*` under descriptive
+      names), `legacy/site-adapter.js` (156 KB → `scrapyard/site-adapter.js`;
+      `legacy/` dir removed), `unified-app.config.json` (byte-identical to
+      `app.config.json` — deleted outright, no unique content),
+      `factory-candidate.config.json` (provenance pointing at paths not in
+      this repo — deleted outright). `ci.yml` JSON loop **must** be updated to
+      `manifest.json app.config.json` — see session 6 note in IMPROVEMENT_LOG
+      (the fix could not be pushed; owner applies it manually).
 - [x] **(Session 6) Dead code removed:** `folderName()` in
       `background-enhanced.js`, `anchorForCard()` in `post-actions.js`, and in
       `background-bridge.js` the unreachable handlers `handleActionClick`,

@@ -7,10 +7,11 @@ own licenses. No third-party **service / API / telemetry** dependency was found
 in the extension — all network calls target rule34.world, rule34video.com,
 their BunnyCDN file host, or `api.github.com` (update checker) only.
 
-> Session 6 (2026-08-31) removed the vendored code the extension never loaded
-> (`mediabunny/`, `mp4box.mjs`, `reencoder/`, `dash2mp4/`, orphaned `utils/`,
-> duplicate `eventemitter/`). Their license notes were dropped accordingly —
-> retrieve them from git history if ever reintroduced.
+> Session 6 removed the vendored code the extension never loaded from the
+> shipped package (`mediabunny/`, `mp4box.mjs`, `reencoder/`, `dash2mp4/`,
+> orphaned `utils/`, duplicate `eventemitter/`) and moved it to **`scrapyard/`**
+> (repo-only, never packaged) — the license files travel with the code there.
+> Only the live set listed below ships in the extension.
 
 ## hls.js (`modules/hls/hls.mjs`) — Apache-2.0 (upstream)
 

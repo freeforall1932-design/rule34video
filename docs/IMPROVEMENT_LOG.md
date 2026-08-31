@@ -270,7 +270,7 @@ only, all verified behavior-neutral.
 - Byte-identical duplicate `modules/eventemitter/eventemitter.mjs`,
   `modules/Localize.mjs`, `modules/hls/Mp4Sample.mjs`.
 
-### Removed — repo-level dead files (≈407 KB)
+### Removed — repo-level dead files (≈407 KB; page dumps + `legacy/` later retained in `scrapyard/`, see below)
 - Root `page source.txt` + `page source for rule34 world` (saved HTML dumps).
 - `legacy/site-adapter.js` (pre-rewrite multi-hoster adapter; `legacy/` removed).
 - `unified-app.config.json` (byte-identical dupe of `app.config.json`) and
@@ -282,10 +282,11 @@ only, all verified behavior-neutral.
 - `post-actions.js`: `anchorForCard()`.
 - `background-bridge.js`: unreachable handlers `handleActionClick`,
   `handleParseM3U8Message`, `handleFetchM3U8PlaylistMessage`,
-  `handleDownloadBlobMessage` (~140 lines) + helpers whose only callers were
-  the removed code (`getDownloadFolder`, `resolveSenderOrActiveTabId`,
-  `getActiveTabId`). Public freeze block trimmed **36 → 24 members** — every
-  exported bridge member is now actually called by a consumer.
+  `handleDownloadBlobMessage` (175 lines per `git diff --numstat`) + helpers
+  whose only callers were the removed code (`getDownloadFolder`,
+  `resolveSenderOrActiveTabId`, `getActiveTabId`). Public freeze block trimmed
+  **36 → 24 members** — every exported bridge member is now actually called
+  by a consumer.
 
 ### Hardening / manifest
 - `web_accessible_resources`: dropped the `offscreen.html/js` and
@@ -295,6 +296,23 @@ only, all verified behavior-neutral.
 - `docs/THIRD_PARTY_LICENSES.md` rewritten for the surviving vendored set;
   added the previously-missing hls.js (Apache-2.0) attribution.
 - Version bumped **4.4.0 → 4.4.1**.
+
+### Scrapyard retention (same session, post-review amendment)
+- Owner review asked for retired-but-potentially-useful material to be kept
+  (future sites / formats may need it) instead of deleted. All purged files
+  except byte-identical duplicates were restored from `f1c5dcc` into
+  **`scrapyard/`** (repo root; 74 files, ~2.0 MB; outside the extension
+  folder, so the shipped package stays 0.85 MB and CI's branding grep never
+  scans it).
+- Contents + per-file rationale + restore paths: `scrapyard/README.md`.
+  Highlights: `site-adapter.js` (multi-hoster detector; adapter hook points
+  at `background-enhanced.js:9,1296,2229` remain live), the DASH/WebM→MP4
+  pipeline (`mp4box.mjs` + `dash2mp4/` + `reencoder/` + `Mp4Sample.mjs`),
+  `mediabunny/` (MPL-2.0 TS mux/demux lib), orphaned `utils/`, and the two
+  page-source HTML dumps (renamed `scrapyard/page-source/*`).
+- Not restored (zero unique content): `unified-app.config.json` (byte-identical
+  to `app.config.json`, verified with `cmp`) and `modules/eventemitter/`
+  (byte-identical to the kept `modules/eventemitter.mjs`).
 
 ### Optimization backlog added to WORKLIST.md
 - Remux-only hls.js build (~300 KB more off; needs a minimal build step).
@@ -308,7 +326,17 @@ only, all verified behavior-neutral.
   `node tests/smoke.mjs` → **ALL SMOKE TESTS PASSED** (getVideoFormats + bulk
   enqueue against the real background module); post-edit reachability re-run →
   0 broken imports; extension dir **2.2 MB → 0.85 MB**, repo **2.6 MB → 0.93 MB**
-  (124 → 44 files).
+  (124 → 44 files). After the scrapyard amendment: extension folder diff vs
+  the purge commit is **empty** (byte-identical); scrapyard is additive-only.
+
+### CI note (open item for the owner)
+- The `ci.yml` JSON-validation loop still names the two deleted config files,
+  so the JSON step fails on the pushed branch until fixed. The fix (loop →
+  `manifest.json app.config.json`) could not be pushed because the Arena
+  GitHub App token lacks the `workflows` permission; the full corrected
+  `ci.yml` was handed to the owner in chat for a manual copy-paste apply.
+  `git reset --hard` removed the unpushable local commit so the branch equals
+  the remote exactly.
 
 ## Known issues / notes
 

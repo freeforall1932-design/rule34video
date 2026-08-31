@@ -67,6 +67,20 @@ and fixed the biggest real-world bug found so far:
    Remaining optimization backlog lives in `WORKLIST.md` (hls.js remux-only
    build ~300 KB, dual-payload progress consolidation, queue-restore
    temp-key hardening, host-probe both-fail logging).
+7. **Session 6 amendment — scrapyard retention.** After a review pass, the
+   owner asked that retired-but-potentially-useful material be kept rather
+   than deleted (concern: dead code from the previous version may be useful
+   for future sites/formats). Everything from the purge except byte-identical
+   duplicates was restored from `f1c5dcc` into **`scrapyard/`** (repo root,
+   74 files, ~2.0 MB):
+   `scrapyard/site-adapter.js` (multi-hoster detector — hook points in
+   `background-enhanced.js` lines 9/1296/2229 remain), the DASH pipeline
+   (`modules/{mp4box.mjs,dash2mp4/,reencoder/,hls/Mp4Sample.mjs,Localize.mjs,utils/ except EnvUtils}`),
+   `mediabunny/` (MPL-2.0 TS mux/demux lib), and both page-source HTML dumps
+   (renamed under `scrapyard/page-source/`). Rules: nothing in `scrapyard/`
+   is imported, packaged, or scanned by CI (it lives outside the extension
+   working dir); revive by moving files back per the table in
+   `scrapyard/README.md`. Shipped extension folder remains **0.85 MB**.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -86,9 +100,12 @@ first** — do not trust the local checkout to be current.
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
   `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
-- The two `page source*` HTML dumps that used to sit at the repo root were
-  **deleted in session 6** (dev-reference only; retrievable from git history).
-  A live post page + API shapes were verified directly in session 3.
+- The two saved reference HTML dumps now live at
+  `scrapyard/page-source/rule34video-listing.html` (rule34video.com **listing**
+  page: cards, previews only — no download links) and
+  `scrapyard/page-source/rule34world-shell.html` (rule34.world **Angular
+  shell**, no SSR content). Moved there in session 6. A live post page + API
+  shapes were verified directly in session 3.
 - Useful reference repo: `freeforall1932-design/gallery-dl` (user's fork) —
   `gallery_dl/extractor/rule34xyz.py` is the canonical rule34.world/.xyz
   extractor (format map, CDN flag logic, search/pagination API).
@@ -116,9 +133,9 @@ All third-party paywall/auth/trial machinery from the original generator
 ### 3.1 Extension surfaces (`manifest.json`)
 - **Service worker (module):** `background-enhanced.js` — imports
   `site-config.js`, `logger.js`, `background-bridge.js`. (The generic
-  multi-hoster `site-adapter.js` was moved to `legacy/` in session 4 and
-  **deleted from the repo entirely in session 6**; the rule34
-  resolvers handle both target sites.) Holds
+  multi-hoster `site-adapter.js` was moved to `legacy/` in session 4 and to
+  **`scrapyard/site-adapter.js`** in session 6 — retained, never packaged;
+  the rule34 resolvers handle both target sites.) Holds
   the download queue, post resolvers, batch engine, the Smart Library path
   builder, the rule34.world tag/playlist search, and the central
   `chrome.runtime.onMessage` router.
@@ -139,7 +156,7 @@ All third-party paywall/auth/trial machinery from the original generator
    **fast-path resolver** (`resolveKnownPost`) that hits the rule34.world API
    or scrapes the rule34video.com post HTML — this is the reliable path for
    these sites. It falls back to observed-media and webRequest detection
-   (the generic `site-adapter.js` detector was removed with session 6).
+   (the generic `site-adapter.js` detector is retired to `scrapyard/`).
 4. User picks a quality → popup sends `downloadVideo` → background routes to
    chrome download / offscreen MP4 / HLS / tab-download / xiaoshenke resolver.
 5. All single downloads go through `queueDownloadRequest`, which honors the
@@ -212,9 +229,10 @@ All third-party paywall/auth/trial machinery from the original generator
   `/api/v2/post/search/root` (and `/v2/post/search/playlist/{id}`) API, reusing
   the existing batch engine. (rule34video.com tag search not yet wired — see §6.)
 - **Generic multi-hoster surface removed (sessions 4 + 6):** `site-adapter.js`
-  moved to `legacy/` in session 4, then **deleted from the repo entirely in
-  session 6** (git history preserves it); `host_permissions` narrowed to the
-  two sites + BunnyCDN + api.github.com.
+  moved to `legacy/` in session 4, then to `scrapyard/site-adapter.js` in
+  session 6 (retained for future site support; hook points at
+  `background-enhanced.js:9,1296,2229` remain); `host_permissions` narrowed to
+  the two sites + BunnyCDN + api.github.com.
 - **Licensing clarity (session 4):** top-level `LICENSE` (MIT) +
   `docs/THIRD_PARTY_LICENSES.md`.
 - **Privacy doc + CI (session 5):** `docs/privacy.md`; `.github/workflows/ci.yml`
@@ -378,10 +396,14 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `app.config.json` | Generator config artifact (provenance only; not loaded at runtime) |
 | `generate-icons.js` | Icon generator helper |
 
-> Session 6 deleted: `site-adapter.js`, `modules/{mediabunny,reencoder,dash2mp4,utils(except EnvUtils),eventemitter/}`,
-> `mp4box.mjs`, `Localize.mjs`, `hls/Mp4Sample.mjs`, `unified-app.config.json`,
-> `factory-candidate.config.json`, root `page source*` dumps — all unreachable
-> from the manifest entry points (see `git log` for recovery).
+> Session 6 moved the following out of the extension into **`scrapyard/`**
+> (repo root, retained on purpose — see `scrapyard/README.md` for the
+> inventory table + restore paths): `site-adapter.js`,
+> `modules/{mediabunny,reencoder,dash2mp4,utils(except EnvUtils),eventemitter/}`,
+> `mp4box.mjs`, `Localize.mjs`, `hls/Mp4Sample.mjs`, and the root
+> `page source*` dumps. `unified-app.config.json` + `factory-candidate.config.json`
+> were deleted outright (byte-identical dupe / broken provenance). None of it
+> is reachable from the manifest entry points.
 
 ---
 
