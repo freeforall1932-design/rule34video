@@ -329,14 +329,51 @@ only, all verified behavior-neutral.
   (124 → 44 files). After the scrapyard amendment: extension folder diff vs
   the purge commit is **empty** (byte-identical); scrapyard is additive-only.
 
-### CI note (open item for the owner)
-- The `ci.yml` JSON-validation loop still names the two deleted config files,
-  so the JSON step fails on the pushed branch until fixed. The fix (loop →
-  `manifest.json app.config.json`) could not be pushed because the Arena
-  GitHub App token lacks the `workflows` permission; the full corrected
-  `ci.yml` was handed to the owner in chat for a manual copy-paste apply.
-  `git reset --hard` removed the unpushable local commit so the branch equals
-  the remote exactly.
+### CI fix applied by owner (2026-08-31, resolved)
+- The owner applied the `ci.yml` one-line fix manually as commit `2ab56cf`
+  ("Update CI workflow to check fewer JSON files", JSON loop →
+  `manifest.json app.config.json`). GitHub Actions run `33371030852` on that
+  commit completed **success** (validate + smoke, 16 s). The two earlier
+  failures (`8144074`, `73d55bf`) were the deleted-config names in the old
+  loop, as predicted. Remaining yml observations (non-blocking): `node-version:
+  "20"` deprecation annotation from `actions/checkout@v4`/`setup-node@v4`,
+  and `modules/**/*.mjs` files are not syntax-checked by CI (validated locally
+  only).
+
+### Session 6 hardening pass — post-CI-fix (2026-08-31, v4.4.2)
+
+Context: with CI green, the three cheap items from the WORKLIST backlog were
+implemented (the two expensive ones — remux-only hls.js build, dual-payload
+progress consolidation — stay on the backlog because they need a build step /
+browser testing):
+
+- **Queue-restore temp keys** (`background-enhanced.js` `restoreQueueState`):
+  non-numeric `activeQueueJobs` keys (`queue-job-N`, snapshotted while
+  `downloadVideo()` was still running) are no longer restored — after a worker
+  death no chrome download exists to track, so restoring only blocked a
+  concurrency slot for up to 3 h. Numeric keys keep the
+  `chrome.downloads.get` liveness check as before.
+- **Host-probe both-fail state** (`getWorldHostStatus`): logs
+  `"rule34.world host probe: BOTH file hosts unreachable"` when both roots
+  fail, and the both-fail cache re-probes after 60 s
+  (`WORLD_HOST_PROBE_FAIL_TTL_MS`) instead of holding for the full 10-min TTL
+  (healthy states keep the 10-min TTL).
+- **Offscreen ack channels** (`offscreen.js`): the three sync-ack branches
+  (`processHLS`, `PROCESS_HLS_SEGMENTS`, `PROCESS_MP4_DOWNLOAD`) now
+  `return false` — the ack is sent synchronously and consumed immediately by
+  the background, so holding the channel open with `return true` was
+  pointless (progress arrives via separate messages).
+- **`batchPending` hoist**: declaration moved next to the other queue state
+  since the queue helpers reference it. Was verified not a live bug (nothing
+  executed above the old line 715 during module evaluation); this removes the
+  ordering fragility.
+- Version bumped **4.4.1 → 4.4.2**.
+
+Validation: `node --check` all extension JS/MJS; JSON parse; branding grep
+clean; `tests/smoke.mjs` ALL PASSED; reachability 0 broken imports; plus a
+functional mocked-chrome restore test asserting: temp key dropped, live
+numeric key re-tracked (`getQueueStatus` → `active === 1`), dead numeric key
+dropped, module evaluates clean after the hoist.
 
 ## Known issues / notes
 

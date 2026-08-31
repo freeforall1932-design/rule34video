@@ -36,6 +36,10 @@ const completedBeforeTracked = new Set();
 const userCancelledDownloads = new Set(); // string downloadIds the user cancelled
 const retriedInterruptedDownloads = new Set(); // string downloadIds already retried on fallback
 const downloadRetryContext = new Map(); // string chrome downloadId -> { videoInfo, format }
+// Batch pipeline state (see the batch section below). Declared here, next to
+// the other queue state, because the queue helpers above (purge/persist/
+// restore) reference `batchPending`.
+const batchPending = [];
 let queueJobSequence = 0;
 let queuedIdSequence = 0;
 let queuePumpRunning = false;
@@ -164,17 +168,23 @@ async function restoreQueueState() {
       if (!item || !item.key) continue;
       if (now - (item.startedAt || 0) > QUEUE_JOB_MAX_AGE_MS) continue;
       const key = String(item.key);
-      if (/^\d+$/.test(key)) {
-        // Chrome-managed download: verify it is still alive before re-tracking.
-        let alive = false;
-        try {
-          const downloadItem = await chrome.downloads.get(Number(key));
-          alive = downloadItem?.state === "in_progress" || downloadItem?.state === "incomplete";
-        } catch {
-          alive = false;
-        }
-        if (!alive) continue;
+      if (!/^\d+$/.test(key)) {
+        // Temp key (`queue-job-N`): the worker died inside downloadVideo()
+        // before a chrome download existed, so there is nothing to track or
+        // complete. Restoring it would only block a concurrency slot for up
+        // to QUEUE_JOB_MAX_AGE_MS — drop it. Everything still WAITING lives
+        // in downloadQueue/batchPending and is re-pumped below.
+        continue;
       }
+      // Chrome-managed download: verify it is still alive before re-tracking.
+      let alive = false;
+      try {
+        const downloadItem = await chrome.downloads.get(Number(key));
+        alive = downloadItem?.state === "in_progress" || downloadItem?.state === "incomplete";
+      } catch {
+        alive = false;
+      }
+      if (!alive) continue;
       activeQueueJobs.set(key, { startedAt: item.startedAt || now, title: item.title || "", url: item.url || "" });
     }
   }
@@ -454,6 +464,9 @@ const WORLD_FORMATS = [
 // format URLs on the healthy root. Every format also carries a fallbackUrl
 // on the other root so a failed download can be retried there.
 const WORLD_HOST_PROBE_TTL_MS = 10 * 60 * 1000;
+// When BOTH roots fail the probe we treat it as a likely transient outage and
+// re-probe after 60s instead of pinning "both dead" for the full TTL.
+const WORLD_HOST_PROBE_FAIL_TTL_MS = 60 * 1000;
 let worldHostProbe = null; // { cdnOk, originOk, checkedAt }
 
 async function probeMediaUrl(url) {
@@ -478,11 +491,17 @@ async function probeMediaUrl(url) {
 }
 
 async function getWorldHostStatus(samplePath) {
-  if (worldHostProbe && Date.now() - worldHostProbe.checkedAt < WORLD_HOST_PROBE_TTL_MS) return worldHostProbe;
+  const ttl = worldHostProbe && !worldHostProbe.cdnOk && !worldHostProbe.originOk
+    ? WORLD_HOST_PROBE_FAIL_TTL_MS
+    : WORLD_HOST_PROBE_TTL_MS;
+  if (worldHostProbe && Date.now() - worldHostProbe.checkedAt < ttl) return worldHostProbe;
   const [cdnOk, originOk] = await Promise.all([
     probeMediaUrl(WORLD_CDN_ROOT + samplePath),
     probeMediaUrl(WORLD_ROOT + samplePath),
   ]);
+  if (!cdnOk && !originOk) {
+    logger.warn("rule34.world host probe: BOTH file hosts unreachable", { samplePath, cdnOk, originOk });
+  }
   worldHostProbe = { cdnOk, originOk, checkedAt: Date.now() };
   return worldHostProbe;
 }
@@ -712,7 +731,6 @@ async function searchRule34WorldPosts({ tags, playlistId, maxUrls = BATCH_MAX_UR
 const BATCH_MAX_URLS = 300;
 const BATCH_RESOLVE_CONCURRENCY = 5;
 let batchRunning = false;
-const batchPending = [];
 
 function sendBatchStatus(tabId, payload) {
   if (!tabId) return;

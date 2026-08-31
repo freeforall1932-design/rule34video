@@ -950,7 +950,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse?.({ success: true, message: "HLS processing started" });
     } catch {}
     void processHLSSegments(message);
-    return true;
+    // Ack already sent synchronously; close the channel.
+    return false;
   }
 
   if (messageType === "CANCEL_HLS_PROCESSING") {
@@ -966,7 +967,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse?.({ success: true, message: "MP4 download started" });
     } catch {}
     void processMP4Download(message);
-    return true;
+    // Ack already sent synchronously; close the channel.
+    return false;
   }
 
   if (messageType === "CANCEL_MP4_DOWNLOAD") {

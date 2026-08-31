@@ -81,6 +81,17 @@ and fixed the biggest real-world bug found so far:
    is imported, packaged, or scanned by CI (it lives outside the extension
    working dir); revive by moving files back per the table in
    `scrapyard/README.md`. Shipped extension folder remains **0.85 MB**.
+8. **Session 6 close-out — CI fixed + hardening pass (v4.4.2).** The owner
+   applied the `ci.yml` JSON-loop fix manually (commit `2ab56cf`); Actions run
+   `33371030852` = **success**. Three backlog items were then implemented:
+   queue-restore drops non-numeric temp keys (no more zombie concurrency
+   slots), the rule34.world host probe logs + re-probes after 60 s when both
+   roots fail, and the three offscreen sync-ack branches close the message
+   channel (`return false`); `batchPending` hoisted above the queue helpers
+   (fragility removal, was not a live bug). Still open in `WORKLIST.md`:
+   remux-only hls.js build (~300 KB) and dual-payload progress consolidation —
+   both need a build step / browser testing, so they were deliberately NOT
+   done blind.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -96,7 +107,7 @@ first** — do not trust the local checkout to be current.
 - Extension dir: `/home/user/rule34video/rule34video downloader`  (note the space)
 - Docs dir: `/home/user/rule34video/docs`
 - Session branch (session 6): `arena/01a056b7-rule34video` (branched from
-  `origin/main` @ `f1c5dcc`, version `4.4.0` → bumped to **`4.4.1`**).
+  `origin/main` @ `f1c5dcc`, version `4.4.0` → **`4.4.2`**).
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
   `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).

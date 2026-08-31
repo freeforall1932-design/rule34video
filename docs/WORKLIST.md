@@ -5,7 +5,8 @@ Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 Last updated: 2026-08-31 (session 6). PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
-Session 6 = dead-code purge + footprint reduction (extension 2.2 MB → 0.85 MB).
+Session 6 = dead-code purge + scrapyard retention + hardening pass
+(extension 2.2 MB → 0.85 MB; v4.4.2; ci.yml fixed by owner, CI green).
 
 ## Done
 
@@ -195,23 +196,22 @@ Session 6 = dead-code purge + footprint reduction (extension 2.2 MB → 0.85 MB)
       legacy message per progress tick; `content-bridge.js` still listens to
       both (`hlsProgress`/`mp4Progress`/…). Drop the legacy shape on both sides
       (coordinated change; needs browser test of progress toasts).
-- [ ] **(Session 6) Queue-restore hardening** — `restoreQueueState()` restores
-      non-numeric `activeQueueJobs` keys (`queue-job-N`, persisted before the
-      chrome download id exists) without a liveness check (numeric keys DO get
-      `chrome.downloads.get` verification). A SW death mid-job can zombie a
-      concurrency slot for up to 3h. Drop temp keys on restore, or re-attempt
-      the job.
-- [ ] **(Session 6) Host-probe both-fail state** — when both rule34.world roots
-      fail a probe, `getWorldHostStatus()` caches `{cdnOk:false,originOk:false}`
-      for the full 10-min TTL with no log line. Log a warning; optionally use a
-      shorter TTL (e.g. 60 s) for the double-failure state so transient
-      outages self-heal faster.
-- [ ] **(Session 6) Minor nits:** offscreen.js message handlers `return true`
-      after already responding synchronously (harmless; `false` would be
-      cleaner); optionally hoist the `const batchPending = []` declaration in
-      `background-enhanced.js` above the queue helpers (verified NOT a bug —
-      nothing calls those helpers before evaluation reaches line ~715, but the
-      ordering is fragile).
+- [x] **(Session 6 hardening pass, 4.4.2) Queue-restore temp keys** —
+      `restoreQueueState()` now drops non-numeric `activeQueueJobs` keys
+      (`queue-job-N` persisted before the chrome download id existed) instead
+      of zombie-blocking a concurrency slot for up to 3 h. Verified with a
+      mocked-chrome harness: temp key dropped, live numeric key re-tracked,
+      dead numeric key dropped.
+- [x] **(Session 6 hardening pass, 4.4.2) Host-probe both-fail state** —
+      `getWorldHostStatus()` now logs a warning when both rule34.world roots
+      fail, and the both-fail state re-probes after 60 s
+      (`WORLD_HOST_PROBE_FAIL_TTL_MS`) instead of pinning for the full 10 min.
+- [x] **(Session 6 hardening pass, 4.4.2) Minor nits** — offscreen sync-ack
+      branches (`processHLS`, `PROCESS_HLS_SEGMENTS`, `PROCESS_MP4_DOWNLOAD`)
+      now `return false` after the synchronous ack instead of holding the
+      channel open with `return true`; `const batchPending = []` hoisted above
+      the queue helpers it references (was verified not a bug — this removes
+      the fragility).
 - [ ] Optional: batch pagination / auto-scroll for rule34.world. Session 3
       confirmed the exact API from gallery-dl's extractor: `POST
       {root}/api/v2/post/search/root` with JSON

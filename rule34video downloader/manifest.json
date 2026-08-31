@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Downloader for Rule 34",
   "description": "Fast, private, one-click video downloads from Rule 34.",
-  "version": "4.4.1",
+  "version": "4.4.2",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
