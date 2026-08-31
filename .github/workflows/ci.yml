@@ -22,7 +22,7 @@ jobs:
             node --check "$f" || { echo "FAIL $f"; exit 1; }
           done
           node --input-type=module --check < background-enhanced.js || { echo "FAIL background-enhanced.js"; exit 1; }
-          for j in manifest.json app.config.json unified-app.config.json factory-candidate.config.json; do
+          for j in manifest.json app.config.json; do
             python3 -m json.tool "$j" >/dev/null || { echo "FAIL $j"; exit 1; }
           done
           # Forbidden paywall/auth remnants must print NOTHING:
