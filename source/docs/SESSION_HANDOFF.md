@@ -9,6 +9,7 @@
 > Updated: 2026-08-30 (session 3 — review + missing-logic fixes).
 > Updated: 2026-08-31 (session 6 — dead-code purge, extension 2.2 MB → 0.85 MB).
 > Updated: 2026-08-31 (session 7 — top-level restructure: `extension/` + `source/`).
+> Updated: 2026-09-01 (session 8 — source-separated, tag-named output folders, v5.0.0).
 
 ---
 
@@ -138,6 +139,46 @@ and fixed the biggest real-world bug found so far:
     extension files. CI/smoke paths updated (`extension`, `source/tests/`,
     `source/tools/`); `source/README.md` documents the layout.
 
+12. **Session 8 (2026-09-01) — source-separated, tag-named output folders
+    (v5.0.0).** Ported the output-organization mechanics from the sister
+    project `nh-dw-2.0` (PR #30 / `9f86426`): every download now lands in
+    `Downloads/<Root>/<Site>/<Collection>/<file>`.
+    - **Master folder** `masterFolder` (chrome.storage.sync, default `R34V`;
+      **empty string = off** → the flat pre-feature layout; slashes nest).
+    - **Site level is automatic** (hostname → slug map in the new
+      `extension/folder-naming.js`): `rule34video`, `rule34world`, unknown hosts
+      get their own folder. The two sites can never share one.
+    - **Collection folder** from a template string
+      (`{artist} - {title} - {id}`) filled three ways — manual field, per-token
+      + per-tag checkboxes, or the search/tag-results query — with a live
+      preview; priority manual → template → search → post id → `untagged`;
+      artist-folder mode; Windows reserved names prefixed; 120-char segment
+      and 240-char total caps.
+    - **Videos** save straight into the collection folder with the source
+      container's extension; duplicates are never overwritten by default
+      (`uniquify`, switchable), and same-name folders merge by design.
+    - **Picture sets**: loose numbered originals (`001.jpg…`) or one
+      ZIP/CBZ/PDF per post, assembled in the offscreen document by the new
+      dependency-free `modules/archive/zipBuilder.mjs` and the ported
+      `modules/archive/pdfBuilder.mjs`, then relayed to the service worker for
+      saving (an offscreen document only has `chrome.runtime`).
+    - **Two real bugs found and fixed:** offscreen-downloaded videos (the main
+      rule34video.com path) were saved **flat in the download root** because
+      `chrome.downloads` does not exist in an offscreen document; and
+      `scopedFileName()` double-foldered them under `Rule 34/`.
+    - **Tests:** `node --test` fixture suites (naming 31 / ZIP 10 / PDF 12) +
+      a 50-check window-less VM e2e that drives the real service worker and
+      offscreen document; all offline, all green. Full write-up in
+      `source/docs/IMPROVEMENT_LOG.md` (session 8).
+    - ⚠️ **CI needs an owner-applied update** (same as sessions 6/7: the arena
+      bot token lacks the `workflows` permission, so the push of
+      `.github/workflows/ci.yml` is rejected by GitHub). The complete new file
+      is committed at **`source/docs/ci-workflow.pending.yml`** — copy it over
+      `.github/workflows/ci.yml` in the web UI (three jobs: validate,
+      fixtures, vm-suites). Until then CI runs the old two-step workflow,
+      which still passes: the shipped code changed, but every path it checks
+      (`node --check` list, JSON, branding grep, `smoke.mjs`) is green.
+
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
 **New sessions must always `git fetch origin` and work from `origin/main`
@@ -151,8 +192,8 @@ first** — do not trust the local checkout to be current.
 - Working copy: `/home/user/rule34video`
 - Extension dir: `/home/user/rule34video/extension`  
 - Docs dir: `/home/user/rule34video/source/docs`
-- Session branch (session 6): `arena/01a056b7-rule34video` (branched from
-  `origin/main` @ `f1c5dcc`, version `4.4.0` → **`4.4.2`**).
+- Session branch (session 8): `arena/01a05d53-rule34video` (branched from
+  `origin/main` @ `c3bb9bd`, version `4.4.2` → **`5.0.0`**).
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
   `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
@@ -192,9 +233,12 @@ All third-party paywall/auth/trial machinery from the original generator
   multi-hoster `site-adapter.js` was moved to `legacy/` in session 4 and to
   **`source/retired/site-adapter.js`** in session 6 — retained, never packaged;
   the rule34 resolvers handle both target sites.) Holds
-  the download queue, post resolvers, batch engine, the Smart Library path
-  builder, the rule34.world tag/playlist search, and the central
-  `chrome.runtime.onMessage` router.
+  the download queue, post resolvers, batch engine, the **output-path builder**
+  (master folder + automatic site slug + collection folder, session 8), the
+  filename-authority guard, the picture-set relay, the rule34.world
+  tag/playlist search, and the central `chrome.runtime.onMessage` router. It
+  also imports `folder-naming.js` (session 8), the pure naming engine shared
+  with the popup.
 - **Content scripts** (run `document_idle` on both sites), in order:
   `site-config.js → logger.js → download-manager.js → content-bridge.js →
   content.js → player-button.js → post-actions.js`.
@@ -276,10 +320,26 @@ All third-party paywall/auth/trial machinery from the original generator
   the two rule34 sites but harmless.
 - Offscreen HLS transmux + MP4 fetch (`offscreen.js` + `modules/`), progress
   manager, context menu, notifications.
-- **Smart Library download-path template (session 4):** configurable
-  `{site}/{artist}/{title}` folder layout (popup control + presets), stored in
-  `downloadPathTemplate`; each token sanitized, empty segments collapse. The
-  rule34.world resolver supplies the artist tag (returned as `artist`).
+- **Output organization (session 8, replaces the session-4 "Smart Library"
+  free-form path template):** every download lands in
+  `Downloads/<Root>/<Site>/<Collection>/<file>`, built by
+  `extension/folder-naming.js` + `resolveOutputTarget()` in
+  `background-enhanced.js`.
+  - Settings (chrome.storage.sync): `masterFolder` (default `R34V`, **empty =
+    off**), `collectionTemplate` (default `{artist} - {title} - {id}`),
+    `artistFolderMode`, `pictureSaveMode` (`loose`|`zip`|`cbz`|`pdf`),
+    `duplicateBehaviour` (`uniquify`|`overwrite`).
+  - Per-post choice (manual name + checked tags) travels with the request as
+    `videoInfo.__output` and is remembered per post URL in chrome.storage.local
+    (`r34.outputChoice.v1`, 100-entry cap) so the corner button matches.
+  - New messages: `SAVE_BLOB_ARTIFACT` (offscreen → worker blob relay),
+    `PROCESS_IMAGE_SET` / `CANCEL_IMAGE_SET` (worker → offscreen),
+    `IMAGE_SET_PROGRESS|COMPLETE|ERROR`, `getOutputSettings`.
+  - The old `downloadPathTemplate` key is no longer read (left in storage
+    untouched); `SiteConfig.OFFSCREEN.downloadFolder` is no longer used to
+    scope offscreen saves — the worker supplies the complete relative path.
+  - New naming metadata from the resolvers: `apiTags`, `apiUploader`,
+    `apiDate`, `apiKind` (and `tags` in `getVideoInfo` from `content.js`).
 - **Bulk download by tag / playlist (session 4):** popup "Download tag" enqueues
   a whole rule34.world tag search or playlist via the cursor-paginated
   `/api/v2/post/search/root` (and `/v2/post/search/playlist/{id}`) API, reusing
@@ -435,12 +495,15 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | `background-enhanced.js` | SW: queue, post resolvers, batch, message router, download routing |
 | `background-bridge.js` | SW helpers (offscreen doc, DNR rules, progress forwarders, response wrappers) |
 | `site-config.js` | SITE_NAME, folder, player-button selectors, context-menu patterns, update-check config, colors |
+| `folder-naming.js` | **Pure output-path engine** (session 8): master folder, hostname→site slug map, path sanitizer, collection-template engine. Classic script for the popup + ESM import for the worker (`globalThis.R34FolderNaming`) |
 | `content.js` | Generic content adapter; `getVideoInfo` extractor |
 | `content-bridge.js` | Content-side message bridge / progress UI glue (`Rule34ContentBridge`) |
 | `post-actions.js` | **Corner buttons + batch toolbar + toasts** (new in PR #1) |
 | `player-button.js` | In-page player download button (single-video) |
 | `popup.html` / `popup.js` | Toolbar popup UI; concurrency controls; download trigger |
-| `offscreen.html` / `offscreen.js` | Offscreen doc: HLS transmux / MP4 fetch |
+| `offscreen.html` / `offscreen.js` | Offscreen doc: HLS transmux / MP4 fetch / **picture-set archive assembly** (session 8); relays finished blobs to the worker for saving |
+| `modules/archive/zipBuilder.mjs` | **Dependency-free ZIP/CBZ writer** (session 8): CRC-32, central directory, raw deflate via `CompressionStream` with STORE fallback |
+| `modules/archive/pdfBuilder.mjs` | **Dependency-free PDF 1.4 writer** ported from the sister project (session 8): JPEGs embedded verbatim from SOF dims, exact xref; `OffscreenCanvas` re-encode for PNG/WebP |
 | `download-manager.js` | In-page download progress UI |
 | `update-notifier.js` | GitHub release update check |
 | `inject.js` | Page-context injected script |
@@ -483,13 +546,14 @@ cd "/home/user/rule34video/extension"
 # JS syntax (content scripts are classic; background is a module)
 for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
          content.js content-bridge.js download-manager.js logger.js background-bridge.js \
-         inject.js post-actions.js ../source/tools/generate-icons.js; do
+         folder-naming.js inject.js post-actions.js ../source/tools/generate-icons.js; do
   node --check "$f" || echo "FAIL $f"
 done
+for m in modules/*.mjs modules/*/*.mjs; do node --check "$m" || echo "FAIL $m"; done
 node --input-type=module --check < background-enhanced.js
 
 # JSON
-for j in manifest.json ../source/tools/app.config.json; do
+for j in manifest.json ../source/tools/app.config.json ../package.json; do
   python3 -m json.tool "$j" >/dev/null || echo "FAIL $j"
 done
 
@@ -499,11 +563,19 @@ grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivated
   | grep -viE 'SerpBackground|SerpContent|SerpSite|SerpBridge|SerpUnifiedPopup'
 ```
 
-Smoke test from the repo root:
+Offline test suites from the repo root (session 8; no browser, no network):
 
 ```bash
-node source/tests/smoke.mjs
+node --test "source/tests/*.test.mjs"       # fixtures: naming (31) + ZIP (10) + PDF (12)
+node source/tests/smoke.mjs                   # mocked chrome + fetch, real service worker
+node source/tests/e2e-download-paths.mjs      # 50 checks: real worker + real offscreen doc
+# or, all three:  npm test
 ```
+
+`e2e-download-paths.mjs` is the one to re-run after touching the output-path
+code: it asserts the exact relative path handed to `chrome.downloads.download`
+for both sites, the naming priority chain, the master-folder-off layout, the
+filename guard, and the archives the offscreen document actually builds.
 
 Session 3 additionally ran a **functional harness** (`/tmp/queue-test/harness.mjs`
 in that sandbox — scratch, not committed): it loads the real

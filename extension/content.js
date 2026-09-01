@@ -185,6 +185,24 @@
     return "";
   }
 
+  // The page's own tag list (the "popular tags" block on rule34video post
+  // pages, tag chips on rule34.world). The popup renders one checkbox per tag
+  // so the user can name the download folder after them.
+  function extractPageTags() {
+    const tags = [];
+    try {
+      const nodes = document.querySelectorAll(
+        'a[href*="/tags/"], a[href*="/tag/"], .tag a, .tags a, [class*="tag"] a',
+      );
+      nodes.forEach((node) => {
+        const value = (node.textContent || "").replace(/\s+/g, " ").trim();
+        if (!value || value.length > 80) return;
+        if (!tags.some((tag) => tag.toLowerCase() === value.toLowerCase())) tags.push(value);
+      });
+    } catch {}
+    return tags.slice(0, 60);
+  }
+
   function defaultExtractVideoInfo() {
     const formats = collectCandidates();
     const selected = formats.find((format) => format.format_type === "mp4") || formats[0] || null;
@@ -196,6 +214,7 @@
       thumbnail: extractThumbnail(),
       url: location.href,
       webpage_url: location.href,
+      tags: extractPageTags(),
       video_url: selected && selected.url,
       formats,
       method: "generated-direct-video-stub",

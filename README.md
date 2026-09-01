@@ -4,16 +4,42 @@ MV3 Chrome extension that downloads videos (and images) from
 [rule34video.com](https://rule34video.com) and [rule34.world](https://rule34.world):
 per-post download buttons, a popup with quality selection, batch ("download
 visible" / by tag / by playlist), a concurrency-limited download queue that
-survives service-worker restarts, and HLS→MP4 remuxing in an offscreen
-document. Free, no telemetry, no accounts — see `source/docs/privacy.md`.
+survives service-worker restarts, HLS→MP4 remuxing in an offscreen document,
+and downloads organized into per-site, tag-named folders. Free, no telemetry,
+no accounts — see `source/docs/privacy.md`.
+
+## Where files are saved
+
+```
+Downloads/
+  R34V/                          <- master folder (rename it, or clear it to turn off)
+    rule34video/                 <- which site the post came from (automatic)
+      AnArtist - Some title - 4573905/     <- folder name: your tags / template / manual name
+        Some title - 4573905.mp4
+    rule34world/
+      WorldArtist - post 3571567/
+        001.jpg                  <- picture post, loose mode (or one .zip/.cbz/.pdf)
+```
+
+- The **site level is automatic** — it comes from the site that served the post,
+  so the two sites never end up in the same folder.
+- The **folder name** comes from a template (`{artist} - {title} - {id}` by
+  default, one checkbox per token), from the tags you tick in the popup, from a
+  name you type yourself (highest priority), or from the search you started
+  from. Whatever wins is sanitized; nothing can escape the download folder and
+  files are never overwritten unless you ask for it.
+- Everything happens inside your **fixed download location, with no prompts**
+  (turn off Chrome's "Ask where to save each file" for the folders to appear).
 
 ## Repository layout
 
 | Path | What |
 |---|---|
 | `extension/` | The shipped extension (load this folder unpacked). Runtime-only. |
+| `extension/folder-naming.js` | The output-path engine: master folder, site slug map, path sanitizer, folder-name template |
+| `extension/modules/archive/` | Dependency-free ZIP/CBZ writer and PDF writer for picture sets |
 | `source/` | All development-use code: `retired/` (retired extension code), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
-| `.github/workflows/ci.yml` | Syntax + JSON + branding checks + the smoke test, on every push/PR |
+| `.github/workflows/ci.yml` | Syntax + JSON + branding checks + the smoke test, on every push/PR. **Needs an owner-applied update** (the agent token has no `workflows` scope) to also run the new fixture + e2e suites — the full file is at `source/docs/ci-workflow.pending.yml`. |
 
 ## Development
 
@@ -21,8 +47,11 @@ document. Free, no telemetry, no accounts — see `source/docs/privacy.md`.
 # 1. Load the extension
 #    chrome://extensions → Developer mode → Load unpacked → "extension"
 
-# 2. Run the smoke test (from the repo root)
-node source/tests/smoke.mjs
+# 2. Run the offline test suites (from the repo root — no browser, no network)
+node --test "source/tests/*.test.mjs"      # fixtures: folder naming, ZIP, PDF
+node source/tests/smoke.mjs                # real service worker under mocked chrome
+node source/tests/e2e-download-paths.mjs   # real worker + offscreen doc: the saved paths
+npm test                                   # all three
 
 # 3. Syntax-check everything (background is an ES module, the rest are classic)
 cd extension
@@ -32,11 +61,18 @@ for f in *.js modules/*.mjs modules/*/*.mjs; do node --check "$f"; done
 Workflow: develop in `source/`, ship the result into `extension/`, debug
 against live-test findings by reading the extension files. CI runs steps 2–3
 (plus JSON + branding greps) automatically. The full manual browser test
-matrix lives in `source/docs/WORKLIST.md`.
+matrix lives in `source/docs/WORKLIST.md` — real-browser checks (does the
+folder appear, does the PDF open) cannot run on GitHub-hosted runners and stay
+manual by design.
 
 ## Current state
 
-- Version **4.4.2** (see `source/docs/IMPROVEMENT_LOG.md` for the full history).
+- Version **5.0.0** (see `source/docs/IMPROVEMENT_LOG.md` for the full history).
+- Session 8 added the source-separated, tag-named output folders above
+  (ported from the sister project `nh-dw-2.0`) and fixed two real save-path
+  bugs found while wiring them: offscreen-downloaded videos were landing flat
+  in the download root, and offscreen saves were double-foldered under
+  `Rule 34/`.
 - Session 6 removed ~1.35 MB of unreachable vendored code from the package
   (retained under `source/`) and trimmed dead handlers; shipped folder ≈ 0.85 MB.
 - Known-open work is tracked in `source/docs/WORKLIST.md`; the largest items are a

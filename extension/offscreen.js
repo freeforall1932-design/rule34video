@@ -174,10 +174,33 @@ function normalizeFileName(fileName, fallback = "video.mp4") {
   return /\.mp4$/i.test(raw) ? raw : `${raw}.mp4`;
 }
 
-function scopedFileName(fileName) {
-  const cleanName = normalizeFileName(fileName);
-  const folder = String(config.downloadFolder || "").replace(/^\/+|\/+$/g, "");
-  return folder ? `${folder}/${cleanName}` : cleanName;
+// The service worker now supplies the COMPLETE relative subpath for every
+// artifact (<Root>/<Site>/<Collection>/<file>), so the offscreen document must
+// not add a folder of its own. Leading slashes would make the path absolute,
+// which chrome.downloads rejects, so they are stripped here.
+function relativeArtifactName(fileName, fallback = "video.mp4") {
+  const raw = String(fileName || fallback).trim() || fallback;
+  return raw.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+}
+
+// An offscreen document only has chrome.runtime (no downloads/storage/
+// scripting), so finished artifacts are handed to the service worker, which
+// owns chrome.downloads.download and can therefore create the folders.
+function saveArtifactViaWorker({ blobUrl, filename, conflictAction }) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(
+        { type: "SAVE_BLOB_ARTIFACT", blobUrl, filename, conflictAction: conflictAction === "overwrite" ? "overwrite" : "uniquify" },
+        (response) => {
+          const lastError = chrome.runtime?.lastError;
+          if (lastError) resolve({ success: false, error: lastError.message });
+          else resolve(response || { success: false, error: "No response from the service worker." });
+        },
+      );
+    } catch (error) {
+      resolve({ success: false, error: error?.message || String(error) });
+    }
+  });
 }
 
 function safeSendMessage(payload) {
@@ -599,27 +622,6 @@ async function transmuxSegments({ segmentPayloads, segments, request, downloadId
   }
 }
 
-function chromeDownload(options) {
-  return new Promise((resolve, reject) => {
-    try {
-      if (!chrome?.downloads || typeof chrome.downloads.download !== "function") {
-        reject(new Error("chrome.downloads.download is unavailable"));
-        return;
-      }
-      const maybePromise = chrome.downloads.download(options, (downloadId) => {
-        const lastError = chrome.runtime?.lastError;
-        if (lastError) reject(new Error(lastError.message));
-        else resolve(downloadId);
-      });
-      if (maybePromise && typeof maybePromise.then === "function") {
-        maybePromise.then(resolve, reject);
-      }
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
 function anchorDownload(blobUrl, fileName) {
   const anchor = document.createElement("a");
   anchor.href = blobUrl;
@@ -630,7 +632,7 @@ function anchorDownload(blobUrl, fileName) {
   document.body.removeChild(anchor);
 }
 
-async function completeBlob({ kind, downloadId, fileName, blob, completion }) {
+async function completeBlob({ kind, downloadId, fileName, blob, completion, conflictAction }) {
   const finalFileName = normalizeFileName(fileName);
   const blobUrl = URL.createObjectURL(blob);
   const type = kind === "hls" ? "HLS_PROCESSING_COMPLETE" : "MP4_DOWNLOAD_COMPLETE";
@@ -638,17 +640,19 @@ async function completeBlob({ kind, downloadId, fileName, blob, completion }) {
   let chromeDownloadId = null;
 
   if (!isBackgroundOwned) {
-    try {
-      chromeDownloadId = await chromeDownload({
-        url: blobUrl,
-        filename: scopedFileName(finalFileName),
-        saveAs: false,
-      });
-      logger.log(`Chrome download started for ${finalFileName}`, chromeDownloadId);
-    } catch (downloadError) {
-      logger.warn("chrome.downloads.download failed, falling back to anchor", downloadError);
+    // chrome.downloads is not exposed here, so the service worker starts the
+    // download (keeping the requested folder path). The in-document anchor is
+    // the last resort: it always works, but its `download` attribute is a file
+    // NAME, so the artifact lands in the download root instead of the folder.
+    const artifactName = relativeArtifactName(finalFileName);
+    const saved = await saveArtifactViaWorker({ blobUrl, filename: artifactName, conflictAction });
+    if (saved?.success) {
+      chromeDownloadId = saved.downloadId ?? null;
+      logger.log(`Artifact handed to the download manager: ${artifactName}`, chromeDownloadId);
+    } else {
+      logger.warn("Service-worker save failed, falling back to the in-document anchor", saved?.error);
       try {
-        anchorDownload(blobUrl, finalFileName);
+        anchorDownload(blobUrl, artifactName.split("/").pop() || artifactName);
       } catch (anchorError) {
         logger.error("Anchor download fallback failed", anchorError);
         throw anchorError;
@@ -782,6 +786,7 @@ async function processHLSSegments(request) {
       fileName,
       blob: outputBlob,
       completion: config.hls.completion,
+      conflictAction: request?.conflictAction,
     });
     logger.log(`HLS processing complete for ${fileName}`);
   } catch (error) {
@@ -802,6 +807,170 @@ async function processHLSSegments(request) {
     } catch {}
     hlsActiveConverters.delete(downloadId);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Picture sets: assemble a multi-image post into one file (ZIP / CBZ / PDF).
+//
+// This runs here, not in the service worker, on purpose: building an archive
+// needs a Blob, and a PDF needs an image canvas for the non-JPEG pages
+// (createImageBitmap + OffscreenCanvas) — neither exists in a worker. Saving
+// still goes through the service worker, because an offscreen document only
+// has chrome.runtime.
+// ---------------------------------------------------------------------------
+const imageSetsActive = new Map();
+const imageSetsCancelled = new Set();
+let archiveModules = null;
+
+async function loadArchiveModules() {
+  if (archiveModules) return archiveModules;
+  const [zip, pdf] = await Promise.all([
+    import(chrome.runtime.getURL("modules/archive/zipBuilder.mjs")),
+    import(chrome.runtime.getURL("modules/archive/pdfBuilder.mjs")),
+  ]);
+  archiveModules = { zip, pdf };
+  return archiveModules;
+}
+
+function imageContentType(ext) {
+  const type = String(ext || "").toLowerCase();
+  if (type === "png") return "image/png";
+  if (type === "webp") return "image/webp";
+  if (type === "gif") return "image/gif";
+  if (type === "avif") return "image/avif";
+  return "image/jpeg";
+}
+
+async function fetchImageBytes(image, { referer, signal }) {
+  const candidates = [image?.url, image?.fallbackUrl].filter(Boolean);
+  if (!candidates.length) throw new Error("Image entry has no URL.");
+  let lastError = "no candidates";
+  for (const url of candidates) {
+    try {
+      const response = await withTemporaryRefererRule(
+        url,
+        referer,
+        () => fetch(url, buildFetchOptions({ signal, referer, kind: "image" })),
+      );
+      if (!response.ok) {
+        lastError = `HTTP ${response.status}: ${response.statusText}`;
+        continue;
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!bytes.length) {
+        lastError = "empty response";
+        continue;
+      }
+      return { bytes, contentType: response.headers.get("content-type") || imageContentType(image.ext) };
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      lastError = error?.message || String(error);
+    }
+  }
+  throw new Error(`Failed to fetch ${candidates[0]} (${lastError}).`);
+}
+
+function pad3(value) {
+  return String(Number(value) || 0).padStart(3, "0");
+}
+
+async function processImageSet(request) {
+  const downloadId = String(request?.downloadId || `imageset-${Date.now()}`);
+  const fileName = relativeArtifactName(request?.fileName || request?.filename, "image-set.zip");
+  const format = ["zip", "cbz", "pdf"].includes(request?.format) ? request.format : "zip";
+  const images = Array.isArray(request?.images) ? request.images.filter((item) => item && item.url) : [];
+  const referer = getRequestReferer(request, null);
+
+  if (!images.length) {
+    safeSendMessage({ type: "IMAGE_SET_ERROR", downloadId, fileName, error: "No images were provided." });
+    return;
+  }
+
+  const controller = new AbortController();
+  imageSetsActive.set(downloadId, { controller });
+  try {
+    const modules = await loadArchiveModules();
+    const collected = [];
+    for (let index = 0; index < images.length; index += 1) {
+      if (controller.signal.aborted) throw new Error("Download cancelled by user");
+      const image = images[index];
+      const loaded = await fetchImageBytes(image, { referer, signal: controller.signal });
+      collected.push({
+        name: `${pad3(index + 1)}.${String(image.ext || "jpg").toLowerCase()}`,
+        bytes: loaded.bytes,
+        contentType: loaded.contentType,
+      });
+      safeSendMessage({
+        type: "IMAGE_SET_PROGRESS",
+        downloadId,
+        fileName,
+        progress: Math.round(((index + 1) / images.length) * 80),
+        status: `Fetching image ${index + 1} of ${images.length}`,
+      });
+    }
+
+    let blob;
+    if (format === "pdf") {
+      blob = new Blob([await modules.pdf.buildPdfFromImages(collected)], { type: "application/pdf" });
+    } else {
+      const archive = await modules.zip.buildZip(
+        collected.map((entry) => ({ name: entry.name, bytes: entry.bytes })),
+      );
+      blob = new Blob([archive], {
+        type: format === "cbz" ? "application/vnd.comicbook+zip" : "application/zip",
+      });
+    }
+
+    const blobUrl = URL.createObjectURL(blob);
+    const saved = await saveArtifactViaWorker({
+      blobUrl,
+      filename: fileName,
+      conflictAction: request?.conflictAction,
+    });
+    if (!saved?.success) {
+      // Last resort: the in-document anchor always works, but its `download`
+      // attribute is a file name, so the archive lands in the download root.
+      logger.warn("Service-worker save failed for the archive, using the anchor", saved?.error);
+      anchorDownload(blobUrl, fileName.split("/").pop() || fileName);
+    }
+    safeSendMessage({
+      type: "IMAGE_SET_COMPLETE",
+      downloadId,
+      fileName,
+      fileSize: blob.size,
+      imageCount: collected.length,
+      format,
+    });
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(blobUrl);
+      } catch {}
+    }, config.mp4.revokeDelayMs);
+  } catch (error) {
+    if (error?.name !== "AbortError" && !imageSetsCancelled.has(downloadId)) {
+      logger.error("Image-set build failed:", error);
+      safeSendMessage({
+        type: "IMAGE_SET_ERROR",
+        downloadId,
+        fileName,
+        error: error?.message || String(error),
+      });
+    }
+  } finally {
+    imageSetsActive.delete(downloadId);
+    imageSetsCancelled.delete(downloadId);
+  }
+}
+
+function cancelImageSet(downloadId) {
+  const key = String(downloadId || "");
+  const active = imageSetsActive.get(key);
+  if (!active) return;
+  imageSetsCancelled.add(key);
+  try {
+    active.controller?.abort?.();
+  } catch {}
+  imageSetsActive.delete(key);
 }
 
 async function processMP4Download(request) {
@@ -874,6 +1043,7 @@ async function processMP4Download(request) {
       fileName,
       blob,
       completion: config.mp4.completion,
+      conflictAction: request?.conflictAction,
     });
   } catch (error) {
     if (error?.name !== "AbortError") {
@@ -975,6 +1145,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     cancelMp4(message?.downloadId);
     try {
       sendResponse?.({ success: true, message: "MP4 download cancelled" });
+    } catch {}
+    return false;
+  }
+
+  if (messageType === "PROCESS_IMAGE_SET") {
+    try {
+      sendResponse?.({ success: true, message: "Image set build started" });
+    } catch {}
+    void processImageSet(message);
+    // Ack already sent synchronously; close the channel.
+    return false;
+  }
+
+  if (messageType === "CANCEL_IMAGE_SET") {
+    cancelImageSet(message?.downloadId);
+    try {
+      sendResponse?.({ success: true, message: "Image set build cancelled" });
     } catch {}
     return false;
   }

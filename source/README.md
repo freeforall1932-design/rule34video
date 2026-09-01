@@ -12,7 +12,7 @@ The repo root contains two code folders:
 | `source/vendor/` | Never-used-as-extension source: mediabunny TS library, `Localize.mjs`, 13 source-project utils fragments | **No** | Porting — mediabunny needs a build step; the utils fragments import paths (`../enums/`, `../options/`, `../ui/`, `sweetalert.mjs`) that don't exist in this repo |
 | `source/page-source/` | Saved page HTML dumps (rule34video listing, rule34.world shell) — session-3 reference material | No | N/A (reference only) |
 | `source/tools/` | Dev tooling: `app.config.json` (generator provenance artifact, not runtime-loaded), `generate-icons.js` (Node icon generator → writes `extension/icons/`) | No | Run in place |
-| `source/tests/` | `smoke.mjs` — mocked-chrome integration test for the real service worker (CI runs it) | No | Run in place |
+| `source/tests/` | The offline suites CI runs: `*.test.mjs` fixtures (folder naming, ZIP writer, PDF writer — `node --test`), `smoke.mjs` (real service worker under mocked chrome + fetch), `e2e-download-paths.mjs` (real worker + real offscreen document; asserts the saved paths), `helpers/` | No | Run in place |
 | `source/docs/` | All project docs (`SESSION_HANDOFF.md` start here, `WORKLIST.md`, `IMPROVEMENT_LOG.md`, …) | No | N/A |
 
 ## Workflow

@@ -3,10 +3,13 @@
 import './site-config.js';
 import './logger.js';
 import './background-bridge.js';
+import './folder-naming.js';
 
 const SiteConfig = globalThis.SiteConfig || {};
 const Bridge = globalThis.Rule34BackgroundBridge || {};
 const Adapter = globalThis.Rule34SiteAdapter || {};
+// Pure naming engine shared with the popup (extension/folder-naming.js).
+const FolderNaming = globalThis.R34FolderNaming || {};
 const logger = (globalThis.Logger && globalThis.Logger.createLogger("[Rule 34 BG]")) || { log() {}, warn() {}, error() {} };
 const downloadProgress = new Map();
 const observedMediaByTab = new Map();
@@ -530,6 +533,42 @@ function heightFromLabel(label) {
   return match ? parseInt(match[1], 10) : 0;
 }
 
+// rule34video.com post pages list their tags (and the uploader) as plain
+// anchors, so the popup can offer one checkbox per tag without a second
+// request. Best effort: a markup change only costs the tag list, never the
+// download.
+const MAX_COLLECTED_TAGS = 60;
+
+function collectRule34VideoTags(html) {
+  const tags = [];
+  const pattern = /<a[^>]+href=["']https?:\/\/(?:www\.)?rule34video\.com\/tags\/\d+\/?["'][^>]*>([\s\S]{1,160}?)<\/a>/gi;
+  for (const match of html.matchAll(pattern)) {
+    const name = decodeHtmlEntities(String(match[1] || "").replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim();
+    if (!name) continue;
+    if (!tags.some((tag) => tag.toLowerCase() === name.toLowerCase())) tags.push(name);
+    if (tags.length >= MAX_COLLECTED_TAGS) break;
+  }
+  return tags;
+}
+
+function collectRule34VideoUploader(html) {
+  const match = html.match(/<a[^>]+href=["']https?:\/\/(?:www\.)?rule34video\.com\/(?:models|channels)\/([^"'/?#]+)\/?["'][^>]*>([\s\S]{1,160}?)<\/a>/i);
+  if (!match) return "";
+  const text = decodeHtmlEntities(String(match[2] || "").replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim();
+  if (text) return text;
+  try {
+    return decodeURIComponent(match[1]).replace(/[-_]+/g, " ").trim();
+  } catch {
+    return String(match[1] || "").replace(/[-_]+/g, " ").trim();
+  }
+}
+
+function collectRule34VideoDate(html) {
+  const match = html.match(/<time[^>]+datetime=["']([0-9]{4}-[0-9]{2}-[0-9]{2})/i)
+    || html.match(/["'](?:datePublished|uploadDate)["']\s*:\s*["']([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+  return match ? match[1] : "";
+}
+
 async function resolveRule34VideoPost(pageUrl) {
   const response = await fetch(pageUrl, {
     credentials: "include",
@@ -587,6 +626,11 @@ async function resolveRule34VideoPost(pageUrl) {
     thumbnail,
     url: pageUrl,
     formats,
+    // Metadata for the collection-folder naming engine (tag checkboxes,
+    // {uploader}, {date} tokens).
+    tags: collectRule34VideoTags(html),
+    uploader: collectRule34VideoUploader(html),
+    date: collectRule34VideoDate(html),
   };
 }
 
@@ -641,9 +685,15 @@ async function resolveRule34WorldPost(postId, pageUrl) {
     return format;
   });
 
-  const artist = Array.isArray(post?.tags) ? post.tags.find((tag) => tag && tag.type === 8)?.value : "";
+  const tagList = Array.isArray(post?.tags) ? post.tags : [];
+  const artist = tagList.find((tag) => tag && tag.type === 8)?.value || "";
   const baseName = String(post?.filename || "").replace(/\.[a-z0-9]+$/i, "");
   const title = [artist, baseName || `post ${postId}`].filter(Boolean).join(" - ");
+  const tags = tagList
+    .map((tag) => String(tag?.value || tag?.name || "").trim())
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .slice(0, MAX_COLLECTED_TAGS);
   return {
     id: String(postId),
     title: title || `rule34world-${postId}`,
@@ -652,6 +702,8 @@ async function resolveRule34WorldPost(postId, pageUrl) {
     duration: Number(post?.duration) || undefined,
     url: pageUrl || `${WORLD_ROOT}/post/${postId}`,
     formats,
+    tags,
+    date: String(post?.created || "").slice(0, 10),
   };
 }
 
@@ -828,55 +880,404 @@ function sanitizeFilename(value) {
   return Bridge.sanitizeFilename ? Bridge.sanitizeFilename(value || "video") : String(value || "video").replace(/[<>:"/\\|?*\x00-\x1f]/g, "").trim().slice(0, 200);
 }
 
-// --- Smart Library: configurable download-path template -------------------
-// The user picks where files land via a {token}-based template stored in
-// chrome.storage.local ("downloadPathTemplate"). Tokens: {site} {artist}
-// {title} {id}. Each token is filesystem-sanitized; empty segments collapse
-// so e.g. "{site}/{artist}/{title}" with no artist becomes "site/title".
-function getDownloadPathTemplate() {
-  return new Promise((resolve) => {
+// --- Output organization: master folder + site + collection ----------------
+// Every download lands in `Downloads/<Root>/<Site>/<Collection>/<file>`:
+//   <Root>       chrome.storage.sync "masterFolder", default "R34V". The EMPTY
+//                STRING is meaningful — it disables the master folder and
+//                restores the flat layout — so it is stored verbatim and every
+//                read goes through normalizeMasterFolder.
+//   <Site>       derived automatically from the post URL's hostname (the source
+//                map lives in folder-naming.js); never user input.
+//   <Collection> the tag/artist folder: manual text > filled template >
+//                search query > post id.
+// The whole thing is one RELATIVE subpath for chrome.downloads.download, which
+// creates the folders inside the fixed download location without prompts.
+const OUTPUT_STORAGE_KEYS = {
+  masterFolder: FolderNaming.DEFAULT_MASTER_FOLDER || "R34V",
+  collectionTemplate: FolderNaming.DEFAULT_COLLECTION_TEMPLATE || "{artist} - {title} - {id}",
+  artistFolderMode: false,
+  pictureSaveMode: "loose", // loose | zip | cbz | pdf
+  duplicateBehaviour: "uniquify", // uniquify | overwrite
+};
+// Per-post "manual name / checked tags" choices from the popup, remembered so
+// the in-page corner button and the context menu land in the same folder as
+// the popup download for that post.
+const OUTPUT_CHOICE_STORAGE_KEY = "r34.outputChoice.v1";
+const OUTPUT_CHOICE_MAX_ENTRIES = 100;
+
+function outputStorageArea() {
+  try {
+    return chrome.storage?.sync || chrome.storage?.local || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getOutputSettings() {
+  const area = outputStorageArea();
+  if (!area || typeof area.get !== "function") return { ...OUTPUT_STORAGE_KEYS };
+  return await new Promise((resolve) => {
     try {
-      chrome.storage.local.get(["downloadPathTemplate"], (data) => {
-        const stored = data && data.downloadPathTemplate;
-        resolve(stored || (SiteConfig.DOWNLOADS && SiteConfig.DOWNLOADS.pathTemplate) || "{site}/{artist}/{title}");
-      });
+      const callback = (data) => {
+        const stored = data || {};
+        resolve({
+          // normalizeMasterFolder keeps undefined -> default and "" -> off.
+          masterFolder: FolderNaming.normalizeMasterFolder(stored.masterFolder),
+          // An empty string is a real value here: the user unchecked every
+          // token, so the folder name falls through to search / post id. Only
+          // an absent setting gets the default template.
+          collectionTemplate: typeof stored.collectionTemplate === "string"
+            ? stored.collectionTemplate
+            : OUTPUT_STORAGE_KEYS.collectionTemplate,
+          artistFolderMode: Boolean(stored.artistFolderMode),
+          pictureSaveMode: ["loose", "zip", "cbz", "pdf"].includes(String(stored.pictureSaveMode))
+            ? String(stored.pictureSaveMode)
+            : OUTPUT_STORAGE_KEYS.pictureSaveMode,
+          duplicateBehaviour: stored.duplicateBehaviour === "overwrite" ? "overwrite" : "uniquify",
+        });
+      };
+      const maybePromise = area.get({ ...OUTPUT_STORAGE_KEYS }, callback);
+      if (maybePromise && typeof maybePromise.then === "function") maybePromise.then(callback, () => resolve({ ...OUTPUT_STORAGE_KEYS }));
     } catch {
-      resolve("{site}/{artist}/{title}");
+      resolve({ ...OUTPUT_STORAGE_KEYS });
     }
   });
 }
 
-function siteTokenForUrl(url) {
-  const value = String(url || "");
-  if (/rule34\.world/i.test(value)) return "rule34world";
-  if (/rule34video\.com/i.test(value)) return "rule34video";
-  return "rule34";
+async function readStoredOutputChoices() {
+  try {
+    const data = await chrome.storage.local.get([OUTPUT_CHOICE_STORAGE_KEY]);
+    const stored = data && data[OUTPUT_CHOICE_STORAGE_KEY];
+    return stored && typeof stored === "object" ? stored : {};
+  } catch {
+    return {};
+  }
 }
 
-function parseArtistFromTitle(title) {
-  const value = String(title || "");
-  const match = value.match(/^(.+?)\s*-\s*(?:post\s+)?[\w-]+$/i);
-  return match ? match[1].trim() : "";
+async function rememberOutputChoice(postUrl, choice) {
+  const key = String(postUrl || "").trim();
+  if (!key) return;
+  try {
+    const all = await readStoredOutputChoices();
+    all[key] = {
+      manual: String(choice?.manual || "").trim(),
+      tags: Array.isArray(choice?.tags) ? choice.tags.filter(Boolean).map(String) : [],
+      at: Date.now(),
+    };
+    const entries = Object.entries(all);
+    if (entries.length > OUTPUT_CHOICE_MAX_ENTRIES) {
+      entries.sort((a, b) => (a[1]?.at || 0) - (b[1]?.at || 0));
+      for (const [oldKey] of entries.slice(0, entries.length - OUTPUT_CHOICE_MAX_ENTRIES)) delete all[oldKey];
+    }
+    await chrome.storage.local.set({ [OUTPUT_CHOICE_STORAGE_KEY]: all });
+  } catch {}
 }
 
-async function buildDownloadPath(videoInfo, ext) {
-  const template = await getDownloadPathTemplate();
-  const safe = (value) => sanitizeFilename(String(value || "").trim()) || "";
-  const site = siteTokenForUrl(videoInfo.url || videoInfo.webpage_url || videoInfo.pageUrl);
-  const artist = safe(videoInfo.artist || parseArtistFromTitle(videoInfo.title));
-  const title = safe(videoInfo.title || videoInfo.id || "video");
-  const id = safe(videoInfo.id || "");
-  let relative = String(template || "{site}/{artist}/{title}")
-    .replace(/\{site\}/g, site)
-    .replace(/\{artist\}/g, artist)
-    .replace(/\{title\}/g, title)
-    .replace(/\{id\}/g, id)
-    .replace(/\/+/g, "/")
-    .replace(/^\/+/, "")
-    .replace(/\/+$/, "");
-  if (!relative) relative = title || "video";
-  const cleanExt = /^[a-z0-9]{2,4}$/.test(ext || "") ? ext : "mp4";
-  return `${relative}.${cleanExt}`;
+// The manual name / checked tags for this post: whatever the popup sent with
+// the request wins, otherwise the remembered choice for the same post URL.
+async function resolveOutputChoice(videoInfo = {}) {
+  const explicit = videoInfo.__output;
+  if (explicit && typeof explicit === "object") {
+    return {
+      manual: String(explicit.manual || "").trim(),
+      tags: Array.isArray(explicit.tags) ? explicit.tags.filter(Boolean).map(String) : [],
+      useSearchQuery: Boolean(explicit.useSearchQuery),
+      explicit: true,
+    };
+  }
+  const stored = (await readStoredOutputChoices())[String(videoInfo.url || videoInfo.webpage_url || "")] || null;
+  return {
+    manual: String(stored?.manual || "").trim(),
+    tags: Array.isArray(stored?.tags) ? stored.tags.filter(Boolean).map(String) : [],
+    useSearchQuery: false,
+    explicit: false,
+  };
+}
+
+// Metadata the template tokens are filled from.
+function postNamingContext(videoInfo = {}, site = "") {
+  const pageUrl = String(videoInfo.url || videoInfo.webpage_url || videoInfo.pageUrl || "");
+  const title = String(videoInfo.title || "").trim();
+  const uploader = String(videoInfo.uploader || videoInfo.owner || videoInfo.channel || "").trim();
+  return {
+    site,
+    // rule34video.com has no separate "artist" field: its model/channel is the
+    // creator, so {artist} falls back to it (same chain the artist-folder mode
+    // documents: artist -> uploader -> id -> untagged).
+    artist: String(videoInfo.artist || "").trim() || uploader,
+    uploader,
+    title,
+    text: title,
+    id: String(videoInfo.id || rule34VideoPostId(pageUrl) || rule34WorldPostId(pageUrl) || "").trim(),
+    date: String(videoInfo.date || videoInfo.upload_date || "").trim(),
+  };
+}
+
+// The search/tag-results query this download started from, when there is one.
+async function searchContextForVideoInfo(videoInfo = {}, tabId = null) {
+  const explicit = String(videoInfo.__searchContext || "").trim();
+  if (explicit) return explicit;
+  const fromPage = FolderNaming.searchContextFromUrl?.(videoInfo.url || videoInfo.webpage_url || "") || "";
+  if (fromPage) return fromPage;
+  const id = Number(tabId ?? currentDownloadTabId);
+  if (!Number.isFinite(id) || id <= 0) return "";
+  try {
+    const tab = await new Promise((resolve) => {
+      chrome.tabs.get(id, (result) => resolve(chrome.runtime.lastError ? null : result));
+    });
+    return FolderNaming.searchContextFromUrl?.(tab?.url || "") || "";
+  } catch {
+    return "";
+  }
+}
+
+// Build the relative subpath (folders + file name) for one artifact.
+async function resolveOutputTarget(videoInfo = {}, ext = "", options = {}) {
+  const settings = options.settings || (await getOutputSettings());
+  const pageUrl = String(videoInfo.url || videoInfo.webpage_url || videoInfo.pageUrl || "");
+  const site = FolderNaming.siteSlugForUrl?.(pageUrl) || "unknown-site";
+  const choice = options.choice || (await resolveOutputChoice(videoInfo));
+  const searchContext = options.useSearchQuery === false
+    ? ""
+    : (choice.useSearchQuery ? await searchContextForVideoInfo(videoInfo, options.tabId) : "");
+  const context = postNamingContext(videoInfo, site);
+  const relative = FolderNaming.buildRelativePath?.({
+    masterFolder: settings.masterFolder,
+    site,
+    template: settings.collectionTemplate,
+    artistFolderMode: settings.artistFolderMode,
+    manual: choice.manual,
+    checkedTags: options.checkedTags || choice.tags,
+    searchContext,
+    context,
+    fallbackId: context.id,
+    basename: options.basename || context.title || context.id,
+    ext,
+  });
+  const full = FolderNaming.safeRelativePath?.(relative || "", context.id || "download")
+    || `${context.id || "download"}.${ext || "mp4"}`;
+  const split = full.lastIndexOf("/");
+  return {
+    settings,
+    site,
+    context,
+    choice,
+    searchContext,
+    directory: split > 0 ? full.slice(0, split) : "",
+    fileName: split > 0 ? full.slice(split + 1) : full,
+    full,
+    ext,
+  };
+}
+
+async function buildDownloadPath(videoInfo = {}, ext = "", options = {}) {
+  const target = await resolveOutputTarget(videoInfo, ext, options);
+  return target.full;
+}
+
+// ---------------------------------------------------------------------------
+// Filename authority: chrome.downloads.download's `filename` is a request, not
+// a command — a server Content-Disposition can override it, blob: URLs are
+// saved under the blob's UUID on some builds, and another extension holding an
+// onDeterminingFilename listener can silently steal the name (crbug 579563).
+// Every artifact this extension starts is registered here and re-suggested
+// when Chrome asks, so the requested <Root>/<Site>/<Collection>/<file> path is
+// what actually lands on disk.
+// ---------------------------------------------------------------------------
+const downloadFilenameOverrides = new Map(); // url -> { filename, conflictAction, at }
+const FILENAME_OVERRIDE_TTL_MS = 10 * 60 * 1000;
+
+function rememberDownloadFilename(url, filename, conflictAction = "uniquify") {
+  const key = String(url || "");
+  if (!key || !filename) return;
+  const now = Date.now();
+  for (const [entryKey, entry] of downloadFilenameOverrides) {
+    if (now - entry.at > FILENAME_OVERRIDE_TTL_MS) downloadFilenameOverrides.delete(entryKey);
+  }
+  downloadFilenameOverrides.set(key, { filename: String(filename), conflictAction, at: now });
+}
+
+function forgetDownloadFilename(url) {
+  downloadFilenameOverrides.delete(String(url || ""));
+}
+
+function filenameOverrideFor(item = {}) {
+  return downloadFilenameOverrides.get(String(item?.finalUrl || "")) || downloadFilenameOverrides.get(String(item?.url || "")) || null;
+}
+
+try {
+  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+    const override = filenameOverrideFor(item);
+    if (!override) return; // not ours — never touch other downloads
+    try {
+      suggest({ filename: override.filename, conflictAction: override.conflictAction || "uniquify" });
+    } catch {
+      try { suggest(); } catch {}
+    }
+  });
+} catch (error) {
+  logger.warn("Could not register the filename guard", error);
+}
+
+// Blob artifacts (ZIP/CBZ/PDF) are built in the offscreen document, which only
+// has chrome.runtime — it relays the blob URL here and this side hands it to
+// the download manager with the full relative path.
+function saveBlobArtifact({ blobUrl, filename, conflictAction = "uniquify" }) {
+  return new Promise((resolve) => {
+    const url = String(blobUrl || "");
+    if (!url) {
+      resolve({ success: false, error: "No blob URL to save." });
+      return;
+    }
+    rememberDownloadFilename(url, filename, conflictAction);
+    try {
+      chrome.downloads.download({ url, filename: String(filename), saveAs: false, conflictAction }, (downloadId) => {
+        const lastError = chrome.runtime?.lastError;
+        if (lastError || downloadId === undefined) {
+          forgetDownloadFilename(url);
+          resolve({ success: false, error: lastError?.message || "Chrome download did not start." });
+          return;
+        }
+        downloadProgress.set(downloadId, { startTime: Date.now(), status: "Saving archive", fileName: filename, filename });
+        resolve({ success: true, downloadId });
+      });
+    } catch (error) {
+      forgetDownloadFilename(url);
+      resolve({ success: false, error: error?.message || String(error) });
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Picture sets (image posts).
+//   loose   - numbered originals (001.jpg…) straight into the collection folder
+//   zip/cbz - one archive per post, assembled in the offscreen document
+//   pdf     - one PDF per post (dependency-free pdfBuilder, same writer as the
+//             sister project)
+// Loose files are plain remote URLs, so chrome.downloads.download places them
+// in the folder itself. Archives are blobs: a service worker has no
+// URL.createObjectURL, so the offscreen document builds them and relays the
+// blob URL back to saveBlobArtifact (which also fixes the name via the
+// filename guard above).
+// ---------------------------------------------------------------------------
+function imageExtFromFormat(format = {}) {
+  const fromExt = String(format.ext || "").toLowerCase();
+  if (/^[a-z0-9]{2,4}$/.test(fromExt)) return fromExt;
+  const fromUrl = String(format.url || "").match(/\.([a-z0-9]{2,4})(?:$|[?#])/i)?.[1];
+  return (fromUrl || "jpg").toLowerCase();
+}
+
+function imageFilesFromFormats(formats = []) {
+  const files = [];
+  for (const raw of formats) {
+    const format = normalizeFormat(raw);
+    if (!format?.url) continue;
+    const type = String(format.format_type || "").toLowerCase();
+    const isImage = type === "image" || /^image\//i.test(String(format.responseContentType || ""));
+    if (!isImage) continue;
+    if (files.some((item) => item.url === format.url)) continue;
+    files.push({ url: format.url, ext: imageExtFromFormat(format), fallbackUrl: format.fallbackUrl || "" });
+  }
+  return files;
+}
+
+async function downloadImageSet(videoInfo = {}, formats = [], options = {}) {
+  const settings = options.settings || (await getOutputSettings());
+  const images = options.images || imageFilesFromFormats(formats);
+  if (!images.length) throw new Error("No image files found for this post.");
+  const target = await resolveOutputTarget(videoInfo, images[0].ext, {
+    settings,
+    tabId: currentDownloadTabId,
+  });
+  const stem = String(target.fileName).replace(/\.[a-z0-9]+$/i, "") || target.context.id || "image";
+  const conflictAction = settings.duplicateBehaviour === "overwrite" ? "overwrite" : "uniquify";
+  const mode = ["zip", "cbz", "pdf"].includes(settings.pictureSaveMode) ? settings.pictureSaveMode : "loose";
+
+  if (mode === "loose") {
+    // Numbered originals (001.jpg…) in the collection folder. Remote URLs, so
+    // the download manager creates the folder and names each file itself.
+    let firstDownloadId = null;
+    for (let index = 0; index < images.length; index += 1) {
+      const image = images[index];
+      const filename = `${target.directory ? `${target.directory}/` : ""}${FolderNaming.padNumber(index + 1, 3)}.${image.ext}`;
+      rememberDownloadFilename(image.url, filename, conflictAction);
+      const downloadId = await startChromeDownload({
+        url: image.url,
+        filename,
+        saveAs: false,
+        conflictAction,
+      });
+      if (firstDownloadId === null) {
+        firstDownloadId = downloadId;
+        downloadProgress.set(downloadId, {
+          videoInfo,
+          format: { format_type: "image", url: image.url },
+          startTime: Date.now(),
+          status: "Saving images",
+          fileName: filename,
+          filename,
+        });
+      }
+      if (index === 0) {
+        Bridge.notifyContentDownloadStarted?.({
+          tabId: currentDownloadTabId,
+          downloadId,
+          filename,
+          selectedFormat: { format_type: "image", url: image.url },
+          strategy: "image-loose",
+          downloadProgress,
+          logger,
+        });
+      }
+    }
+    return { downloadId: firstDownloadId, imageCount: images.length, mode, folder: target.directory };
+  }
+
+  // Archive modes: hand the image list to the offscreen document, which
+  // fetches, assembles and relays the blob back for saving.
+  await ensureOffscreenDocument();
+  const downloadId = `imageset-${Date.now()}`;
+  const filename = `${target.directory ? `${target.directory}/` : ""}${stem}.${mode === "cbz" ? "cbz" : mode}`;
+  downloadProgress.set(downloadId, {
+    videoInfo,
+    startTime: Date.now(),
+    status: `Building ${mode.toUpperCase()} archive`,
+    progress: 1,
+    fileName: filename,
+    filename,
+  });
+  Bridge.notifyContentDownloadStarted?.({
+    tabId: currentDownloadTabId,
+    downloadId,
+    filename,
+    selectedFormat: { format_type: mode },
+    strategy: `image-${mode}`,
+    downloadProgress,
+    logger,
+  });
+  const ack = await new Promise((resolve, reject) => {
+    try {
+      chrome.runtime.sendMessage({
+        type: "PROCESS_IMAGE_SET",
+        downloadId,
+        fileName: filename,
+        format: mode,
+        images,
+        conflictAction,
+        refererUrl: getDownloadReferer(videoInfo),
+      }, (response) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(response);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+  if (!ack?.success) {
+    downloadProgress.delete(downloadId);
+    throw new Error(ack?.error || `Could not start the ${mode.toUpperCase()} build.`);
+  }
+  return { downloadId, imageCount: images.length, mode, folder: target.directory };
 }
 
 function notify(title, message) {
@@ -1304,6 +1705,10 @@ async function getVideoFormats(videoInfo = {}, request = {}) {
         apiArtist: resolved.artist,
         apiThumbnail: resolved.thumbnail,
         apiDuration: resolved.duration,
+        apiTags: Array.isArray(resolved.tags) ? resolved.tags : [],
+        apiUploader: resolved.uploader || "",
+        apiDate: resolved.date || "",
+        apiKind: resolved.formats.some((format) => format?.format_type === "image") ? "image" : "video",
       };
     }
   } catch (error) {
@@ -2067,6 +2472,7 @@ async function downloadHLS(m3u8Url, filename, videoInfo = {}, options = {}) {
     totalSegments: selectedFormat.segments.length,
   });
   await ensureOffscreenDocument();
+  const hlsConflictAction = (await getOutputSettings()).duplicateBehaviour === "overwrite" ? "overwrite" : "uniquify";
   const processingResult = await new Promise((resolve) => {
     let settled = false;
     const finish = (result) => {
@@ -2087,6 +2493,7 @@ async function downloadHLS(m3u8Url, filename, videoInfo = {}, options = {}) {
         totalSegments: selectedFormat.segments.length,
         totalDuration: typeof selectedFormat.duration === "number" ? selectedFormat.duration : undefined,
         refererUrl: getFormatReferer(sourceFormat, videoInfo, m3u8Url),
+        conflictAction: hlsConflictAction,
       }, (result) => {
         clearTimeout(ackTimer);
         if (chrome.runtime.lastError) {
@@ -2243,6 +2650,14 @@ async function downloadVideo(videoInfo = {}) {
   if (refreshedResponse?.apiArtist && !videoInfo.artist) {
     videoInfo = { ...videoInfo, artist: refreshedResponse.apiArtist };
   }
+  // Same for the rest of the naming metadata, so the folder-name tokens work
+  // for downloads that only carry a URL (corner button, context menu, batch).
+  if (refreshedResponse?.apiUploader && !videoInfo.uploader) {
+    videoInfo = { ...videoInfo, uploader: refreshedResponse.apiUploader };
+  }
+  if (refreshedResponse?.apiDate && !videoInfo.date) {
+    videoInfo = { ...videoInfo, date: refreshedResponse.apiDate };
+  }
   if (!selectedFormat) selectedFormat = normalizeFormat(videoInfo.selectedFormat) || formatResponse.formats[0];
   if (typeof Adapter.prepareDownload === "function") {
     try {
@@ -2272,12 +2687,35 @@ async function downloadVideo(videoInfo = {}) {
     requiresReferer: Boolean(selectedFormat.requiresReferer),
     requiresRange: Boolean(selectedFormat.requiresRangeRequest || selectedFormat.rangeRequest),
   });
+  const outputSettings = await getOutputSettings();
+  // Image posts take the picture-set pipeline (loose numbered originals or a
+  // per-post ZIP/CBZ/PDF) instead of the single-file video path.
+  const imageFiles = imageFilesFromFormats(formatResponse.formats);
+  const selectedIsImage = String(selectedFormat.format_type || "").toLowerCase() === "image"
+    || /^image\//i.test(String(selectedFormat.responseContentType || ""));
+  if (selectedIsImage && imageFiles.length) {
+    console.log("[download] image-set-start", { count: imageFiles.length, mode: outputSettings.pictureSaveMode });
+    const result = await downloadImageSet(videoInfo, formatResponse.formats, { settings: outputSettings, images: imageFiles });
+    rememberOutputChoice(videoInfo.url || videoInfo.webpage_url || "", { manual: videoInfo.__output?.manual, tags: videoInfo.__output?.tags });
+    return result;
+  }
   const fileExtension = (() => {
     const ext = String(selectedFormat.ext || "").toLowerCase();
     if (selectedFormat.format_type === "hls" || ext === "m3u8" || !/^[a-z0-9]{2,4}$/.test(ext)) return "mp4";
     return ext;
   })();
-  const fullFilename = await buildDownloadPath(videoInfo, fileExtension);
+  const outputTarget = await resolveOutputTarget(videoInfo, fileExtension, {
+    settings: outputSettings,
+    tabId: currentDownloadTabId,
+  });
+  const fullFilename = outputTarget.full;
+  const conflictAction = outputSettings.duplicateBehaviour === "overwrite" ? "overwrite" : "uniquify";
+  // Remember the manual name / checked tags for this post so the corner button
+  // and the context menu land in the same folder as the popup download.
+  if (videoInfo.__output) {
+    rememberOutputChoice(videoInfo.url || videoInfo.webpage_url || "", videoInfo.__output);
+  }
+  console.log("[download] output-path", { path: fullFilename, folder: outputTarget.directory, site: outputTarget.site });
   if (selectedFormat.format_type === "hls" && selectedFormat.forceChromeHlsSegmentDownload) {
     console.log("[download] hls-segment-chrome-start", { filename: fullFilename });
     const hlsHeaderFormat = {
@@ -2302,10 +2740,12 @@ async function downloadVideo(videoInfo = {}) {
       segmentFormat.ext = "ts";
       segmentFormat.responseContentType = "video/mp2t";
     }
+    rememberDownloadFilename(segmentUrl, fullFilename, conflictAction);
     const downloadId = await withTemporaryHeaderRules(segmentFormat, videoInfo, async () => await startChromeDownload({
       url: segmentUrl,
       filename: fullFilename,
       saveAs: false,
+      conflictAction,
     }));
     console.log("[download] hls-segment-chrome-id", downloadId);
     downloadProgress.set(downloadId, { videoInfo, format: segmentFormat, startTime: Date.now() });
@@ -2365,6 +2805,7 @@ async function downloadVideo(videoInfo = {}) {
       filename: fullFilename,
       refererUrl: getFormatReferer(selectedFormat, videoInfo, selectedFormat.url),
       rangeRequest: Boolean(selectedFormat.requiresRangeRequest || selectedFormat.rangeRequest),
+      conflictAction,
       ensureOffscreenDocument,
       downloadProgress,
       logger,
@@ -2393,10 +2834,12 @@ async function downloadVideo(videoInfo = {}) {
         filename: fullFilename,
       });
     }
+    rememberDownloadFilename(selectedFormat.url, fullFilename, conflictAction);
     return await startChromeDownload({
       url: selectedFormat.url,
       filename: fullFilename,
       saveAs: false,
+      conflictAction,
     });
   });
   console.log("[download] chrome-id", downloadId);
@@ -2607,6 +3050,71 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           logger,
         }),
       });
+    // The offscreen document cannot call chrome.downloads (only chrome.runtime
+    // exists there), so finished blob artifacts are relayed here for saving
+    // with their full <Root>/<Site>/<Collection>/<file> path.
+    case "SAVE_BLOB_ARTIFACT": {
+      saveBlobArtifact({
+        blobUrl: request?.blobUrl,
+        filename: request?.filename || request?.fileName,
+        conflictAction: request?.conflictAction,
+      })
+        .then((result) => {
+          try { sendResponse(result); } catch {}
+        })
+        .catch((error) => {
+          try { sendResponse({ success: false, error: error?.message || String(error) }); } catch {}
+        });
+      return true;
+    }
+    case "IMAGE_SET_PROGRESS": {
+      const entry = downloadProgress.get(request?.downloadId) || {};
+      downloadProgress.set(request?.downloadId, {
+        ...entry,
+        progress: Number(request?.progress) || entry.progress || 0,
+        status: request?.status || entry.status || "Building archive",
+      });
+      Bridge.forwardMP4Progress?.({
+        tabId: currentDownloadTabId,
+        message: { ...request, type: "MP4_DOWNLOAD_PROGRESS" },
+        downloadProgress,
+        logger,
+      });
+      try { sendResponse({ success: true }); } catch {}
+      return false;
+    }
+    case "IMAGE_SET_COMPLETE": {
+      releaseQueueSlot(request?.downloadId);
+      downloadProgress.delete(request?.downloadId);
+      notify("Download Complete", `${request?.fileName || "Archive"} has been downloaded successfully.`);
+      Bridge.forwardMP4Complete?.({
+        tabId: currentDownloadTabId,
+        message: { ...request, type: "MP4_DOWNLOAD_COMPLETE" },
+        downloadProgress,
+        logger,
+      });
+      try { sendResponse({ success: true }); } catch {}
+      return false;
+    }
+    case "IMAGE_SET_ERROR": {
+      releaseQueueSlot(request?.downloadId);
+      downloadProgress.delete(request?.downloadId);
+      notify("Download Failed", String(request?.error || "The archive could not be built."));
+      Bridge.forwardMP4Error?.({
+        tabId: currentDownloadTabId,
+        message: { ...request, type: "MP4_DOWNLOAD_ERROR" },
+        downloadProgress,
+        logger,
+      });
+      try { sendResponse({ success: true }); } catch {}
+      return false;
+    }
+    case "getOutputSettings": {
+      getOutputSettings()
+        .then((settings) => sendResponse({ success: true, settings }))
+        .catch(() => sendResponse({ success: true, settings: { ...OUTPUT_STORAGE_KEYS } }));
+      return true;
+    }
     case "cancelDownload":
       try {
         if (typeof request.downloadId === "number") {

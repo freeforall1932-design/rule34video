@@ -280,6 +280,7 @@
       downloadProgress,
       logger,
       rangeRequest,
+      conflictAction,
     } = options;
 
     try {
@@ -305,6 +306,9 @@
             refererUrl,
             dnrRuleId,
             rangeRequest: Boolean(rangeRequest || shouldUseRangeRequest(videoUrl)),
+            // Echoed back by the offscreen document when it relays the finished
+            // blob for saving, so the user's overwrite setting is honoured.
+            conflictAction: conflictAction === "overwrite" ? "overwrite" : "uniquify",
           }, (resp) => {
             if (root.chrome.runtime.lastError) {
               reject(new Error(root.chrome.runtime.lastError.message));

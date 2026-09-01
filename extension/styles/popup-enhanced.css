@@ -618,3 +618,121 @@ body {
   background: var(--error);
   color: var(--text-primary);
 }
+
+/* --- Output organization: master folder + site + collection folder --- */
+.output-subheader {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-dark);
+}
+
+.output-subheader span {
+  color: var(--text-subtle);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.output-path-preview {
+  margin-bottom: 10px;
+  padding: 7px 9px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+  color: var(--brand-accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.field-label {
+  flex: 0 0 74px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+#output-section input[type="text"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+#output-section input[type="text"]:focus {
+  outline: none;
+  border-color: var(--brand-accent);
+}
+
+#output-section select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--bg-dark);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+#output-section .limit-row {
+  margin-bottom: 6px;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-subtle);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.check-row input[type="checkbox"] {
+  accent-color: var(--brand-accent);
+  cursor: pointer;
+}
+
+.token-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 6px 0;
+}
+
+.token-checks.hidden,
+#template-advanced.hidden {
+  display: none;
+}
+
+.tag-checks {
+  max-height: 132px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border-dark);
+  border-radius: 7px;
+  background: var(--bg-dark);
+}
+
+.token-heading {
+  flex: 1 0 100%;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#use-search-query {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#use-search-query.active {
+  border-color: var(--brand-accent);
+  color: var(--brand-accent);
+}
