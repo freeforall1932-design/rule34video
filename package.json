@@ -1,0 +1,14 @@
+{
+  "name": "rule34video-downloader",
+  "version": "5.0.0",
+  "private": true,
+  "description": "Development scripts for the Downloader for Rule 34 MV3 extension. The shipped extension in extension/ has no build step and no runtime dependencies; everything here runs offline on the Node that CI already installs.",
+  "scripts": {
+    "test": "npm run test:fixtures && npm run test:smoke && npm run test:e2e",
+    "test:fixtures": "node --test \"source/tests/*.test.mjs\"",
+    "test:smoke": "node source/tests/smoke.mjs",
+    "test:e2e": "node source/tests/e2e-download-paths.mjs",
+    "check:syntax": "bash -c 'cd extension && for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js content.js content-bridge.js download-manager.js logger.js background-bridge.js folder-naming.js inject.js post-actions.js ../source/tools/generate-icons.js; do node --check \"$f\" || exit 1; done && for m in modules/*.mjs modules/*/*.mjs; do node --check \"$m\" || exit 1; done && node --input-type=module --check < background-enhanced.js'"
+  },
+  "devDependencies": {}
+}

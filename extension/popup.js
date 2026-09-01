@@ -75,8 +75,17 @@
       queueSummary: document.getElementById("queue-summary"),
       queueList: document.getElementById("queue-list"),
       clearQueueBtn: document.getElementById("clear-queue-btn"),
-      pathTemplate: document.getElementById("path-template"),
-      pathPresets: Array.from(document.querySelectorAll(".path-preset")),
+      masterFolder: document.getElementById("master-folder"),
+      manualFolder: document.getElementById("manual-folder"),
+      tokenChecks: document.getElementById("token-checks"),
+      tagChecks: document.getElementById("tag-checks"),
+      templateAdvanced: document.getElementById("template-advanced"),
+      collectionTemplate: document.getElementById("collection-template"),
+      artistFolderMode: document.getElementById("artist-folder-mode"),
+      useSearchQuery: document.getElementById("use-search-query"),
+      pictureMode: document.getElementById("picture-mode"),
+      duplicateBehaviour: document.getElementById("duplicate-behaviour"),
+      outputPathPreview: document.getElementById("output-path-preview"),
       bulkTag: document.getElementById("bulk-tag"),
       bulkPlaylist: document.getElementById("bulk-playlist"),
       bulkBtn: document.getElementById("bulk-btn"),
@@ -566,6 +575,15 @@
     elements.qualitySelect.value = "0";
   }
 
+  function trackSelectedExtension(elements, state) {
+    if (!elements.qualitySelect) return;
+    elements.qualitySelect.addEventListener("change", () => {
+      const format = selectedFormat(elements, state);
+      state.selectedExtHint = String((format && format.ext) || "").toLowerCase() || state.selectedExtHint;
+      refreshOutputPreview(elements, state);
+    });
+  }
+
   function updateDownloadAvailability(elements, state) {
     if (!elements.downloadBtn) return;
     elements.downloadBtn.disabled = !(state.hasDownloadAccess && state.availableFormats.length > 0);
@@ -591,9 +609,19 @@
     if (response.apiThumbnail && state.currentVideoInfo && !state.currentVideoInfo.thumbnail) {
       state.currentVideoInfo.thumbnail = response.apiThumbnail;
     }
+    // Metadata the folder-name tokens are filled from.
+    if (state.currentVideoInfo) {
+      if (response.apiArtist && !state.currentVideoInfo.artist) state.currentVideoInfo.artist = response.apiArtist;
+      if (response.apiUploader && !state.currentVideoInfo.uploader) state.currentVideoInfo.uploader = response.apiUploader;
+      if (response.apiDate && !state.currentVideoInfo.date) state.currentVideoInfo.date = response.apiDate;
+    }
+    if (Array.isArray(response.apiTags)) state.outputResolvedTags = response.apiTags;
+    if (response.apiKind === "image") state.selectedExtHint = "jpg";
 
     state.availableFormats = normalizeFormats(response);
+    applyOutputContext(elements, state);
     populateFormats(elements, state.availableFormats);
+    trackSelectedExtension(elements, state);
     applyVideoInfo(elements, state.currentVideoInfo, state.currentTabId);
     updateDownloadAvailability(elements, state);
     telemetry("popup.formats", { count: state.availableFormats.length });
@@ -608,6 +636,7 @@
     }
 
     state.currentTabId = tab.id;
+    state.currentTabUrl = tab.url || "";
     try {
       try {
         state.currentVideoInfo = await requestVideoInfo(tab.id);
@@ -716,11 +745,22 @@
     setButtonLabel(elements.downloadBtn, "Starting...");
     setProgress(elements, 0, "Preparing download...");
 
+    const outputChoice = currentOutputChoice(elements, state);
     const payload = {
       ...state.currentVideoInfo,
       selectedFormat: format,
       selectedFormatIndex: Number(elements.qualitySelect && elements.qualitySelect.value) || 0,
+      // Per-post naming choice: the manual folder name, the tags checked in
+      // the popup, and whether the current search query names the folder.
+      __output: {
+        manual: outputChoice.manual,
+        tags: outputChoice.tags,
+        useSearchQuery: outputChoice.useSearchQuery,
+      },
+      __searchContext: outputChoice.useSearchQuery ? outputChoice.searchContext : "",
     };
+    state.selectedExtHint = String(format.ext || "").toLowerCase() || state.selectedExtHint;
+    refreshOutputPreview(elements, state);
 
     try {
       const response = await runtimeMessage({
@@ -929,38 +969,302 @@
     });
   }
 
-  // --- Smart Library: download-path template (persisted) ---
-  const PATH_TEMPLATE_STORAGE_KEY = "downloadPathTemplate";
+  // --- Output organization: master folder + site + collection folder --------
+  // Settings live in chrome.storage.sync so they follow the user across
+  // machines; the per-post "manual name / checked tags" choice travels with
+  // the download request instead (the background remembers it per post URL).
+  const OUTPUT_SETTINGS = {
+    masterFolder: "R34V",
+    collectionTemplate: "{artist} - {title} - {id}",
+    artistFolderMode: false,
+    pictureSaveMode: "loose",
+    duplicateBehaviour: "uniquify",
+  };
+  const TOKEN_LABELS = {
+    site: "Site",
+    artist: "Artist",
+    uploader: "Uploader",
+    title: "Title",
+    text: "Title (first 40 chars)",
+    id: "Post ID",
+    date: "Date",
+    tags: "Checked tags",
+  };
 
-  let savePathTimer = null;
-  function savePathTemplate(value) {
-    if (savePathTimer) clearTimeout(savePathTimer);
-    savePathTimer = setTimeout(() => {
-      try { chrome.storage.local.set({ [PATH_TEMPLATE_STORAGE_KEY]: value || "" }); } catch {}
+  function outputStorage() {
+    try {
+      return chrome.storage && (chrome.storage.sync || chrome.storage.local);
+    } catch {
+      return null;
+    }
+  }
+
+  let saveOutputTimer = null;
+  function saveOutputSettings(patch) {
+    if (saveOutputTimer) clearTimeout(saveOutputTimer);
+    saveOutputTimer = setTimeout(() => {
+      const area = outputStorage();
+      if (area) {
+        try { area.set(patch); } catch {}
+      }
     }, 250);
   }
 
-  async function initPathTemplateControl(elements) {
-    if (!elements.pathTemplate) return;
-    let stored = "";
-    try {
-      const data = await chrome.storage.local.get([PATH_TEMPLATE_STORAGE_KEY]);
-      stored = (data && data[PATH_TEMPLATE_STORAGE_KEY]) || "";
-    } catch {}
-    elements.pathTemplate.value = stored;
-    elements.pathTemplate.placeholder = "{site}/{artist}/{title}";
-    elements.pathTemplate.addEventListener("input", () => {
-      savePathTemplate(elements.pathTemplate.value.trim());
+  function readOutputSettings() {
+    return new Promise((resolve) => {
+      const area = outputStorage();
+      if (!area) {
+        resolve({ ...OUTPUT_SETTINGS });
+        return;
+      }
+      try {
+        const done = (data) => resolve({ ...OUTPUT_SETTINGS, ...(data || {}) });
+        const maybePromise = area.get({ ...OUTPUT_SETTINGS }, done);
+        if (maybePromise && typeof maybePromise.then === "function") {
+          maybePromise.then(done, () => resolve({ ...OUTPUT_SETTINGS }));
+        }
+      } catch {
+        resolve({ ...OUTPUT_SETTINGS });
+      }
     });
-    if (Array.isArray(elements.pathPresets)) {
-      elements.pathPresets.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const tpl = btn.getAttribute("data-template") || "";
-          elements.pathTemplate.value = tpl;
-          savePathTemplate(tpl);
-        });
+  }
+
+  function currentOutputChoice(elements, state) {
+    const Folder = globalThis.R34FolderNaming;
+    const checked = {};
+    if (elements.tokenChecks && Folder) {
+      for (const token of Folder.COLLECTION_TOKENS) {
+        const box = elements.tokenChecks.querySelector(`[data-token="${token}"]`);
+        checked[token] = Boolean(box && box.checked);
+      }
+    }
+    const tags = [];
+    if (elements.tagChecks) {
+      for (const box of elements.tagChecks.querySelectorAll("input[type=checkbox]")) {
+        if (box.checked && box.value) tags.push(box.value);
+      }
+    }
+    return {
+      template: elements.collectionTemplate ? elements.collectionTemplate.value : "",
+      checked,
+      manual: elements.manualFolder ? elements.manualFolder.value.trim() : "",
+      tags,
+      artistFolderMode: Boolean(elements.artistFolderMode && elements.artistFolderMode.checked),
+      useSearchQuery: Boolean(state.outputSearchQuery && elements.useSearchQuery && elements.useSearchQuery.classList.contains("active")),
+      searchContext: state.outputSearchQuery || "",
+      masterFolder: elements.masterFolder ? elements.masterFolder.value : "",
+    };
+  }
+
+  function refreshOutputPreview(elements, state) {
+    const Folder = globalThis.R34FolderNaming;
+    if (!elements.outputPathPreview || !Folder) return;
+    const choice = currentOutputChoice(elements, state);
+    const info = state.currentVideoInfo || {};
+    const pageUrl = String(info.url || info.webpage_url || "");
+    const site = Folder.siteSlugForUrl(pageUrl) || "site";
+    const uploader = String(info.uploader || info.owner || info.channel || "").trim();
+    const context = {
+      site,
+      // Mirrors the background: {artist} falls back to the uploader.
+      artist: String(info.artist || "").trim() || uploader,
+      uploader,
+      title: String(info.title || "").trim(),
+      text: String(info.title || "").trim(),
+      id: String(info.id || "").trim(),
+      date: String(info.date || "").trim(),
+      tags: choice.tags,
+    };
+    const path = Folder.buildRelativePath({
+      masterFolder: choice.masterFolder,
+      site,
+      template: choice.template,
+      artistFolderMode: choice.artistFolderMode,
+      manual: choice.manual,
+      checkedTags: choice.tags,
+      searchContext: choice.useSearchQuery ? choice.searchContext : "",
+      context,
+      fallbackId: context.id,
+      basename: context.title || context.id,
+      ext: (state.selectedExtHint || "mp4"),
+    });
+    elements.outputPathPreview.textContent = "Downloads/" + path;
+    const folder = Folder.buildDirectoryPath({
+      masterFolder: choice.masterFolder,
+      site,
+      template: choice.template,
+      artistFolderMode: choice.artistFolderMode,
+      manual: choice.manual,
+      checkedTags: choice.tags,
+      searchContext: choice.useSearchQuery ? choice.searchContext : "",
+      context,
+      fallbackId: context.id,
+      basename: context.title || context.id,
+      ext: state.selectedExtHint || "mp4",
+    });
+    const collection = folder.split("/").slice(-1)[0] || "";
+    elements.outputPathPreview.title = collection ? "Folder name: " + collection : "";
+  }
+
+  function renderTokenCheckboxes(elements, state, template) {
+    const Folder = globalThis.R34FolderNaming;
+    if (!elements.tokenChecks || !Folder) return;
+    elements.tokenChecks.innerHTML = "";
+    const inUse = Folder.templateTokensInUse(template);
+    for (const token of Folder.COLLECTION_TOKENS) {
+      const wrapper = document.createElement("label");
+      wrapper.className = "check-row";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.dataset.token = token;
+      box.checked = Boolean(inUse[token]);
+      box.addEventListener("change", () => {
+        const checked = {};
+        for (const item of Folder.COLLECTION_TOKENS) {
+          const node = elements.tokenChecks.querySelector(`[data-token="${item}"]`);
+          checked[item] = Boolean(node && node.checked);
+        }
+        const rebuilt = Folder.buildTemplate(checked);
+        if (elements.collectionTemplate) elements.collectionTemplate.value = rebuilt;
+        saveOutputSettings({ collectionTemplate: rebuilt });
+        refreshOutputPreview(elements, state);
+      });
+      wrapper.appendChild(box);
+      wrapper.appendChild(document.createTextNode(" " + (TOKEN_LABELS[token] || token)));
+      elements.tokenChecks.appendChild(wrapper);
+    }
+  }
+
+  function renderTagCheckboxes(elements, state) {
+    if (!elements.tagChecks) return;
+    const tags = Array.isArray(state.outputTags) ? state.outputTags.filter(Boolean) : [];
+    elements.tagChecks.innerHTML = "";
+    if (!tags.length) {
+      elements.tagChecks.classList.add("hidden");
+      return;
+    }
+    elements.tagChecks.classList.remove("hidden");
+    const heading = document.createElement("div");
+    heading.className = "token-heading";
+    heading.textContent = "Tags on this page";
+    elements.tagChecks.appendChild(heading);
+    for (const tag of tags.slice(0, 40)) {
+      const wrapper = document.createElement("label");
+      wrapper.className = "check-row";
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = tag;
+      box.checked = state.outputCheckedTags.has(tag);
+      box.addEventListener("change", () => {
+        if (box.checked) state.outputCheckedTags.add(tag);
+        else state.outputCheckedTags.delete(tag);
+        // Checking a tag only shows up in the name once {tags} is part of the
+        // template; turn it on for the user instead of silently doing nothing.
+        if (box.checked && elements.tokenChecks) {
+          const tokenBox = elements.tokenChecks.querySelector('[data-token="tags"]');
+          if (tokenBox && !tokenBox.checked) {
+            tokenBox.checked = true;
+            tokenBox.dispatchEvent(new Event("change"));
+          }
+        }
+        refreshOutputPreview(elements, state);
+      });
+      wrapper.appendChild(box);
+      wrapper.appendChild(document.createTextNode(" " + tag));
+      elements.tagChecks.appendChild(wrapper);
+    }
+  }
+
+  async function initOutputControls(elements, state) {
+    const Folder = globalThis.R34FolderNaming;
+    if (!Folder || !elements.masterFolder) return;
+    const settings = await readOutputSettings();
+
+    // The empty string is meaningful ("no master folder"), so this input is
+    // wired by hand instead of through a generic widget that would drop it.
+    elements.masterFolder.value = String(settings.masterFolder === undefined ? "" : settings.masterFolder);
+    elements.masterFolder.placeholder = Folder.DEFAULT_MASTER_FOLDER;
+    elements.masterFolder.addEventListener("input", () => {
+      saveOutputSettings({ masterFolder: elements.masterFolder.value.trim() });
+      refreshOutputPreview(elements, state);
+    });
+
+    // Undefined = never set (use the default); "" = every token unchecked.
+    const template = settings.collectionTemplate === undefined || settings.collectionTemplate === null
+      ? Folder.DEFAULT_COLLECTION_TEMPLATE
+      : String(settings.collectionTemplate);
+    if (elements.collectionTemplate) {
+      elements.collectionTemplate.value = template;
+      // A template the checkboxes cannot represent stays editable by hand so
+      // nothing the user typed is lost.
+      if (!Folder.isTokenOnlyTemplate(template) && elements.templateAdvanced) {
+        elements.templateAdvanced.classList.remove("hidden");
+      }
+      elements.collectionTemplate.addEventListener("input", () => {
+        saveOutputSettings({ collectionTemplate: elements.collectionTemplate.value });
+        refreshOutputPreview(elements, state);
       });
     }
+    renderTokenCheckboxes(elements, state, template);
+
+    if (elements.artistFolderMode) {
+      elements.artistFolderMode.checked = Boolean(settings.artistFolderMode);
+      elements.artistFolderMode.addEventListener("change", () => {
+        saveOutputSettings({ artistFolderMode: elements.artistFolderMode.checked });
+        refreshOutputPreview(elements, state);
+      });
+    }
+    if (elements.pictureMode) {
+      elements.pictureMode.value = String(settings.pictureSaveMode || "loose");
+      elements.pictureMode.addEventListener("change", () => {
+        saveOutputSettings({ pictureSaveMode: elements.pictureMode.value });
+      });
+    }
+    if (elements.duplicateBehaviour) {
+      elements.duplicateBehaviour.value = String(settings.duplicateBehaviour || "uniquify");
+      elements.duplicateBehaviour.addEventListener("change", () => {
+        saveOutputSettings({ duplicateBehaviour: elements.duplicateBehaviour.value });
+      });
+    }
+    if (elements.manualFolder) {
+      elements.manualFolder.addEventListener("input", () => refreshOutputPreview(elements, state));
+    }
+    if (elements.useSearchQuery) {
+      elements.useSearchQuery.addEventListener("click", () => {
+        elements.useSearchQuery.classList.toggle("active");
+        refreshOutputPreview(elements, state);
+      });
+    }
+    refreshOutputPreview(elements, state);
+  }
+
+  // Fill the tag/search inputs for the page the popup is looking at.
+  function applyOutputContext(elements, state) {
+    const Folder = globalThis.R34FolderNaming;
+    if (!Folder) return;
+    const info = state.currentVideoInfo || {};
+    const fromPage = Array.isArray(info.tags) ? info.tags : [];
+    const tags = [];
+    for (const tag of [...(state.outputResolvedTags || []), ...fromPage]) {
+      const value = String(tag || "").trim();
+      if (value && !tags.some((item) => item.toLowerCase() === value.toLowerCase())) tags.push(value);
+    }
+    state.outputTags = tags;
+    renderTagCheckboxes(elements, state);
+
+    const pageUrl = String(info.url || info.webpage_url || "");
+    const search = Folder.searchContextFromUrl(state.currentTabUrl || pageUrl);
+    state.outputSearchQuery = search;
+    if (elements.useSearchQuery) {
+      if (search) {
+        elements.useSearchQuery.classList.remove("hidden");
+        elements.useSearchQuery.textContent = "Use search: " + (search.length > 24 ? search.slice(0, 24) + "…" : search);
+      } else {
+        elements.useSearchQuery.classList.add("hidden");
+        elements.useSearchQuery.classList.remove("active");
+      }
+    }
+    refreshOutputPreview(elements, state);
   }
 
   // --- Bulk download by tag / playlist (rule34.world) ---
@@ -1073,14 +1377,22 @@
     const state = {
       currentVideoInfo: null,
       currentTabId: null,
+      currentTabUrl: "",
       availableFormats: [],
       hasDownloadAccess: true,
+      outputTags: [],
+      outputResolvedTags: [],
+      outputCheckedTags: new Set(),
+      outputSearchQuery: "",
+      selectedExtHint: "mp4",
     };
 
     applyTitles();
     bindUi(elements, state);
     initLimitControls(elements);
-    initPathTemplateControl(elements);
+    // Awaited so the preview below never renders with default (empty) settings
+    // before the stored values arrive.
+    await initOutputControls(elements, state);
     initBulkTagControl(elements);
     startQueueStatusPolling(elements);
 

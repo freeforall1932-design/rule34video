@@ -6,6 +6,7 @@
     <style id="vdp-popup-tweaks">#download-progress,.download-progress{display:none !important;}</style>
     <script src="site-config.js"></script>
     <script src="logger.js"></script>
+    <script src="folder-naming.js"></script>
     <script src="popup.js" defer></script>
     <link rel="stylesheet" href="styles/styles.css" />
     <link rel="stylesheet" href="styles/popup-enhanced.css" />
@@ -105,21 +106,53 @@
         <ul id="queue-list" class="queue-list"></ul>
       </div>
 
-      <div id="path-section" class="limit-section">
+      <div id="output-section" class="limit-section">
         <div class="limit-header">
-          <label for="path-template">Save location (folder template)</label>
+          <label for="master-folder">Where files are saved</label>
         </div>
-        <input type="text" id="path-template" autocomplete="off" spellcheck="false" placeholder="{site}/{artist}/{title}" />
+        <div class="output-path-preview" id="output-path-preview" role="status" aria-live="polite">Downloads/…</div>
         <div class="limit-row">
-          <div class="path-presets">
-            <button type="button" class="path-preset" data-template="{site}/{artist}/{title}">Site / Artist / Title</button>
-            <button type="button" class="path-preset" data-template="{site}/{title}">Site / Title</button>
-            <button type="button" class="path-preset" data-template="{title}">Title only</button>
-          </div>
+          <label class="field-label" for="master-folder">Master folder</label>
+          <input type="text" id="master-folder" autocomplete="off" spellcheck="false" placeholder="R34V" />
         </div>
         <div class="limit-hint">
-          Tokens: <code>{site}</code> <code>{artist}</code> <code>{title}</code> <code>{id}</code>.
-          Folders are created under your Downloads folder.
+          Files land in <code>Downloads/master&nbsp;folder/site/folder name/…</code>. The site level is
+          filled in automatically, so the two sites never mix. Clear the box to
+          drop the master folder; slashes nest deeper.
+        </div>
+
+        <div class="limit-header output-subheader"><span>Folder name for this post</span></div>
+        <div class="limit-row">
+          <label class="field-label" for="manual-folder">Manual</label>
+          <input type="text" id="manual-folder" autocomplete="off" spellcheck="false" placeholder="Type a tag or artist (overrides the boxes below)" />
+        </div>
+        <div id="token-checks" class="token-checks" aria-label="Folder name parts"></div>
+        <div id="tag-checks" class="token-checks tag-checks hidden" aria-label="Tags from this page"></div>
+        <div id="template-advanced" class="limit-row hidden">
+          <label class="field-label" for="collection-template">Template</label>
+          <input type="text" id="collection-template" autocomplete="off" spellcheck="false" placeholder="{artist} - {title} - {id}" />
+        </div>
+        <div class="limit-row">
+          <label class="check-row" for="artist-folder-mode"><input type="checkbox" id="artist-folder-mode" /> Artist folder (<code>artist/…</code>)</label>
+          <button type="button" id="use-search-query" class="path-preset hidden"></button>
+        </div>
+
+        <div class="limit-header output-subheader"><span>Pictures &amp; duplicates</span></div>
+        <div class="limit-row">
+          <label class="field-label" for="picture-mode">Picture sets</label>
+          <select id="picture-mode">
+            <option value="loose">Loose numbered files (001.jpg…)</option>
+            <option value="zip">One ZIP per post</option>
+            <option value="cbz">One CBZ per post</option>
+            <option value="pdf">One PDF per post</option>
+          </select>
+        </div>
+        <div class="limit-row">
+          <label class="field-label" for="duplicate-behaviour">If a file exists</label>
+          <select id="duplicate-behaviour">
+            <option value="uniquify">Keep both — add (1)</option>
+            <option value="overwrite">Overwrite it</option>
+          </select>
         </div>
       </div>
 

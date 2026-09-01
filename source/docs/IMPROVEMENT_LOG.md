@@ -448,6 +448,166 @@ posted in PR #6).
 Validation: `node source/tests/smoke.mjs` ALL PASSED; extension folder
 byte-identical (no change).
 
+## Session 8 (2026-09-01) — source-separated, tag-named output folders (v5.0.0)
+
+Ported the proven output-organization mechanics from the sister project
+(`nh-dw-2.0`, PR #30 / `9f86426`) to this extension: every download now lands
+in `Downloads/<Root>/<Site>/<Collection>/<file>`, the two sites never share a
+folder, and the collection folder is named from the post's tags.
+
+### Feature 1 — per-website master folders (automatic)
+
+- **New file `extension/folder-naming.js`** — a dependency-free naming engine
+  shared by the popup (classic `<script>`) and the service worker (ESM import;
+  it registers `globalThis.R34FolderNaming`, same pattern as `site-config.js`).
+- `<Root>` = chrome.storage.sync `masterFolder`, default **`R34V`**. The **empty
+  string is meaningful** (master folder off → the flat pre-feature layout), so
+  it is stored verbatim and the popup input is wired by hand instead of through
+  a generic widget (which drops empty values). Slashes nest deeper.
+- `<Site>` is derived **automatically** from the post's hostname — no user
+  input. Source map (`SITE_SLUG_BY_HOST`): `rule34video.com → rule34video`,
+  `rule34.world`/`rule34.xyz`/`rule34storage.b-cdn.net → rule34world`. Unknown
+  hosts get their own sanitized-hostname folder (`example-com`) instead of
+  merging into another site's; `siteSlugForUrl` is idempotent so callers can
+  hand over a page URL *or* an already-resolved slug.
+- **`sanitizeArtifactFilename` ported verbatim** from the sister project
+  (control chars + `\:*?"<>|` stripped per segment, leading dots and trailing
+  dots/spaces dropped, 120-char segment cap, fallback when nothing usable is
+  left) plus two additions this repo needs: Windows reserved device names
+  (`CON`, `NUL`, `COM1`, `LPT9`, …) are prefixed with `_`, and a whole relative
+  path is kept inside `MAX_TOTAL_PATH_LENGTH` (240) so Chrome never refuses a
+  download with `FILE_NAME_TOO_LONG`. `..` cannot survive (leading dots are
+  stripped), so no absolute path or parent escape is possible.
+- **Filename authority.** `chrome.downloads.download`'s `filename` is a request,
+  not a command: a server `Content-Disposition` can override it, blob: URLs are
+  saved under the blob UUID on some builds, and another extension holding an
+  `onDeterminingFilename` listener silently steals the name (crbug 579563). The
+  service worker now registers **one permanent `onDeterminingFilename`
+  listener** and re-suggests the full path for every artifact it started
+  (URL-keyed map, 10-min TTL, unrelated downloads untouched).
+
+### Feature 2 — tag / artist folder naming
+
+- One template string (`{artist} - {title} - {id}` by default) filled three
+  ways, all three in the popup: **(a) manual** text field (highest priority),
+  **(b) checkboxes** — one per token *and* one per tag found on the page,
+  **(c) search context** — the query of the search/tag/playlist page the
+  download started from (sent by the popup, or read from the tab URL for the
+  corner button / context menu).
+- Token engine copied from the sister project's `nameTemplate.ts`: canonical
+  order (`{site} {artist} {uploader} {title} {text} {id} {date} {tags}`),
+  joined `" - "`, live "Downloads/…" preview, and a manual input kept visible
+  when the stored template is not pure checkboxes so nothing typed is lost.
+  An empty template means "every token unchecked" (falls through to search →
+  post id), **not** "use the default".
+- Priority: **manual → filled template → search query → post id → `untagged`**.
+  The result is sanitized; a name that sanitizes to nothing falls back to the
+  post id. Empty tokens leave no dangling separator (`"A -  - B"` → `"A - B"`).
+- **Artist-folder mode** toggle: `<Site>/<Artist>/<post>`, falling back
+  uploader → post id → `untagged`; a leading duplicate of the artist is dropped
+  from the post part, and with no artist at all the extra level is skipped
+  rather than duplicated.
+- Metadata for the tokens is now collected by the resolvers: rule34video post
+  pages give tag anchors, the uploader (`/models/`, `/channels/`) and
+  `<time datetime>`; rule34.world gives `tags[]`, the type-8 artist and
+  `created`. `getVideoFormats` returns `apiTags` / `apiUploader` / `apiDate` /
+  `apiKind`, and `content.js` adds the page's own tag list to `getVideoInfo`.
+- The popup's manual name + checked tags travel with the download request and
+  are remembered per post URL (chrome.storage.local, capped at 100), so the
+  in-page corner button and the context menu land in the same folder.
+
+### Feature 3 — videos and pictures in that folder
+
+- **Video** (the usual case): one file straight into the collection folder with
+  the source container's extension (`<title>.mp4`), no archiver. Duplicates are
+  never overwritten by default (`conflictAction: "uniquify"`, user-switchable
+  to overwrite); same-name **folders** merge by design, so no ` (1)` junk.
+- **Picture sets**: `pictureSaveMode` = `loose` (numbered originals
+  `001.jpg…` in the folder, remote URLs so the download manager creates the
+  folder itself) or `zip` / `cbz` / `pdf` (one archive per post,
+  `<collection>/<post>.<ext>`).
+- **New `extension/modules/archive/zipBuilder.mjs`** — dependency-free ZIP
+  writer (CRC-32, local + central directory, EOCD, raw-deflate through
+  `CompressionStream` with a STORE fallback, UTF-8 name flag, deterministic
+  timestamps, `..` rejected). No JSZip, no bundler.
+- **New `extension/modules/archive/pdfBuilder.mjs`** — the sister project's
+  dependency-free PDF 1.4 writer ported as-is (JPEGs embedded verbatim from
+  their SOF dimensions via `DCTDecode`, exact xref offsets), plus
+  `preparePdfPage` / `reencodeImageToJpeg` (PNG/WebP re-encoded white-flattened
+  through `OffscreenCanvas`).
+- **MV3 realities respected.** Archives are built in the **offscreen document**
+  (a service worker has no `URL.createObjectURL`, and PDF needs an image
+  canvas); the offscreen document still touches **only `chrome.runtime`** — it
+  relays the finished blob to the service worker (`SAVE_BLOB_ARTIFACT`), which
+  owns `chrome.downloads` and therefore the folder path. If that relay fails the
+  in-document `<a download>` anchor is the last resort (documented: its
+  `download` attribute is a file *name*, so the artifact lands in the download
+  root instead of the folder).
+
+### Bugs found and fixed while wiring this up
+
+- **Offscreen-downloaded videos ignored the folder path entirely.**
+  `shouldUseOffscreenMp4` is the *main* rule34video.com path (CDN media +
+  cross-origin referer). `chrome.downloads` does not exist in an offscreen
+  document, so `chromeDownload()` always rejected and the fallback anchor saved
+  the file **flat in the download root** under the leaf name — the folder
+  template never applied. Now the blob is relayed to the service worker with
+  its full relative path.
+- **`scopedFileName()` double-foldered offscreen downloads.** It prepended
+  `SiteConfig.OFFSCREEN.downloadFolder` ("Rule 34") to a name that already
+  contained the template path, so the same video landed in
+  `Rule 34/rule34video/…` or `rule34video/…` depending on the code path. The
+  service worker now supplies the complete relative path and the offscreen
+  document adds nothing (leading slashes stripped, since an absolute path is
+  rejected). The unused `chromeDownload()` helper was removed rather than left
+  unreachable.
+- The anchor fallback used the **unscoped** name, losing the folder even in the
+  fallback case.
+
+### Replaced setting
+
+- The free-form **"Save location (folder template)"** field
+  (`downloadPathTemplate`, default `{site}/{artist}/{title}`, which made the
+  *title* the file name) is replaced by Master folder + Folder name
+  (manual / token checkboxes / tags / search). The old key is no longer read;
+  it is left in storage untouched so nothing the user typed is deleted.
+
+### Tests (all offline)
+
+- `source/tests/folder-naming.test.mjs` — 31 fixture cases: master folder
+  (default / custom / nested / empty = off), the site map, sanitizing
+  (reserved chars, `..`, 120 cap, reserved Windows names, empty → post id,
+  total-length cap), the template engine, the naming priority chain,
+  artist-folder mode, search-context detection, full paths.
+- `source/tests/zip-builder.test.mjs` — 10 cases: CRC-32 against the published
+  check value and Node's zlib, entry order/sizes/CRCs, a real inflate
+  round-trip, deflate vs STORE, byte-reproducibility, UTF-8 names, `..`
+  rejection. Cross-checked in the sandbox with Python's `zipfile` (`testzip()`
+  clean) and `unzip -t`.
+- `source/tests/pdf-builder.test.mjs` — 12 cases, adapted from the sister
+  project's `pdf-builder.test.js` (only the input shape changed): SOF parsing
+  (baseline/progressive/APPn/non-RGB), PDF 1.4 structure, verbatim JPEG
+  embedding, exact xref offsets, error cases.
+- `source/tests/e2e-download-paths.mjs` — 50 window-less VM checks driving the
+  **real** `background-enhanced.js` and `offscreen.js` through their message
+  handlers with mocked `chrome.*` + `fetch`: per-site paths, the naming
+  priority chain (including the tab-URL search context), master folder off,
+  reserved names, `conflictAction`, the filename guard (and that it never
+  renames unrelated downloads), resolver metadata, picture-set routing for
+  loose/zip/cbz/pdf, and the offscreen document actually assembling the
+  archive (verified with an independent reader).
+- `source/tests/smoke.mjs` — mock extended with `chrome.storage.sync` and a
+  downloads callback; still green.
+- Runner: `node --test "source/tests/*.test.mjs"` (built into the Node 22 CI
+  already installs; note the quoted glob — Node treats a bare directory
+  argument as an entry point) rather
+  than mocha — this repo has no `package.json`/`node_modules` and stays
+  dependency-free; `npm test` runs the three suites for convenience.
+
+Version bumped **4.4.2 → 5.0.0** in `extension/manifest.json` (the only
+runtime manifest; `source/tools/app.config.json` is a historical generator
+snapshot and is intentionally not bumped — it is never loaded at runtime).
+
 ## Known issues / notes
 
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not

@@ -29,6 +29,15 @@ const chromeMock = {
       remove: () => {},
       onChanged: { addListener() {} },
     },
+    // Output-organization settings (master folder, collection template, ...)
+    // live in sync storage; the background falls back to its defaults when a
+    // key is absent, so an empty store is a valid fixture.
+    sync: {
+      get: (_keys, cb) => (cb ? cb({}) : Promise.resolve({})),
+      set: () => {},
+      remove: () => {},
+      onChanged: { addListener() {} },
+    },
   },
   runtime: {
     onMessage: { addListener: (h) => { globalThis.__handler = h; } },
@@ -38,10 +47,10 @@ const chromeMock = {
   },
   webRequest: { onBeforeRequest: { addListener() {} } },
   downloads: {
-    download: () => 1,
+    download: (_options, cb) => (cb ? cb(1) : Promise.resolve(1)),
     onCreated: { addListener() {} },
     onChanged: { addListener() {} },
-    onDeterminingFilename: { addListener() {} },
+    onDeterminingFilename: { addListener() {}, removeListener() {} },
   },
   notifications: { create() {} },
   contextMenus: { onClicked: { addListener() {} }, create() {} },
@@ -95,6 +104,7 @@ const files = {
   "site-config.js": "site-config.mjs",
   "logger.js": "logger.mjs",
   "background-bridge.js": "background-bridge.mjs",
+  "folder-naming.js": "folder-naming.mjs",
 };
 for (const [src, dst] of Object.entries(files)) {
   let code = readFileSync(join(srcDir, src), "utf8");

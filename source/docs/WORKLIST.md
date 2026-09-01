@@ -2,14 +2,50 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-08-31 (session 6). PR #1 merged (rebrand + queue + batch).
+Last updated: 2026-09-01 (session 8). PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 Session 6 = dead-code purge + scrapyard retention + hardening pass
 (extension 2.2 MB → 0.85 MB; v4.4.2; ci.yml fixed by owner, CI green).
+Session 8 = source-separated, tag-named output folders (v5.0.0): master
+folder + automatic per-site folder + tag/artist collection folder + picture-set
+archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 
 ## Done
 
+- [x] **(Session 8, 5.0.0) Master folder** — `chrome.storage.sync`
+      `masterFolder`, default `R34V`; empty string = off (flat layout); slashes
+      nest. Popup input wired by hand so the empty value is savable.
+- [x] **(Session 8) Automatic per-site folder** — hostname → short slug map in
+      `extension/folder-naming.js` (`rule34video`, `rule34world`); unknown hosts
+      get their own folder instead of merging; the two sites can never share one.
+- [x] **(Session 8) Collection folder naming** — template string
+      (`{artist} - {title} - {id}`) with one checkbox per token, one checkbox
+      per page tag, a manual override field, and the search/tag-results query;
+      live preview; priority manual → template → search → post id → `untagged`;
+      artist-folder mode.
+- [x] **(Session 8) Path hardening** — `sanitizeArtifactFilename` ported
+      verbatim, Windows reserved names prefixed, 120-char segment cap, 240-char
+      total cap, `..`/absolute paths impossible.
+- [x] **(Session 8) Filename authority** — permanent `onDeterminingFilename`
+      guard re-suggests the full path for every artifact this extension starts
+      (beats Content-Disposition, blob-UUID naming and other extensions'
+      listeners); unrelated downloads untouched.
+- [x] **(Session 8) Picture sets** — loose numbered originals, or one
+      ZIP/CBZ/PDF per post built in the offscreen document with the new
+      dependency-free `modules/archive/zipBuilder.mjs` + ported `pdfBuilder.mjs`.
+- [x] **(Session 8) Fixed: offscreen videos ignored the folder path** —
+      `chrome.downloads` does not exist in an offscreen document, so the MP4
+      pipeline always fell back to the in-document anchor and saved flat in the
+      download root. Blobs are now relayed to the service worker, which owns
+      `chrome.downloads` and the folder path.
+- [x] **(Session 8) Fixed: offscreen double folder** — `scopedFileName()`
+      prepended `SiteConfig.OFFSCREEN.downloadFolder` ("Rule 34") to a name that
+      already contained the template path. Removed; the worker supplies the
+      complete relative path. Unused `chromeDownload()` helper deleted.
+- [x] **(Session 8) Tests** — `node --test` fixture suites (naming 31, ZIP 10,
+      PDF 12) + a 50-check window-less VM e2e driving the real service worker
+      and offscreen document; `smoke.mjs` mock extended; all offline.
 - [x] Remove third-party auth (`auth.serp.co`, `serp.ly`, activation/license/trial).
 - [x] Delete `auth*` / `trial-banner.js` files and all references (incl. `popup.html` tags).
 - [x] Remove `isActivated` gating from player button + background.
@@ -233,6 +269,30 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
       `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
       OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
       `/v2/post/search/playlist/{id}` for playlists.
+- [ ] **(Session 8, OWNER) Apply the CI update.** The bot token has no
+      `workflows` scope, so `.github/workflows/ci.yml` could not be pushed.
+      Copy `source/docs/ci-workflow.pending.yml` over
+      `.github/workflows/ci.yml` in the GitHub web UI (adds the `fixtures` and
+      `vm-suites` jobs, plus `folder-naming.js` / `modules/**/*.mjs` /
+      `package.json` to the validate job). The current workflow still passes
+      on this branch.
+- [ ] **(Session 8) Live-browser verification of the new metadata
+      extraction.** `collectRule34VideoTags` / `collectRule34VideoUploader` /
+      `collectRule34VideoDate` were written against the saved
+      `source/page-source/rule34video-listing.html` (tag anchors
+      `/tags/<id>/` → anchor text, `/models/<slug>/`, `<time datetime>`), not
+      against a live post page. If a markup change breaks one, only the
+      matching token/checkbox loses data — the download still works.
+- [ ] **(Session 8) Manual checks that need a real browser:** a PDF opens in a
+      viewer with the right page order and orientation (no PDF tool in CI); a
+      CBZ opens in a comic reader; the master folder really is created under
+      the user's fixed download location with "Ask where to save" OFF; the
+      anchor fallback path (only reachable if the worker relay fails).
+- [ ] **(Session 8) Optional: multi-image posts.** The picture-set pipeline is
+      written for N images (`001.jpg…`, every image in the archive), but both
+      current sites expose one original file per post, so today's archives hold
+      a single page. Wire up albums automatically if a resolver ever returns
+      several image formats.
 - [ ] Optional: image posts on rule34video.com (currently video-focused).
 - [ ] Optional: "already downloaded" dedupe via `chrome.downloads` history
       (match by filename; note signed rule34video URLs differ per resolve).
