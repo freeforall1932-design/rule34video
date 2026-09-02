@@ -242,11 +242,15 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       `hls2mp4/transmuxer.mjs` uses), plus a real-browser HLS download
       regression test before swapping the bundle. Adoption recipe lives in
       IMPROVEMENT_LOG session 6 close-out.
-- [ ] **(Session 6) Consolidate dual-payload progress forwarding** —
-      `background-bridge.js` `forwardProgressMessages` sends a canonical AND a
-      legacy message per progress tick; `content-bridge.js` still listens to
-      both (`hlsProgress`/`mp4Progress`/…). Drop the legacy shape on both sides
-      (coordinated change; needs browser test of progress toasts).
+- [x] **(Session 9) Consolidated dual-payload progress forwarding** —
+      `forwardProgressMessages` no longer sends a legacy message beside the
+      canonical `downloadProgress` one (the canonical payload is a strict
+      superset), `content-bridge.js` dropped the six legacy handlers and their
+      label table, and the offscreen document's unreachable `"actionData"`
+      message style went with them. The three duplicate `hlsProgress`/
+      `hlsComplete`/`hlsError` cases in the worker's message router are gone
+      too — nothing emitted those action names any more. One message per tick
+      instead of two. **Still wants a browser check of the progress toasts.**
 - [x] **(Session 6 hardening pass, 4.4.2) Queue-restore temp keys** —
       `restoreQueueState()` now drops non-numeric `activeQueueJobs` keys
       (`queue-job-N` persisted before the chrome download id existed) instead
@@ -269,13 +273,18 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
       OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
       `/v2/post/search/playlist/{id}` for playlists.
-- [ ] **(Session 8, OWNER) Apply the CI update.** The bot token has no
-      `workflows` scope, so `.github/workflows/ci.yml` could not be pushed.
-      Copy `source/docs/ci-workflow.pending.yml` over
-      `.github/workflows/ci.yml` in the GitHub web UI (adds the `fixtures` and
-      `vm-suites` jobs, plus `folder-naming.js` / `modules/**/*.mjs` /
-      `package.json` to the validate job). The current workflow still passes
-      on this branch.
+- [x] **(Session 9) Simplified CI workflow applied by the owner.** GitHub
+      rejected the agent's push (the bot token has no `workflows` scope), so
+      the file shipped as `source/docs/ci-workflow.pending.yml` and the owner
+      copied it over `.github/workflows/ci.yml` via the web UI (commit
+      `e695faa`). Verified byte-identical and green on the branch: one job,
+      "Validate and test". The pending file has been deleted now that it is a
+      stale duplicate. Three near-duplicate jobs (each re-running checkout +
+      setup-node, with an inlined classic-script list that had **drifted** from
+      the near-identical one in `package.json`) became one job of four
+      `npm run` steps, with the validation logic in
+      `source/tools/validate.mjs`, which derives the file list from disk so no
+      new extension file can be silently skipped.
 - [ ] **(Session 8) Live-browser verification of the new metadata
       extraction.** `collectRule34VideoTags` / `collectRule34VideoUploader` /
       `collectRule34VideoDate` were written against the saved

@@ -100,7 +100,6 @@ function buildConfig() {
     hls: {
       mode: offscreenConfig.hls?.mode || "transmux",
       completion: offscreenConfig.hls?.completion || "offscreen",
-      messageStyle: offscreenConfig.hls?.messageStyle || "standard",
       continueOnSegmentError: Boolean(offscreenConfig.hls?.continueOnSegmentError),
       maxSegmentRetries: Number.isFinite(Number(offscreenConfig.hls?.maxSegmentRetries))
         ? Number(offscreenConfig.hls.maxSegmentRetries)
@@ -215,22 +214,6 @@ function safeSendMessage(payload) {
   }
 }
 
-function hlsDataPayload(payload) {
-  return {
-    downloadId: payload.downloadId,
-    filename: payload.fileName || payload.filename,
-    fileName: payload.fileName || payload.filename,
-    segmentIndex: payload.segmentIndex,
-    totalSegments: payload.totalSegments,
-    progress: payload.progress,
-    status: payload.status,
-    error: payload.error,
-    blobUrl: payload.blobUrl,
-    fileSize: payload.fileSize,
-    chromeDownloadId: payload.chromeDownloadId,
-  };
-}
-
 function sendCanonicalDownloadProgress(payload) {
   safeSendMessage({
     action: "downloadProgress",
@@ -255,10 +238,6 @@ function sendCanonicalDownloadProgress(payload) {
 
 function sendHlsProgress(payload) {
   sendCanonicalDownloadProgress({ ...payload, kind: "hls", strategy: "offscreen-hls" });
-  if (config.hls.messageStyle === "actionData") {
-    safeSendMessage({ action: "hlsProgress", data: hlsDataPayload(payload) });
-    return;
-  }
   safeSendMessage({
     type: "HLS_PROCESSING_PROGRESS",
     downloadId: payload.downloadId,
@@ -280,10 +259,6 @@ function sendHlsComplete(payload) {
     downloadedBytes: payload.fileSize || 0,
     totalBytes: payload.fileSize || 0,
   });
-  if (config.hls.messageStyle === "actionData") {
-    safeSendMessage({ action: "hlsComplete", data: hlsDataPayload(payload) });
-    return;
-  }
   const message = {
     type: "HLS_PROCESSING_COMPLETE",
     downloadId: payload.downloadId,
@@ -305,10 +280,6 @@ function sendHlsError(payload) {
     status: "Failed",
     progress: 0,
   });
-  if (config.hls.messageStyle === "actionData") {
-    safeSendMessage({ action: "hlsError", data: hlsDataPayload(payload) });
-    return;
-  }
   safeSendMessage({
     type: "HLS_PROCESSING_ERROR",
     downloadId: payload.downloadId,

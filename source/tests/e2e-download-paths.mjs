@@ -18,7 +18,6 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import assert from "node:assert/strict";
 import { readZipEntries, readZipEntryBytes } from "../../extension/modules/archive/zipBuilder.mjs";
 
 process.on("unhandledRejection", (err) => {
