@@ -8,58 +8,29 @@ on:
 # One offline workflow: no browser, no network fixtures, no real-browser
 # extension jobs (those fail 100% on GitHub-hosted runners — browser testing is
 # a documented manual step in source/docs/WORKLIST.md).
+#
+# Every step below is just an `npm run` script, so the exact same commands run
+# locally and in CI and there is no shell logic to keep in sync with
+# package.json (the previous workflow inlined a hand-maintained file list that
+# had already drifted from the one in package.json).
 jobs:
-  validate:
-    name: Syntax, JSON and branding
+  ci:
+    name: Validate and test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+
       - name: Validate extension (syntax, JSON, branding)
-        working-directory: "extension"
-        run: |
-          for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
-                   content.js content-bridge.js download-manager.js logger.js background-bridge.js \
-                   folder-naming.js inject.js post-actions.js ../source/tools/generate-icons.js; do
-            node --check "$f" || { echo "FAIL $f"; exit 1; }
-          done
-          for m in modules/*.mjs modules/*/*.mjs; do
-            node --check "$m" || { echo "FAIL $m"; exit 1; }
-          done
-          node --input-type=module --check < background-enhanced.js || { echo "FAIL background-enhanced.js"; exit 1; }
-          for j in manifest.json ../source/tools/app.config.json ../package.json; do
-            python3 -m json.tool "$j" >/dev/null || { echo "FAIL $j"; exit 1; }
-          done
-          # Forbidden paywall/auth remnants must print NOTHING:
-          if grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivated|isActivated|auth-ui\.js|trial-banner\.js|gumroad|activationTitle' \
-            --include='*.js' --include='*.json' --include='*.html' --include='*.css' . \
-            | grep -viE 'Rule34'; then
-            echo "FORBIDDEN PAYWALL REMNANTS FOUND"; exit 1
-          fi
-          echo "validation OK"
+        run: npm run check
 
-  fixtures:
-    name: Offline fixture suites (naming, ZIP, PDF)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Fixture tests
-        run: node --test "source/tests/*.test.mjs"
+      - name: Offline fixture suites (naming, ZIP, PDF, queue restore)
+        run: npm run test:fixtures
 
-  vm-suites:
-    name: Window-less VM smoke + e2e pipelines
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
       - name: Smoke test (mocked chrome + fetch, real service worker)
-        run: node source/tests/smoke.mjs
+        run: npm run test:smoke
+
       - name: e2e output-path pipelines (real service worker + offscreen document)
-        run: node source/tests/e2e-download-paths.mjs
+        run: npm run test:e2e
