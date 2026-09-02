@@ -810,6 +810,19 @@ async function processBatchJob(job) {
         url: resolved.url,
         thumbnail: resolved.thumbnail,
         duration: resolved.duration,
+        // Carry the resolver's metadata through to the naming engine so a
+        // batch / corner-button download lands in the SAME folder as a popup
+        // download of the same post. Without this the {artist}, {uploader} and
+        // {date} tokens were empty for every batch item (the folder then fell
+        // back to a bare title + id), splitting one post across two
+        // differently-named folders depending on how it was enqueued.
+        // Note: {tags} is NOT filled here — it is the user's checked page tags
+        // (popup __output.tags, or the per-URL stored choice read by
+        // resolveOutputChoice), and would diverge from that if auto-filled with
+        // every resolver tag.
+        artist: resolved.artist || "",
+        uploader: resolved.uploader || "",
+        date: resolved.date || "",
         selectedFormat: best,
         formats: resolved.formats,
         skipFormatRefresh: true,
@@ -993,7 +1006,12 @@ async function resolveOutputChoice(videoInfo = {}) {
   return {
     manual: String(stored?.manual || "").trim(),
     tags: Array.isArray(stored?.tags) ? stored.tags.filter(Boolean).map(String) : [],
-    useSearchQuery: false,
+    // Batch / corner-button downloads (which carry __fromBatch) start from a
+    // search / tag / playlist results page, so the query is offered as a
+    // folder-name candidate. It only ever wins when the template produces
+    // nothing (searchContextForVideoInfo yields "" otherwise), so an explicit
+    // template is never overridden and a stored manual choice is not clobbered.
+    useSearchQuery: Boolean(videoInfo.__fromBatch),
     explicit: false,
   };
 }

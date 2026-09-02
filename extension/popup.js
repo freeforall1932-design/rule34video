@@ -789,7 +789,7 @@
       startProgressPolling(elements, downloadId, isHlsFormat(format) || Boolean(result.isHLS));
       telemetry("popup.download.started", { hasDownloadId: Boolean(downloadId), isHls: isHlsFormat(format) });
       refreshQueueStatus(elements);
-        refreshQueueItems(elements);
+      refreshQueueItems(elements);
     } catch (error) {
       logger.error("download failed", error);
       showError(elements, error && error.message ? error.message : "Download failed.");

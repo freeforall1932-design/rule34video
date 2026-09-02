@@ -179,6 +179,23 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 - [ ] Popup title/thumbnail populate (from `apiTitle` / `apiThumbnail`).
 - [ ] Saved file is named `artist/title_1080p.mp4`-ish, not `video.mp4`.
 
+### Naming feature (Session 8, v5.0.0) — live spot-check
+- [ ] Same post via **popup** download vs via **corner `↓` button / "Download
+      visible"** lands in the **same** collection folder (same folder name). This
+      is the batch-metadata fix + the rule34.world artist de-dup; a mismatch here
+      means a capture path is still dropping/duplicating a token.
+- [ ] The popup's "Tags on this page" list matches the tags that actually reach the
+      folder name when the same post is started from the corner button (the
+      content-DOM `extractPageTags` and the worker `collectRule34VideoTags` should
+      agree). If they differ, one path names the folder with a tag the other can't
+      see — see `source/docs/NAMING_REVIEW.md` → "page-tag collection diverges by
+      capture path".
+- [ ] A post whose title is all illegal chars (e.g. `???`) saves as
+      `<artist> - <id>` (no double/trailing `- `), and a folder called `CON` /
+      `NUL` still saves under a `_CON` / `_NUL` master folder.
+- [ ] rule34.world post with an artist that also heads the title saves as
+      `Artist - post <id>` (artist **not** duplicated).
+
 ### rule34.world
 - [ ] Hot/listing page: corner `↓` button appears on each post card
       (**verify the `app-post-card` / `mat-card` / `[class*=post]` selectors**).
