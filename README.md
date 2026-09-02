@@ -40,7 +40,7 @@ Downloads/
 | `extension/modules/archive/` | Dependency-free ZIP/CBZ writer and PDF writer for picture sets |
 | `source/` | All development-use code: `retired/` (retired extension code), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
 | `source/tools/validate.mjs` | Offline validation (syntax, JSON, branding) — the single source of truth shared by `npm run check` and CI |
-| `.github/workflows/ci.yml` | Syntax + JSON + branding checks and the offline suites, on every push/PR. **A simplified replacement is pending an owner copy-paste** (the agent token has no `workflows` scope): `source/docs/ci-workflow.pending.yml` collapses it to one job of four `npm run` steps. The live workflow still passes. |
+| `.github/workflows/ci.yml` | Runs `npm run check` + all three offline suites on every push/PR. Every step is an `npm run` script, so CI and local runs are identical. |
 
 ## Development
 

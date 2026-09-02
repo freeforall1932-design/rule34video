@@ -273,21 +273,18 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
       OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
       `/v2/post/search/playlist/{id}` for playlists.
-- [ ] **(Session 9, OWNER) Apply the simplified CI workflow.** Same token
-      limitation as sessions 6/7/8 — GitHub rejects the push with *"refusing to
-      allow a GitHub App to create or update workflow `.github/workflows/ci.yml`
-      without `workflows` permission"*. Copy
-      `source/docs/ci-workflow.pending.yml` over `.github/workflows/ci.yml` in
-      the web UI. It replaces three near-duplicate jobs (each re-running
-      checkout + setup-node, with an inlined file list that had **drifted**
-      from the near-identical one in `package.json`) with **one job of four
-      `npm run` steps**; the validation logic now lives in
-      `source/tools/validate.mjs`, which derives the classic-script list from
-      disk so no new extension file can be silently skipped.
-      **The currently-live workflow still passes against this branch** — its
-      hardcoded paths all still exist — so CI stays green until it is applied.
-      (The previous session-8 pending file had already been applied by the
-      owner and was a byte-identical stale copy; this file supersedes it.)
+- [x] **(Session 9) Simplified CI workflow applied by the owner.** GitHub
+      rejected the agent's push (the bot token has no `workflows` scope), so
+      the file shipped as `source/docs/ci-workflow.pending.yml` and the owner
+      copied it over `.github/workflows/ci.yml` via the web UI (commit
+      `e695faa`). Verified byte-identical and green on the branch: one job,
+      "Validate and test". The pending file has been deleted now that it is a
+      stale duplicate. Three near-duplicate jobs (each re-running checkout +
+      setup-node, with an inlined classic-script list that had **drifted** from
+      the near-identical one in `package.json`) became one job of four
+      `npm run` steps, with the validation logic in
+      `source/tools/validate.mjs`, which derives the file list from disk so no
+      new extension file can be silently skipped.
 - [ ] **(Session 8) Live-browser verification of the new metadata
       extraction.** `collectRule34VideoTags` / `collectRule34VideoUploader` /
       `collectRule34VideoDate` were written against the saved

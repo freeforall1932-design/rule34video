@@ -173,12 +173,12 @@ and fixed the biggest real-world bug found so far:
     - ✅ **Applied by the owner; superseded in session 9.** That pending file
       had been copied over `.github/workflows/ci.yml`, leaving a byte-identical
       stale duplicate. Session 9 replaced it with a **new**
-      `source/docs/ci-workflow.pending.yml`: one job of four `npm run` steps
-      (`check`, `test:fixtures`, `test:smoke`, `test:e2e`) instead of three
-      jobs with inlined bash, with the validation logic moved to
-      `source/tools/validate.mjs`. ⚠️ It again needs an owner copy-paste (the
-      bot token still lacks `workflows`), but the live workflow keeps passing
-      in the meantime.
+      pending file: one job of four `npm run` steps (`check`, `test:fixtures`,
+      `test:smoke`, `test:e2e`) instead of three jobs with inlined bash, with
+      the validation logic moved to `source/tools/validate.mjs`. The owner
+      applied it via the web UI (`e695faa`) and it is green; the pending file
+      was then deleted. **CI now needs no manual step** unless the workflow
+      itself changes again.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.

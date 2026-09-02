@@ -671,11 +671,11 @@ verified by the offline suites (`npm test`, now 59 fixture checks + smoke +
   one job of four `npm run` steps, identical to what a developer runs locally.
   Verified the validator actually fails on a syntax error, malformed JSON and a
   reintroduced paywall marker.
-  ⚠️ GitHub rejected the workflow push (the bot token has no `workflows`
-  scope), so the new file ships as `source/docs/ci-workflow.pending.yml` for an
-  owner copy-paste, exactly as in sessions 6-8. The live workflow was left
-  untouched and still passes against this branch — all of its hardcoded paths
-  still exist.
+  GitHub rejected the workflow push (the bot token has no `workflows` scope),
+  so the new file shipped as `source/docs/ci-workflow.pending.yml` for an owner
+  copy-paste, exactly as in sessions 6-8. The owner applied it the same day
+  (`e695faa`); it was verified byte-identical and green (one job, "Validate and
+  test"), and the pending file was deleted as a stale duplicate.
 
 ### Test coverage added
 
