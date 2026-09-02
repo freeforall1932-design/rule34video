@@ -15,11 +15,15 @@ Downloads/
   R34V/                          <- master folder (rename it, or clear it to turn off)
     rule34video/                 <- which site the post came from (automatic)
       AnArtist - Some title - 4573905/     <- folder name: your tags / template / manual name
-        Some title - 4573905.mp4
+        Some title.mp4
     rule34world/
       WorldArtist - post 3571567/
         001.jpg                  <- picture post, loose mode (or one .zip/.cbz/.pdf)
 ```
+
+> The **id lives in the folder name**, not the file name — so the file is
+> `<title>.<ext>`. (On rule34.world the title already ends with `post <id>`, so
+> a post there saves as `WorldArtist - post 3571567.mp4`.)
 
 - The **site level is automatic** — it comes from the site that served the post,
   so the two sites never end up in the same folder.

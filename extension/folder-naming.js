@@ -150,8 +150,8 @@
       .split("/")
       .map(cleanSegment)
       .filter(Boolean);
-    const single = parts.length ? prefixReservedWindowsName(parts.join("-")) : "";
-    if (single) return single;
+    const joined = parts.length ? tidySeparators(parts.join("-")) : "";
+    if (joined) return prefixReservedWindowsName(joined);
     return prefixReservedWindowsName(cleanSegment(fallback)) || "untagged";
   }
 
@@ -240,6 +240,31 @@
     return tidySeparators(out);
   }
 
+  // Collapse a leading artist that the title repeats. rule34.world builds the
+  // title as "<Artist> - <post>", so a template like "{artist} - {title} - {id}"
+  // fills to "Artist - Artist - <post> - <id>". This drops the redundant second
+  // artist, leaving "Artist - <post> - <id>".
+  //
+  // It only runs on template-derived names (see the caller): a user-typed manual
+  // override is never artist-collapsed. The repeated artist must be a whole
+  // token (followed by a separator or the end), never a bare prefix of a longer
+  // word — so artist "Sun" against a title "Sunshine" is left intact. (The
+  // separator/whitespace tidy that applies to every name happens earlier in
+  // sanitizeSegment and is independent of this.)
+  function collapseRepeatedLeadingArtist(name, artistValue) {
+    const value = String(name || "").trim();
+    const artist = String(artistValue || "").trim();
+    if (!value || !artist) return value;
+    const prefix = artist + TOKEN_SEPARATOR;
+    if (!value.toLowerCase().startsWith(prefix.toLowerCase())) return value;
+    const rest = value.slice(prefix.length);
+    const escaped = artist.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const artistIsWholeToken = new RegExp("^" + escaped + "(?=[\\s\\-_,.()\\[\\]<>{}]|$)", "i").test(rest);
+    if (!artistIsWholeToken) return value;
+    const after = rest.slice(artist.length).replace(/^[ ,\-.()\s]+/, "");
+    return tidySeparators(artist + TOKEN_SEPARATOR + after);
+  }
+
   // Which of the three ways of naming the collection folder won:
   //   manual  - the user typed a tag/folder name (highest priority)
   //   template- the checkbox/template string filled from the post's metadata
@@ -265,7 +290,14 @@
     const searchContext = String(opts.searchContext || "").trim();
     const source = manual ? "manual" : (templateResult ? "template" : (searchContext ? "search" : "id"));
     const chosen = manual || templateResult || searchContext || fallbackId;
-    const name = sanitizeSegment(chosen, fallback);
+    let name = sanitizeSegment(chosen, fallback);
+    // A template filled from a title that already begins with the artist (see
+    // collapseRepeatedLeadingArtist) would otherwise double it, e.g.
+    // "Artist - Artist - <post> - <id>". Manual and search/id names are never
+    // rewritten.
+    if (source === "template") {
+      name = collapseRepeatedLeadingArtist(name, context.artist || context.uploader);
+    }
     if (!opts.artistFolderMode) return { name, source };
 
     // Artist-folder mode: <Site>/<Artist>/<post>. Falls back uploader -> id ->
@@ -407,6 +439,7 @@
     buildTemplate,
     fillTemplate,
     tidySeparators,
+    collapseRepeatedLeadingArtist,
     resolveCollectionName,
     buildRelativePath,
     buildDirectoryPath,

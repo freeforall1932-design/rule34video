@@ -115,6 +115,22 @@ describe("path sanitizing", () => {
     );
   });
 
+  it("collapses separators AFTER illegal characters are stripped (not before)", () => {
+    // The transferable lesson from the sister project: a token whose only
+    // content gets stripped (a title of "???" inside {artist} - {title} - {id})
+    // must not leave a double empty " - " gap. Separators are re-collapsed after
+    // sanitizing, and never before the reserved-name prefix so "_CON" survives.
+    assert.equal(FN.sanitizeSegment("nasa - ??? - 111", "x"), "nasa - 111");
+    assert.equal(FN.sanitizeSegment("a - *** - 2", "x"), "a - 2");
+    assert.equal(
+      FN.buildRelativePath({ masterFolder: "R34V", site: "https://rule34video.com/video/4573905", context: { id: "4573905", title: "nasa - ??? - 111" }, ext: "mp4" }),
+      "R34V/rule34video/nasa - 111 - 4573905/nasa - 111.mp4",
+    );
+    // Collapsing before the reserved-name prefix would strip "_CON" — it must survive.
+    assert.equal(FN.sanitizeSegment("CON", "x"), "_CON");
+    assert.equal(FN.sanitizeSegment("  CON  ", "x"), "_CON");
+  });
+
   it("never returns an absolute path or an empty result", () => {
     const path = FN.buildRelativePath({ masterFolder: "///", site: "", context: { id: "" }, ext: "mp4" });
     assert.ok(path.length > 0);
@@ -192,6 +208,47 @@ describe("collection template engine", () => {
 
   it("never lets an unknown placeholder reach the file system", () => {
     assert.equal(FN.fillTemplate("{pretty} - {id}", { id: "9" }), "9");
+  });
+
+  it("collapses a leading artist duplicated by the template", () => {
+    // rule34.world reports the title as "<Artist> - <post>", so the default
+    // template "{artist} - {title} - {id}" would fill to a repeated artist.
+    assert.equal(
+      FN.collapseRepeatedLeadingArtist("WorldArtist - WorldArtist - post 3571567 - 3571567", "WorldArtist"),
+      "WorldArtist - post 3571567 - 3571567",
+    );
+    // A genuinely single leading artist is left untouched.
+    assert.equal(FN.collapseRepeatedLeadingArtist("AnArtist - A Sample Video - 4573905", "AnArtist"), "AnArtist - A Sample Video - 4573905");
+    // Missing artist / empty input returns the input as-is.
+    assert.equal(FN.collapseRepeatedLeadingArtist("WorldArtist - post 3571567 - 3571567", ""), "WorldArtist - post 3571567 - 3571567");
+    // An artist that is only a PREFIX of a longer title word is never mangled.
+    assert.equal(FN.collapseRepeatedLeadingArtist("Sun - Sunshine - a nice day - 7", "Sun"), "Sun - Sunshine - a nice day - 7");
+    // A repeated artist followed by a separator IS collapsed (the real case).
+    assert.equal(FN.collapseRepeatedLeadingArtist("Sun - Sun - post 7 - 7", "Sun"), "Sun - post 7 - 7");
+  });
+
+  it("de-duplicates the artist in the collection folder for rule34.world titles", () => {
+    const path = FN.buildRelativePath({
+      masterFolder: "R34V",
+      site: "https://rule34.world/post/3571567",
+      template: "{artist} - {title} - {id}",
+      context: { artist: "WorldArtist", title: "WorldArtist - post 3571567", id: "3571567" },
+      basename: "WorldArtist - post 3571567",
+      ext: "mp4",
+    });
+    assert.equal(path, "R34V/rule34world/WorldArtist - post 3571567 - 3571567/WorldArtist - post 3571567.mp4");
+  });
+
+  it("never rewrites a user-typed manual folder name", () => {
+    const path = FN.buildRelativePath({
+      masterFolder: "R34V",
+      site: "https://rule34.world/post/3571567",
+      template: "{artist} - {title} - {id}",
+      manual: "WorldArtist - WorldArtist - post",
+      context: { artist: "WorldArtist", title: "WorldArtist - post 3571567", id: "3571567" },
+      ext: "mp4",
+    });
+    assert.equal(path, "R34V/rule34world/WorldArtist - WorldArtist - post/WorldArtist - post 3571567.mp4");
   });
 });
 

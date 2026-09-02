@@ -73,6 +73,31 @@ const worldVideoPost = {
   files: { "100": [1], "101": [0], "102": [0] },
   tags: [{ type: 8, value: "WorldArtist" }, { type: 0, value: "some_tag" }],
 };
+// A second world post, only ever used by the batch test (A8), so it is not
+// already "active" from an earlier popup download — otherwise the batch enqueue
+// would correctly dedupe it as already in the queue.
+const WORLD_POST_ID_2 = "4444444";
+const WORLD_POST_URL_2 = `https://rule34.world/post/${WORLD_POST_ID_2}`;
+const worldVideoPost2 = {
+  id: Number(WORLD_POST_ID_2),
+  type: 1,
+  duration: 20,
+  created: "2026-08-03T00:00:00",
+  files: { "100": [1] },
+  tags: [{ type: 8, value: "WorldArtist" }],
+};
+// A third world post, only used by the search-query batch test (A9) so it is
+// not already queued by an earlier batch/popup download.
+const WORLD_POST_ID_3 = "5555555";
+const WORLD_POST_URL_3 = `https://rule34.world/post/${WORLD_POST_ID_3}`;
+const worldVideoPost3 = {
+  id: Number(WORLD_POST_ID_3),
+  type: 1,
+  duration: 15,
+  created: "2026-08-04T00:00:00",
+  files: { "100": [1] },
+  tags: [{ type: 8, value: "WorldArtist" }],
+};
 const WORLD_IMAGE_POST_ID = "1280481";
 const WORLD_IMAGE_POST_URL = `https://rule34.world/post/${WORLD_IMAGE_POST_ID}`;
 const worldImagePost = {
@@ -191,6 +216,12 @@ function installFetch() {
     }
     if (u.includes("/api/v2/post/" + WORLD_POST_ID)) {
       return { ok: true, status: 200, json: async () => worldVideoPost, text: async () => JSON.stringify(worldVideoPost) };
+    }
+    if (u.includes("/api/v2/post/" + WORLD_POST_ID_2)) {
+      return { ok: true, status: 200, json: async () => worldVideoPost2, text: async () => JSON.stringify(worldVideoPost2) };
+    }
+    if (u.includes("/api/v2/post/" + WORLD_POST_ID_3)) {
+      return { ok: true, status: 200, json: async () => worldVideoPost3, text: async () => JSON.stringify(worldVideoPost3) };
     }
     if (u.includes("rule34video.com/video/" + VIDEO_POST_ID)) {
       return { ok: true, status: 200, text: async () => rule34VideoHtml, json: async () => ({}) };
@@ -421,6 +452,54 @@ await downloadVideoPost(VIDEO_POST_URL, { __output: { manual: "Remembered Tag", 
 check("saved from the popup", downloadedFilenames()[0].startsWith("R34V/rule34video/Remembered Tag/"), downloadedFilenames()[0]);
 await downloadVideoPost(VIDEO_POST_URL); // no explicit choice, as from the corner button
 check("reused for the same post without the popup", downloadedFilenames()[0].startsWith("R34V/rule34video/Remembered Tag/"), downloadedFilenames()[0]);
+
+section("A8. batch / corner-button downloads keep the resolver metadata for the naming tokens");
+// The corner button and "Download visible"/tag/playlist batch all route through
+// processBatchJob, which resolves each post and then enqueues it. The resolved
+// metadata (artist/uploader/date — {tags} comes from the user's checked/stored
+// tags, not the resolver) must survive into the naming engine so a batch item
+// lands in the SAME folder as the popup download of that post.
+await setSettings({ masterFolder: "R34V", collectionTemplate: "{artist} - {id}", artistFolderMode: false });
+chromeMock.runtimeMessages.length = 0;
+chromeMock.downloadCalls.length = 0;
+const batchResp = await bg.call({ action: "batchDownloadPosts", urls: [WORLD_POST_URL_2], tabId: 1 });
+check("batch accepted the post", batchResp?.success === true && batchResp?.accepted === 1, JSON.stringify(batchResp));
+await waitFor(
+  () => chromeMock.runtimeMessages.some((m) => m.type === "PROCESS_MP4_DOWNLOAD" && /\/rule34world\//.test(String(m.fileName || ""))),
+  "the batch download to reach the offscreen relay",
+  15000,
+);
+const batchMessage = lastMessage(chromeMock, "PROCESS_MP4_DOWNLOAD");
+check(
+  "the batch folder is built from the resolver artist (not a bare title)",
+  /^R34V\/rule34world\/WorldArtist - 4444444\//.test(String(batchMessage?.fileName || "")),
+  String(batchMessage?.fileName),
+);
+await setSettings({ artistFolderMode: false });
+
+section("A9. batch downloads honour the search query when the template is empty");
+// With every token unchecked (collectionTemplate: ""), the folder name falls
+// through to the search query. Batch / corner-button downloads carry __fromBatch,
+// which now offers the query read from the tab the batch was started from.
+await setSettings({ masterFolder: "R34V", collectionTemplate: "", artistFolderMode: false });
+chromeMock.__tabUrl = "https://rule34.world/search/touhou%20art/";
+chromeMock.runtimeMessages.length = 0;
+chromeMock.downloadCalls.length = 0;
+const searchBatchResp = await bg.call({ action: "batchDownloadPosts", urls: [WORLD_POST_URL_3], tabId: 1 });
+check("search-query batch accepted the post", searchBatchResp?.success === true && searchBatchResp?.accepted === 1, JSON.stringify(searchBatchResp));
+await waitFor(
+  () => chromeMock.runtimeMessages.some((m) => m.type === "PROCESS_MP4_DOWNLOAD" && /\/rule34world\//.test(String(m.fileName || ""))),
+  "the search-query batch download to reach the offscreen relay",
+  15000,
+);
+const searchBatchMessage = lastMessage(chromeMock, "PROCESS_MP4_DOWNLOAD");
+check(
+  "the empty-template batch folder uses the search query",
+  /^R34V\/rule34world\/touhou art\//.test(String(searchBatchMessage?.fileName || "")),
+  String(searchBatchMessage?.fileName),
+);
+chromeMock.__tabUrl = VIDEO_POST_URL;
+await setSettings({ collectionTemplate: "{artist} - {title} - {id}" });
 
 // ---------------------------------------------------------------------------
 // Phase B: the offscreen document really builds the archives.
