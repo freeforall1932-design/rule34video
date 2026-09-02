@@ -16,17 +16,6 @@
     return /Receiving end does not exist|Could not establish connection|The message port closed before a response was received/i.test(message);
   }
 
-  function fireAndForget(promise, contextLabel = "async message", logger = fallbackLogger) {
-    if (!promise || typeof promise.catch !== "function") return;
-    promise.catch((error) => {
-      if (!isNoReceiverError(error)) {
-        try {
-          getLogger(logger).warn(`${contextLabel} failed:`, error);
-        } catch {}
-      }
-    });
-  }
-
   async function sendMessageToTabSafely(tabId, payload, logger = fallbackLogger) {
     if (!tabId || !root.chrome?.tabs?.sendMessage) return false;
     try {
@@ -528,11 +517,9 @@
     };
   }
 
-  async function forwardProgressMessages(tabId, canonicalPayload, legacyPayload, logger) {
+  async function forwardProgressMessages(tabId, canonicalPayload, logger) {
     if (!tabId) return false;
-    const canonicalOk = await sendMessageToTabSafely(tabId, canonicalPayload, logger);
-    const legacyOk = legacyPayload ? await sendMessageToTabSafely(tabId, legacyPayload, logger) : false;
-    return canonicalOk || legacyOk;
+    return sendMessageToTabSafely(tabId, canonicalPayload, logger);
   }
 
   function recordDownloadProgress(downloadProgress, payload = {}) {
@@ -691,15 +678,6 @@
         segmentIndex,
         totalSegments,
       },
-    }, {
-      action: "hlsProgress",
-      data: {
-        downloadId: message?.downloadId,
-        segmentIndex,
-        totalSegments,
-        progress: message?.progress,
-        status: message?.status,
-      },
     }, logger);
   }
 
@@ -725,13 +703,6 @@
         downloadedBytes: message?.fileSize || 0,
         totalBytes: message?.fileSize || 0,
       },
-    }, {
-      action: "hlsComplete",
-      data: {
-        downloadId: message?.downloadId,
-        filename: message?.fileName,
-        fileSize: message?.fileSize || 0,
-      },
     }, logger);
   }
 
@@ -752,13 +723,6 @@
         strategy: "offscreen-hls",
         status: "Failed",
         progress: 0,
-        error: message?.error,
-      },
-    }, {
-      action: "hlsError",
-      data: {
-        downloadId: message?.downloadId,
-        filename: message?.fileName || "Unknown video.mp4",
         error: message?.error,
       },
     }, logger);
@@ -785,15 +749,6 @@
         totalBytes: message?.totalBytes || 0,
         progress: message?.progress || 0,
       },
-    }, {
-      action: "mp4Progress",
-      data: {
-        downloadId: message?.downloadId,
-        downloaded: message?.downloadedBytes || 0,
-        total: message?.totalBytes || 0,
-        progress: message?.progress || 0,
-        status: message?.status || "Downloading...",
-      },
     }, logger);
   }
 
@@ -819,13 +774,6 @@
         downloadedBytes: message?.fileSize || message?.totalBytes || 0,
         totalBytes: message?.fileSize || message?.totalBytes || 0,
       },
-    }, {
-      action: "mp4Complete",
-      data: {
-        downloadId: message?.downloadId,
-        filename: message?.fileName,
-        fileSize: message?.fileSize || 0,
-      },
     }, logger);
   }
 
@@ -848,13 +796,6 @@
         progress: 0,
         error: message?.error || "Unknown error",
       },
-    }, {
-      action: "mp4Error",
-      data: {
-        downloadId: message?.downloadId,
-        filename: message?.fileName || "Unknown video.mp4",
-        error: message?.error || "Unknown error",
-      },
     }, logger);
   }
 
@@ -863,7 +804,6 @@
   // this file is an internal implementation detail.
   root.Rule34BackgroundBridge = Object.freeze({
     version: "1.0.0",
-    fireAndForget,
     createConfiguredContextMenu,
     handleConfiguredContextMenuClick,
     showNotification,

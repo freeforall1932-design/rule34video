@@ -39,7 +39,8 @@ Downloads/
 | `extension/folder-naming.js` | The output-path engine: master folder, site slug map, path sanitizer, folder-name template |
 | `extension/modules/archive/` | Dependency-free ZIP/CBZ writer and PDF writer for picture sets |
 | `source/` | All development-use code: `retired/` (retired extension code), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
-| `.github/workflows/ci.yml` | Syntax + JSON + branding checks + the smoke test, on every push/PR. **Needs an owner-applied update** (the agent token has no `workflows` scope) to also run the new fixture + e2e suites — the full file is at `source/docs/ci-workflow.pending.yml`. |
+| `source/tools/validate.mjs` | Offline validation (syntax, JSON, branding) — the single source of truth shared by `npm run check` and CI |
+| `.github/workflows/ci.yml` | Syntax + JSON + branding checks and the offline suites, on every push/PR. **A simplified replacement is pending an owner copy-paste** (the agent token has no `workflows` scope): `source/docs/ci-workflow.pending.yml` collapses it to one job of four `npm run` steps. The live workflow still passes. |
 
 ## Development
 

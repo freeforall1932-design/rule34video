@@ -180,10 +180,14 @@ async function restoreQueueState() {
         continue;
       }
       // Chrome-managed download: verify it is still alive before re-tracking.
+      // NOTE: there is no `chrome.downloads.get()` in the extensions API — the
+      // single-item lookup is `search({ id })`. The old call threw on every
+      // restore, so *every* in-flight download was silently dropped from the
+      // concurrency accounting after a service-worker restart.
       let alive = false;
       try {
-        const downloadItem = await chrome.downloads.get(Number(key));
-        alive = downloadItem?.state === "in_progress" || downloadItem?.state === "incomplete";
+        const [downloadItem] = (await chrome.downloads.search({ id: Number(key) })) || [];
+        alive = downloadItem?.state === "in_progress";
       } catch {
         alive = false;
       }
@@ -1068,11 +1072,6 @@ async function resolveOutputTarget(videoInfo = {}, ext = "", options = {}) {
     full,
     ext,
   };
-}
-
-async function buildDownloadPath(videoInfo = {}, ext = "", options = {}) {
-  const target = await resolveOutputTarget(videoInfo, ext, options);
-  return target.full;
 }
 
 // ---------------------------------------------------------------------------
@@ -2992,14 +2991,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "getActiveDownloads":
       sendResponse({ active_downloads: Object.fromEntries(downloadProgress) });
       return false;
-    case "hlsProgress":
     case "HLS_PROCESSING_PROGRESS":
       return Bridge.handleForwardAck({
         request,
         sendResponse,
         forwarder: forwardHLSProgress,
       });
-    case "hlsComplete":
     case "HLS_PROCESSING_COMPLETE":
       releaseQueueSlot(request?.downloadId);
       return Bridge.handleForwardAck({
@@ -3007,7 +3004,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse,
         forwarder: forwardHLSComplete,
       });
-    case "hlsError":
     case "HLS_PROCESSING_ERROR":
       releaseQueueSlot(request?.downloadId);
       return Bridge.handleForwardAck({

@@ -6,7 +6,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { inflateRawSync, crc32 as nodeCrc32 } from "node:zlib";
+import { crc32 as nodeCrc32 } from "node:zlib";
 import { buildZip, crc32, readZipEntries, readZipEntryBytes } from "../../extension/modules/archive/zipBuilder.mjs";
 
 function bytes(text) {

@@ -417,7 +417,4 @@
   try {
     root.R34FolderNaming = api;
   } catch {}
-  try {
-    root.R34FolderNamingDefaults = { DEFAULT_MASTER_FOLDER, DEFAULT_COLLECTION_TEMPLATE };
-  } catch {}
 })(typeof globalThis !== "undefined" ? globalThis : this);

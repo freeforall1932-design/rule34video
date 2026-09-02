@@ -60,10 +60,10 @@ export class SimpleHLS2MP4Converter {
       }));
     }
 
-    // Check if we have separate audio/video tracks
-    const hasVideoTrack = zippedFragments.some(f => f.track === 0);
+    // Check if we have a separate audio track (track 1). Track 0 is always the
+    // video/muxed track, so it needs no separate probe.
     const hasAudioTrack = zippedFragments.some(f => f.track === 1);
-    
+
     // Create level and audioLevel objects based on tracks present
     const level = {
       audioCodec: hasAudioTrack ? '' : (options.audioCodec || 'mp4a.40.2'), // No audio in video-only level if separate audio

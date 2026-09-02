@@ -1,5 +1,18 @@
 import {TSDemuxer, MP4Remuxer, MP4Demuxer, AACDemuxer, MP3Demuxer, PassThroughRemuxer} from '../hls/hls.mjs';
 
+// hls.js' PTSNormalize. The MPEG-TS PTS field is 33 bits, so it wraps roughly
+// every 26.5 hours; a rolled-over value is shifted by whole 2^33 steps until it
+// sits next to the reference. `getVideoStartPts` below already called this on
+// the rollover branch, but the function was never defined or imported — any
+// stream that actually rolled over threw a ReferenceError mid-transmux.
+const PTS_WRAP = 8589934592; // 2^33
+function normalizePts(value, reference) {
+  if (reference === undefined || reference === null) return value;
+  let offset = reference < value ? -PTS_WRAP : PTS_WRAP;
+  while (Math.abs(value - reference) > 4294967296) value += offset;
+  return value;
+}
+
 const muxConfig = [{
   demux: MP4Demuxer,
   remux: PassThroughRemuxer,

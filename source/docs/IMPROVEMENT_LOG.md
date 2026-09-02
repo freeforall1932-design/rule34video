@@ -608,6 +608,83 @@ Version bumped **4.4.2 → 5.0.0** in `extension/manifest.json` (the only
 runtime manifest; `source/tools/app.config.json` is a historical generator
 snapshot and is intentionally not bumped — it is never loaded at runtime).
 
+## Session 9 (2026-09-02) — review pass: real bugs, dead code, CI de-duplication
+
+A full review of `ci.yml`, the three handoff documents and the shipped code,
+looking for missing logic, misaligned code and rot. Everything below is
+verified by the offline suites (`npm test`, now 59 fixture checks + smoke +
+50-check e2e, all green).
+
+### Bugs fixed (all latent — no suite covered them)
+
+1. **`chrome.downloads.get()` does not exist** (`background-enhanced.js`,
+   restore path). The Chrome extensions API has no single-item `get()`; the
+   lookup is `search({ id })`. The call threw on *every* service-worker
+   restart, the surrounding `catch` swallowed it as "download not alive", and
+   so **every in-flight chrome download was dropped from the concurrency
+   accounting** after a restart — the queue then over-dispatched past the
+   user's limit. Session 6 had "verified" this branch with a mock that
+   implemented `get()`, which is why it survived. Now uses `search({ id })`,
+   and the new `source/tests/queue-restore.test.mjs` mocks `chrome.downloads`
+   *without* a `get()` so the same mistake fails loudly. (`state` is also
+   compared against `"in_progress"` only — `"incomplete"` is not a member of
+   the `DownloadItem.state` enum, it is `"in_progress" | "interrupted" |
+   "complete"`.)
+2. **`normalizePts` was called but never defined** (`modules/hls2mp4/transmuxer.mjs`).
+   `getVideoStartPts()` calls it on the PTS-rollover branch. MPEG-TS PTS is 33
+   bits and wraps about every 26.5 h, so any stream that actually rolled over
+   threw a `ReferenceError` mid-transmux and failed the download. Implemented
+   as hls.js' `PTSNormalize` does it.
+
+### Dead code removed
+
+- `buildDownloadPath()` (`background-enhanced.js`) — zero callers; every call
+  site uses `resolveOutputTarget()` directly.
+- `fireAndForget()` (`background-bridge.js`) — exported on the frozen public
+  API with zero consumers. (`player-button.js`'s `fireAndForget` is an
+  unrelated local option flag.)
+- `R34FolderNamingDefaults` (`folder-naming.js`) — a second global nobody read;
+  both constants are already on `R34FolderNaming`.
+- `hasVideoTrack` (`modules/hls2mp4/simple-converter.mjs`) — computed, unused.
+- The offscreen document's `"actionData"` HLS message style: `site-config.js`
+  never sets `OFFSCREEN.hls.messageStyle`, so all three branches and their
+  `hlsDataPayload()` helper were unreachable. The config knob went too.
+- The worker's `hlsProgress` / `hlsComplete` / `hlsError` message-router cases:
+  duplicate routes for action names nothing emits (the offscreen document only
+  ever sends the `HLS_PROCESSING_*` types).
+
+### Less code, same output
+
+- **Dual-payload progress forwarding consolidated** (a WORKLIST backlog item).
+  `forwardProgressMessages` sent a canonical *and* a legacy message per
+  progress tick and `content-bridge.js` listened to both. The canonical
+  `downloadProgress` payload is a strict superset, so the legacy shape is gone
+  on both sides: six legacy payload literals, six content-side handlers, and
+  the label table with them. Halves the message traffic per tick.
+  ⚠️ Still wants a manual browser check of the progress toasts.
+- **CI de-duplicated.** `source/docs/ci-workflow.pending.yml` was byte-identical
+  to the live `.github/workflows/ci.yml` (the owner had already applied it), so
+  it was deleted. The workflow inlined a hand-maintained list of classic
+  scripts that had **drifted** from the near-identical list in `package.json`;
+  both are replaced by `source/tools/validate.mjs`, which derives the list from
+  disk so no new extension file can be silently skipped. The new workflow is
+  one job of four `npm run` steps, identical to what a developer runs locally.
+  Verified the validator actually fails on a syntax error, malformed JSON and a
+  reintroduced paywall marker.
+  ⚠️ GitHub rejected the workflow push (the bot token has no `workflows`
+  scope), so the new file ships as `source/docs/ci-workflow.pending.yml` for an
+  owner copy-paste, exactly as in sessions 6-8. The live workflow was left
+  untouched and still passes against this branch — all of its hardcoded paths
+  still exist.
+
+### Test coverage added
+
+- `source/tests/queue-restore.test.mjs` — 6 checks driving the real service
+  worker against pre-seeded persisted queue state: `search({id})` is used, an
+  `in_progress` download keeps its slot, a finished one does not, a temp
+  `queue-job-N` key never blocks a slot, and waiting/batch jobs are restored.
+  Confirmed to fail on the pre-fix code.
+
 ## Known issues / notes
 
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not

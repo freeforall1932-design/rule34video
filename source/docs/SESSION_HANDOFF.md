@@ -170,14 +170,15 @@ and fixed the biggest real-world bug found so far:
       a 50-check window-less VM e2e that drives the real service worker and
       offscreen document; all offline, all green. Full write-up in
       `source/docs/IMPROVEMENT_LOG.md` (session 8).
-    - ⚠️ **CI needs an owner-applied update** (same as sessions 6/7: the arena
-      bot token lacks the `workflows` permission, so the push of
-      `.github/workflows/ci.yml` is rejected by GitHub). The complete new file
-      is committed at **`source/docs/ci-workflow.pending.yml`** — copy it over
-      `.github/workflows/ci.yml` in the web UI (three jobs: validate,
-      fixtures, vm-suites). Until then CI runs the old two-step workflow,
-      which still passes: the shipped code changed, but every path it checks
-      (`node --check` list, JSON, branding grep, `smoke.mjs`) is green.
+    - ✅ **Applied by the owner; superseded in session 9.** That pending file
+      had been copied over `.github/workflows/ci.yml`, leaving a byte-identical
+      stale duplicate. Session 9 replaced it with a **new**
+      `source/docs/ci-workflow.pending.yml`: one job of four `npm run` steps
+      (`check`, `test:fixtures`, `test:smoke`, `test:e2e`) instead of three
+      jobs with inlined bash, with the validation logic moved to
+      `source/tools/validate.mjs`. ⚠️ It again needs an owner copy-paste (the
+      bot token still lacks `workflows`), but the live workflow keeps passing
+      in the meantime.
 
 Prior history: the "missing PR" mystery from session 2 is resolved —
 PR #1 **was** merged (`42cc212`) and PR #2 merged the session-2 fixes.
@@ -540,42 +541,32 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 
 ## 8. Validation commands (run these after any change)
 
-```bash
-cd "/home/user/rule34video/extension"
-
-# JS syntax (content scripts are classic; background is a module)
-for f in popup.js player-button.js site-config.js update-notifier.js offscreen.js \
-         content.js content-bridge.js download-manager.js logger.js background-bridge.js \
-         folder-naming.js inject.js post-actions.js ../source/tools/generate-icons.js; do
-  node --check "$f" || echo "FAIL $f"
-done
-for m in modules/*.mjs modules/*/*.mjs; do node --check "$m" || echo "FAIL $m"; done
-node --input-type=module --check < background-enhanced.js
-
-# JSON
-for j in manifest.json ../source/tools/app.config.json ../package.json; do
-  python3 -m json.tool "$j" >/dev/null || echo "FAIL $j"
-done
-
-# Paywall/auth remnants — must print NOTHING:
-grep -rniE 'auth\.serp\.co|serp\.ly|serpapps|ensureDownloadAccess|checkActivated|isActivated|auth-ui\.js|trial-banner\.js|gumroad|activationTitle' \
-  --include='*.js' --include='*.json' --include='*.html' --include='*.css' . \
-  | grep -viE 'SerpBackground|SerpContent|SerpSite|SerpBridge|SerpUnifiedPopup'
-```
-
-Offline test suites from the repo root (session 8; no browser, no network):
+Everything is an npm script, run from the repo root. CI runs exactly these.
 
 ```bash
-node --test "source/tests/*.test.mjs"       # fixtures: naming (31) + ZIP (10) + PDF (12)
-node source/tests/smoke.mjs                   # mocked chrome + fetch, real service worker
-node source/tests/e2e-download-paths.mjs      # 50 checks: real worker + real offscreen doc
-# or, all three:  npm test
+npm run check          # syntax (all extension/*.js + modules/**/*.mjs + the ESM
+                       # worker), JSON parse, forbidden paywall/auth grep
+npm run test:fixtures  # node --test: naming, ZIP, PDF, queue-restore  (59 checks)
+npm run test:smoke     # mocked chrome + fetch, real service worker
+npm run test:e2e       # 50 checks: real worker + real offscreen document
+npm test               # all four, in order
 ```
 
-`e2e-download-paths.mjs` is the one to re-run after touching the output-path
-code: it asserts the exact relative path handed to `chrome.downloads.download`
-for both sites, the naming priority chain, the master-folder-off layout, the
-filename guard, and the archives the offscreen document actually builds.
+`source/tools/validate.mjs` backs `npm run check`. It derives the classic-script
+list from disk (every `extension/*.js` except the ESM `background-enhanced.js`),
+so a newly added extension file is picked up automatically — the old
+hand-maintained list, duplicated between `ci.yml` and `package.json`, had
+already drifted between the two copies.
+
+`test:e2e` is the one to re-run after touching the output-path code: it asserts
+the exact relative path handed to `chrome.downloads.download` for both sites,
+the naming priority chain, the master-folder-off layout, the filename guard,
+and the archives the offscreen document actually builds.
+
+`source/tests/queue-restore.test.mjs` (session 9) covers restore-on-startup:
+its `chrome.downloads` mock deliberately implements only `search()`, exactly
+like the real API, which is how the long-standing `chrome.downloads.get()`
+bug was caught.
 
 Session 3 additionally ran a **functional harness** (`/tmp/queue-test/harness.mjs`
 in that sandbox — scratch, not committed): it loads the real

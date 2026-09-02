@@ -230,22 +230,10 @@
     return true;
   }
 
-  function handleProgressMessage(action, request, options) {
+  function handleProgressMessage(action, request) {
     const state = getDownloadState();
     const data = messagePayload(request);
     const downloadId = data.downloadId || request.downloadId;
-    const labels = Object.assign(
-      {
-        hlsProgress: "Downloading...",
-        hlsComplete: "Downloaded",
-        hlsError: "Failed",
-        mp4Progress: "Downloading",
-        mp4Complete: "Downloaded",
-        mp4Error: "Failed",
-      },
-      (options && options.progressLabels) || {},
-    );
-
     if (action === "hideDownloadProgress" || action === "hideDownloadManager") {
       state.hideDownloadManager();
       return true;
@@ -263,64 +251,6 @@
 
     if (action === "downloadProgress") {
       return handleCanonicalDownloadProgress(request);
-    }
-
-    if (action === "hlsProgress") {
-      if (isCancelled(state, downloadId)) return true;
-      state.showDownloadManager();
-      addIfMissing(state, downloadId, data.filename || defaultFilename(downloadId), data.totalSize || data.fileSize || 0);
-      const current = positiveNumber(data.segmentIndex ?? data.current, 0);
-      const total = positiveNumber(data.totalSegments ?? data.total, 0);
-      state.updateDownloadProgress(
-        downloadId,
-        current,
-        total,
-        positiveNumber(data.progress, 0),
-        data.status || labels.hlsProgress,
-        true,
-        { current, total },
-      );
-      return true;
-    }
-
-    if (action === "mp4Progress") {
-      state.showDownloadManager();
-      const total = positiveNumber(data.total, 0);
-      addIfMissing(state, downloadId, data.filename || defaultFilename(downloadId), total);
-      state.updateDownloadProgress(
-        downloadId,
-        positiveNumber(data.downloaded, 0),
-        total,
-        positiveNumber(data.progress, 0),
-        data.status || labels.mp4Progress,
-      );
-      return true;
-    }
-
-    if (action === "hlsComplete" || action === "mp4Complete") {
-      if (action === "hlsComplete" && isCancelled(state, downloadId)) return true;
-      addIfMissing(state, downloadId, data.filename || "video.mp4", data.fileSize || data.total || 0);
-      state.updateDownloadProgress(
-        downloadId,
-        100,
-        100,
-        100,
-        data.status || labels[action],
-      );
-      return true;
-    }
-
-    if (action === "hlsError" || action === "mp4Error") {
-      if (action === "hlsError" && isCancelled(state, downloadId)) return true;
-      addIfMissing(state, downloadId, data.filename || "video.mp4", data.fileSize || data.total || 0);
-      state.updateDownloadProgress(
-        downloadId,
-        0,
-        0,
-        0,
-        data.status || data.error || labels[action],
-      );
-      return true;
     }
 
     return false;
@@ -344,12 +274,6 @@
       "getPrimaryAsset",
       "fetchThumbnailData",
       "downloadProgress",
-      "hlsProgress",
-      "mp4Progress",
-      "hlsComplete",
-      "mp4Complete",
-      "hlsError",
-      "mp4Error",
       "cancelHLSSegments",
       "cancelBlobDownload",
       "hideDownloadProgress",
@@ -486,7 +410,7 @@
           return true;
         }
 
-        if (handleProgressMessage(action, request, config)) {
+        if (handleProgressMessage(action, request)) {
           sendResponseSafe(sendResponse, { success: true });
           return true;
         }
