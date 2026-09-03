@@ -72,24 +72,19 @@ describe("rule34video.com routes", () => {
     assert.equal(R.match("not a url"), null);
   });
 
-  it("builds the KVS get_block ajax URL per listing type", () => {
+  it("builds the canonical page URL per listing type", () => {
+    // The site's undocumented KVS ajax endpoint returns HTTP 500 for an
+    // extension fetch. Crawls must use the same /…/N/ URLs that work when a
+    // user changes pages in the browser.
     const search = R.match("https://rule34video.com/search/touhou/");
-    const page2 = new URL(R.videoListingPageUrl(search, 2));
-    assert.equal(page2.searchParams.get("mode"), "async");
-    assert.equal(page2.searchParams.get("block_id"), "custom_list_videos_videos_list_search");
-    assert.equal(page2.searchParams.get("q"), "touhou");
-    assert.equal(page2.searchParams.get("from_videos"), "2");
     assert.equal(R.videoListingPageUrl(search, 1), "https://rule34video.com/search/touhou/");
+    assert.equal(R.videoListingPageUrl(search, 2), "https://rule34video.com/search/touhou/2/");
 
     const tag = R.match("https://rule34video.com/tags/26528/");
-    const tagPage = new URL(R.videoListingPageUrl(tag, 3));
-    assert.equal(tagPage.searchParams.get("block_id"), "custom_list_videos_common_videos");
-    assert.equal(tagPage.searchParams.get("from"), "3");
+    assert.equal(R.videoListingPageUrl(tag, 3), "https://rule34video.com/tags/26528/3/");
 
     const playlist = R.match("https://rule34video.com/playlists/3072/bioshock3/");
-    const playlistPage = new URL(R.videoListingPageUrl(playlist, 2));
-    assert.equal(playlistPage.searchParams.get("block_id"), "playlist_view_playlist_view");
-    assert.equal(playlistPage.searchParams.get("from"), "2");
+    assert.equal(R.videoListingPageUrl(playlist, 2), "https://rule34video.com/playlists/3072/bioshock3/2/");
     assert.equal(R.videoListingPageHref(search, 4), "https://rule34video.com/search/touhou/4/");
   });
 });
@@ -161,8 +156,10 @@ describe("page ranges", () => {
     assert.throws(() => R.parsePageRange("200", 10), /No pages/);
   });
 
-  it("never explodes on an absurd range", () => {
-    assert.equal(R.parsePageRange("1-999999", 0).length, R.PAGE_RANGE_HARD_CAP);
+  it("requires large listings to be fetched in explicit, reviewable batches", () => {
+    assert.throws(() => R.parsePageRange(`1-${R.PAGE_RANGE_HARD_CAP + 1}`, 0), /at most/);
+    assert.throws(() => R.parsePageRange("all", R.PAGE_RANGE_HARD_CAP + 1), /at most/);
+    assert.equal(R.parsePageRange(`1-${R.PAGE_RANGE_HARD_CAP}`, 0).length, R.PAGE_RANGE_HARD_CAP);
   });
 });
 

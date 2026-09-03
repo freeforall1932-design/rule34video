@@ -3,8 +3,10 @@
 MV3 Chrome extension for [rule34video.com](https://rule34video.com) and
 [rule34.world](https://rule34.world), built around a **Side Panel batch
 queue** (in the style of the sister X/Twitter downloader) and an
-**nh-dw style page fetcher** ("N posts found · Download all pages · pages
-`2,4,6-10`"). Free, no telemetry, no accounts — see `source/docs/privacy.md`.
+**nh-dw style page fetcher** ("N posts found · Fetch selected pages · pages
+`2,4,6-10`"). Fetching and downloading are deliberately separate: inspect the
+checked rows first, then explicitly start **Download selected**. Free, no
+telemetry, no accounts — see `source/docs/privacy.md`.
 
 The extension **only activates on URLs it recognises** (`extension/site-routes.js`
 is the single routing table); on every other page it stays silent.
@@ -12,18 +14,23 @@ is the single routing table); on every other page it stays silent.
 | Where you are | What the panel / page offers |
 |---|---|
 | **rule34video.com** video page | *Download this post* (best quality, or your preferred height) |
-| rule34video.com homepage, `/latest-updates`, search, tag, category, artist, member | *List this page* · *Download page* · page range (`1-99`, `all`) → *Fetch pages* / *Download all pages*; a ⬇ on every card |
-| rule34video.com **playlist** | the same, plus *Whole playlist* on the page pill — every page of the playlist is crawled |
+| rule34video.com homepage, `/latest-updates`, search, tag, category, artist, member | *List this page* · *Download page* · page range (`2,4,6-10`, `1-99`) → *Fetch selected pages*, review, then *Download selected*; a ⬇ on every card |
+| rule34video.com **playlist** | the same, plus a *Fetch page batch* pill — every fetched row is reviewed in the panel before it can download |
 | **rule34.world** post | *Download this post* (picture **or** video) |
-| rule34.world homepage, tag search, `/hot` `/highest` `/trends`, playlist | Twitter-style queue: auto batch-fetch **all pics and videos** through the site API, page N here = page N on the site, media filter (pics / videos / both), page range or *all pages* |
+| rule34.world homepage, tag search, `/hot` `/highest` `/trends`, playlist | Twitter-style queue: fetch pics and videos through the site API (page N here = page N on the site), filter by media type, review the selected rows, then start them explicitly |
 | anything else | queue only, plus *Fetch from a URL* (paste any listing / playlist URL of either site) |
 
 Every listed post is a row with a checkbox, thumbnail, site/type badge, page
 number and live status (listed → queued → resolving → downloading →
 completed / failed). *Select all*, *Invert*, filter, *Retry failed*, *Clear
 finished*, *Skip already downloaded* (with a resettable history) and a
-1/2/3/5 concurrency switch behave exactly like the X downloader panel.
-The queue and the crawl survive service-worker restarts.
+1/2/3/5 **Downloads at once** switch behave exactly like the X downloader
+panel. Pick **3** to keep at most three selected posts resolving/downloading;
+the rest remain queued until a slot is free. To avoid an unreviewable list,
+each fetch is limited to **150 pages** (use successive ranges for a larger
+listing). **Stop fetch** aborts the current request and prevents subsequent
+pages; **Stop** pauses waiting downloads while active rows can be cancelled
+individually. The queue and the crawl survive service-worker restarts.
 
 ## Where files are saved
 
@@ -93,12 +100,12 @@ manual by design.
 
 ## Current state
 
-- Version **6.0.0** — the UI/UX rework: popup replaced by the Side Panel
-  queue, generic both-domain toolbar replaced by URL-routed per-site page
-  adapters, nh-dw style page crawling (ranges / all pages) for both sites,
-  playlist downloads on rule34video.com, pictures + videos batch fetch on
-  rule34.world. The v5 popup / player-button / post-actions code is retained,
-  never packaged, under `source/retired/v5-popup-ui/`.
+- Version **6.0.1** — side-panel crawl safety and pagination repair: the
+  rule34video.com crawler follows normal `/…/2/` page URLs (the old private
+  ajax endpoint returns HTTP 500); a crawl only lists checked rows and never
+  starts an unbounded download stream; fetches are capped at 150 pages and can
+  abort the active request. The v5 popup / player-button / post-actions code
+  is retained, never packaged, under `source/retired/v5-popup-ui/`.
 - The download pipeline itself (resolvers, concurrency queue, HLS remux,
   picture-set archives, per-site tag-named folders) is unchanged from 5.x; the
   panel simply feeds it.

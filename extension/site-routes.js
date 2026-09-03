@@ -21,7 +21,7 @@
 //
 // Also here: the page-range grammar from nh-dw ("2,4,6-10", "1-99", "all"),
 // the rule34video.com listing-page scraper (cards + total page count) and the
-// KVS "get_block" ajax URL builder used to crawl listing pages without a tab.
+// canonical page-URL builder used to crawl listing pages without a tab.
 //
 // Dependency-free, no chrome.*, no DOM: loaded as a classic script by the
 // side panel and content scripts, imported by the ESM service worker, and
@@ -205,18 +205,28 @@
 
   // --- page ranges (nh-dw grammar) -------------------------------------------
   // "2,4,6-10" -> [2,4,6,7,8,9,10]; "all" / "" -> every page 1..maxPage;
-  // open ranges "5-" run to maxPage. Throws a friendly Error on bad input.
-  const PAGE_RANGE_HARD_CAP = 1000;
+  // open ranges "5-" run to maxPage. A panel list is intentionally bounded:
+  // fetching thousands of pages makes a huge, hard-to-review queue. Ask the
+  // user to split a large listing into explicit batches instead of silently
+  // truncating their requested range.
+  const PAGE_RANGE_HARD_CAP = 150;
+
+  function pageRangeLimitError() {
+    return new Error(`Choose at most ${PAGE_RANGE_HARD_CAP} pages at a time. Fetch a large listing in separate batches, e.g. first 1-${PAGE_RANGE_HARD_CAP}, then ${PAGE_RANGE_HARD_CAP + 1}-${PAGE_RANGE_HARD_CAP * 2}.`);
+  }
 
   function parsePageRange(input, maxPage) {
     const text = String(input === undefined || input === null ? "" : input).trim().toLowerCase();
     const limit = Number.isFinite(Number(maxPage)) && Number(maxPage) > 0 ? Math.floor(Number(maxPage)) : 0;
     const pages = new Set();
     const add = (n) => {
-      if (n >= 1 && (!limit || n <= limit) && pages.size < PAGE_RANGE_HARD_CAP) pages.add(n);
+      if (n < 1 || (limit && n > limit) || pages.has(n)) return;
+      if (pages.size >= PAGE_RANGE_HARD_CAP) throw pageRangeLimitError();
+      pages.add(n);
     };
     if (!text || text === "all" || text === "*") {
       if (!limit) throw new Error("The total number of pages is unknown — enter an explicit range such as 1-20.");
+      if (limit > PAGE_RANGE_HARD_CAP) throw pageRangeLimitError();
       for (let n = 1; n <= limit; n += 1) add(n);
       return Array.from(pages);
     }
@@ -230,11 +240,14 @@
       }
       if ((m = part.match(/^(\d+)\s*-\s*(\d*)$/))) {
         const start = Number(m[1]);
-        let end = m[2] === "" ? limit : Number(m[2]);
+        const requestedEnd = m[2] === "" ? limit : Number(m[2]);
         if (m[2] === "" && !limit) throw new Error(`"${part}" needs an end page because the total is unknown.`);
         if (!Number.isFinite(start) || start < 1) throw new Error(`Bad page "${part}".`);
-        if (end < start) throw new Error(`"${part}": the end page is before the start page.`);
-        if (end - start + 1 > PAGE_RANGE_HARD_CAP) end = start + PAGE_RANGE_HARD_CAP - 1;
+        if (requestedEnd < start) throw new Error(`"${part}": the end page is before the start page.`);
+        // A known page count still clamps an oversized endpoint as advertised;
+        // only the number of pages that would actually be fetched is capped.
+        const end = limit ? Math.min(requestedEnd, limit) : requestedEnd;
+        if (end >= start && end - start + 1 > PAGE_RANGE_HARD_CAP) throw pageRangeLimitError();
         for (let n = start; n <= end; n += 1) add(n);
         continue;
       }
@@ -329,25 +342,13 @@
     return Number.isFinite(n) ? n : 0;
   }
 
-  // KVS "get_block" ajax URL for page N of a listing. The block id and the
-  // page parameter name differ per listing type (verified against the live
-  // site: search uses from_videos, the others use from).
+  // Fully rendered page URL for page N of a listing. An older version used
+  // KVS's undocumented `mode=async&function=get_block` endpoint here. That
+  // endpoint now replies HTTP 500 for extension fetches, so page 2+ never
+  // reached the queue even though the normal `/.../2/` page works. Fetch the
+  // same canonical pages a browser navigation uses instead.
   function videoListingPageUrl(route, page) {
-    const n = positivePage(page);
-    if (!route || !route.listingUrl) return "";
-    const url = new URL(route.listingUrl);
-    if (n === 1 && route.kind !== "playlist") return url.href;
-    url.searchParams.set("mode", "async");
-    url.searchParams.set("function", "get_block");
-    url.searchParams.set("block_id", route.blockId || "custom_list_videos_common_videos");
-    if (route.kind === "search") {
-      url.searchParams.set("q", route.query || route.id || "");
-      url.searchParams.set("sort_by", "post_date");
-    } else if (route.kind !== "playlist") {
-      url.searchParams.set("sort_by", "post_date");
-    }
-    url.searchParams.set(route.fromParam || "from", String(n));
-    return url.href;
+    return videoListingPageHref(route, page);
   }
 
   // Human-readable page URL (what the user would see in the address bar).

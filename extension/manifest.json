@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Downloader for Rule 34",
   "description": "Side-panel batch downloader for rule34video.com and rule34.world: playlists, searches, homepages, multi-page crawls, pictures and videos.",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",

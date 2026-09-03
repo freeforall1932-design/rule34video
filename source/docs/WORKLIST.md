@@ -2,8 +2,8 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-03 (session 10, v6.0.0 — Side Panel queue + URL-routed
-page adapters, PR #10; see IMPROVEMENT_LOG.md "Session 10").
+Last updated: 2026-09-03 (v6.0.1 — canonical listing pagination, bounded
+review-first fetches, and a three-download default; see IMPROVEMENT_LOG.md).
 PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
@@ -15,17 +15,20 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 
 ## Done
 
-- [x] **(Session 10, 6.0.0) UI/UX rework** — popup → Side Panel queue
-      (Twitter-style rows/counters/dock), generic toolbar → per-site
-      URL-routed content scripts, nh-dw page fetcher (ranges / all pages),
-      rule34video.com playlists + homepage/search crawling, rule34.world
+- [x] **(Session 10, 6.0.0–6.0.1) UI/UX rework and safety follow-up** — popup
+      → Side Panel queue (Twitter-style rows/counters/dock), generic toolbar →
+      per-site URL-routed content scripts, and an inspect-first nh-dw page
+      fetcher. rule34video.com crawls regular canonical page URLs (not the
+      failing KVS ajax endpoint); each fetch is a bounded 150-page maximum and
+      only lists checked rows until **Download selected** is pressed. Includes
+      rule34video.com playlists + homepage/search crawling and rule34.world
       pics+videos batch fetch through the search API. New offline suites
       `site-routes.test.mjs` + `panel-queue.test.mjs`.
 - [x] **(Session 10) Second-pass fixes** — real rule34.world format ladder
-      (`100/114/113/112/111`, `101/102` flagged as previews), open-ended
-      `all` crawls (300-page cap), listing parser scoped to the main block,
-      slug-less `/video/{id}/` URLs padded (the site 404s on them), panel Stop
-      now reaches the offscreen `CANCEL_*` handlers (they had no sender),
+      (`100/114/113/112/111`, `101/102` flagged as previews), listing parser
+      scoped to the main block, slug-less `/video/{id}/` URLs padded (the site
+      404s on them), fetch Stop aborts active listing requests, panel Stop now
+      reaches the offscreen `CANCEL_*` handlers (they had no sender), and
       update banner CSS scoped to the panel.
 
 - [x] **(Session 8, 5.0.0) Master folder** — `chrome.storage.sync`
@@ -295,15 +298,19 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       7. `NAMING_REVIEW.md` describes the v5 capture paths; the v6 paths all go
          through `panel-queue.runItem` (`__fromBatch`, `__searchContext`,
          `__panelKey`) — re-read its findings against that.
-- [ ] **(Session 10) Manual browser matrix for the Side Panel** — open the
-      panel on: rule34video.com video page (Download this post), a search
-      page (List this page = the visible cards; Fetch pages `2-3`; Download all
-      pages stops at the real last page), a playlist (Whole playlist pill), the
-      homepage; rule34.world post (picture and video), a tag page (media filter
-      pics / videos; page 2 in the panel == page 2 on the site), `/hot`, a
-      playlist while logged in. Check that the toolbar icon opens the panel,
-      the context-menu item, Stop mid-crawl, and restore after a
-      `chrome://extensions` reload.
+- [ ] **(v6.0.1) Manual browser matrix for the Side Panel** — open the panel
+      on: a rule34video.com video page (Download this post); a search/listing
+      page (List this page = visible cards; **Fetch selected pages** `2-3`
+      must show page 2 and page 3 rows even when page 1 is open; **Download
+      selected** must be a separate, explicit action); a very large listing
+      (Batch pre-fills no more than `1-150`); a playlist (Fetch page batch
+      pill); and the homepage. Test Stop fetch while a request is delayed and
+      verify no later page is requested. Also test rule34.world post (picture
+      and video), a tag page (media filter pics / videos; page 2 in the panel
+      == page 2 on the site), `/hot`, and a playlist while logged in. Choose
+      **3 Downloads at once**, start more than three selected rows, and verify
+      only three are active. Check the toolbar icon, context-menu item, and
+      restore after a `chrome://extensions` reload.
 - [ ] **(Session 10)** rule34.world total-count field in the search response
       is inferred (`totalCount` / `total` / `count` / `totalItems` /
       `itemsCount` / `pagination.total`); if the live API uses another name
