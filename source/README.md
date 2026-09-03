@@ -8,11 +8,11 @@ The repo root contains two code folders:
 
 | Path | What | Used as extension? | Revive by |
 |---|---|---|---|
-| `source/retired/` | Retired code that WAS part of the shipped extension (multi-hoster adapter, DASH/WebM pipeline) | **Yes, historically** | Moving back into `extension/` (restore paths below), then `node source/tests/smoke.mjs` + reachability check |
+| `source/retired/` | Retired code that WAS part of the shipped extension (multi-hoster adapter, DASH/WebM pipeline, and `v5-popup-ui/`: the pre-6.0 popup + player button + corner-button toolbar + content bridge) | **Yes, historically** | Moving back into `extension/` (restore paths below), then `node source/tests/smoke.mjs` + reachability check |
 | `source/vendor/` | Never-used-as-extension source: mediabunny TS library, `Localize.mjs`, 13 source-project utils fragments | **No** | Porting — mediabunny needs a build step; the utils fragments import paths (`../enums/`, `../options/`, `../ui/`, `sweetalert.mjs`) that don't exist in this repo |
 | `source/page-source/` | Saved page HTML dumps (rule34video listing, rule34.world shell) — session-3 reference material | No | N/A (reference only) |
 | `source/tools/` | Dev tooling: `app.config.json` (generator provenance artifact, not runtime-loaded), `generate-icons.js` (Node icon generator → writes `extension/icons/`) | No | Run in place |
-| `source/tests/` | The offline suites CI runs: `*.test.mjs` fixtures (folder naming, ZIP writer, PDF writer — `node --test`), `smoke.mjs` (real service worker under mocked chrome + fetch), `e2e-download-paths.mjs` (real worker + real offscreen document; asserts the saved paths), `helpers/` | No | Run in place |
+| `source/tests/` | The offline suites CI runs: `*.test.mjs` fixtures (URL routes + listing parser, side-panel queue + crawler, folder naming, ZIP writer, PDF writer, queue restore — `node --test`), `smoke.mjs` (real service worker under mocked chrome + fetch), `e2e-download-paths.mjs` (real worker + real offscreen document; asserts the saved paths), `helpers/` | No | Run in place |
 | `source/docs/` | All project docs (`SESSION_HANDOFF.md` start here, `WORKLIST.md`, `IMPROVEMENT_LOG.md`, …) | No | N/A |
 
 ## Workflow

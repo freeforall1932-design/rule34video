@@ -1,12 +1,29 @@
 # rule34video
 
-MV3 Chrome extension that downloads videos (and images) from
-[rule34video.com](https://rule34video.com) and [rule34.world](https://rule34.world):
-per-post download buttons, a popup with quality selection, batch ("download
-visible" / by tag / by playlist), a concurrency-limited download queue that
-survives service-worker restarts, HLS→MP4 remuxing in an offscreen document,
-and downloads organized into per-site, tag-named folders. Free, no telemetry,
-no accounts — see `source/docs/privacy.md`.
+MV3 Chrome extension for [rule34video.com](https://rule34video.com) and
+[rule34.world](https://rule34.world), built around a **Side Panel batch
+queue** (in the style of the sister X/Twitter downloader) and an
+**nh-dw style page fetcher** ("N posts found · Download all pages · pages
+`2,4,6-10`"). Free, no telemetry, no accounts — see `source/docs/privacy.md`.
+
+The extension **only activates on URLs it recognises** (`extension/site-routes.js`
+is the single routing table); on every other page it stays silent.
+
+| Where you are | What the panel / page offers |
+|---|---|
+| **rule34video.com** video page | *Download this post* (best quality, or your preferred height) |
+| rule34video.com homepage, `/latest-updates`, search, tag, category, artist, member | *List this page* · *Download page* · page range (`1-99`, `all`) → *Fetch pages* / *Download all pages*; a ⬇ on every card |
+| rule34video.com **playlist** | the same, plus *Whole playlist* on the page pill — every page of the playlist is crawled |
+| **rule34.world** post | *Download this post* (picture **or** video) |
+| rule34.world homepage, tag search, `/hot` `/highest` `/trends`, playlist | Twitter-style queue: auto batch-fetch **all pics and videos** through the site API, page N here = page N on the site, media filter (pics / videos / both), page range or *all pages* |
+| anything else | queue only, plus *Fetch from a URL* (paste any listing / playlist URL of either site) |
+
+Every listed post is a row with a checkbox, thumbnail, site/type badge, page
+number and live status (listed → queued → resolving → downloading →
+completed / failed). *Select all*, *Invert*, filter, *Retry failed*, *Clear
+finished*, *Skip already downloaded* (with a resettable history) and a
+1/2/3/5 concurrency switch behave exactly like the X downloader panel.
+The queue and the crawl survive service-worker restarts.
 
 ## Where files are saved
 
@@ -40,6 +57,10 @@ Downloads/
 | Path | What |
 |---|---|
 | `extension/` | The shipped extension (load this folder unpacked). Runtime-only. |
+| `extension/site-routes.js` | **URL router** (which page is this? what listing does it belong to?), page-range grammar, rule34video.com listing/pagination parser, rule34.world search-body builder. Shared by the worker, the panel and both content scripts; unit-tested. |
+| `extension/panel-queue.js` | The Side Panel **queue engine** (worker side): persistent list, worker pool, page crawler with one adapter per site, download history. Dependency-injected, unit-tested offline. |
+| `extension/sidepanel.html/.js` + `styles/sidepanel.css` | The Side Panel UI (opens from the toolbar icon, the page pill, or the context menu) |
+| `extension/content-rule34video.js`, `extension/content-rule34world.js` | Per-site page adapters: corner ⬇ buttons, the floating pill, `collectListing` for the panel. Each fires only on routes the router recognises. |
 | `extension/folder-naming.js` | The output-path engine: master folder, site slug map, path sanitizer, folder-name template |
 | `extension/modules/archive/` | Dependency-free ZIP/CBZ writer and PDF writer for picture sets |
 | `source/` | All development-use code: `retired/` (retired extension code), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
@@ -53,10 +74,10 @@ Downloads/
 #    chrome://extensions → Developer mode → Load unpacked → "extension"
 
 # 2. Run the offline test suites (from the repo root — no browser, no network)
-node --test "source/tests/*.test.mjs"      # fixtures: folder naming, ZIP, PDF
+node --test "source/tests/*.test.mjs"      # fixtures: routes, panel queue + crawler, folder naming, ZIP, PDF, queue restore
 node source/tests/smoke.mjs                # real service worker under mocked chrome
 node source/tests/e2e-download-paths.mjs   # real worker + offscreen doc: the saved paths
-npm test                                   # all three
+npm test                                   # all of the above
 
 # 3. Syntax-check everything (background is an ES module, the rest are classic)
 cd extension
@@ -72,18 +93,16 @@ manual by design.
 
 ## Current state
 
-- Version **5.0.0** (see `source/docs/IMPROVEMENT_LOG.md` for the full history).
-- Session 8 added the source-separated, tag-named output folders above
-  (ported from the sister project `nh-dw-2.0`) and fixed two real save-path
-  bugs found while wiring them: offscreen-downloaded videos were landing flat
-  in the download root, and offscreen saves were double-foldered under
-  `Rule 34/`.
-- Session 6 removed ~1.35 MB of unreachable vendored code from the package
-  (retained under `source/`) and trimmed dead handlers; shipped folder ≈ 0.85 MB.
-- Known-open work is tracked in `source/docs/WORKLIST.md`; the largest items are a
-  remux-only hls.js build (measured 67 KB achievable vs the shipped 407 KB
-  bundle — needs a build step + a browser regression test first) and
-  consolidating the dual canonical/legacy progress messages.
+- Version **6.0.0** — the UI/UX rework: popup replaced by the Side Panel
+  queue, generic both-domain toolbar replaced by URL-routed per-site page
+  adapters, nh-dw style page crawling (ranges / all pages) for both sites,
+  playlist downloads on rule34video.com, pictures + videos batch fetch on
+  rule34.world. The v5 popup / player-button / post-actions code is retained,
+  never packaged, under `source/retired/v5-popup-ui/`.
+- The download pipeline itself (resolvers, concurrency queue, HLS remux,
+  picture-set archives, per-site tag-named folders) is unchanged from 5.x; the
+  panel simply feeds it.
+- Known-open work is tracked in `source/docs/WORKLIST.md`.
 
 ## License
 
