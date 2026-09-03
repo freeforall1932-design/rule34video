@@ -2,7 +2,9 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-01 (session 8). PR #1 merged (rebrand + queue + batch).
+Last updated: 2026-09-02 (session 9, v6.0.0 — Side Panel queue + URL-routed
+page adapters; see IMPROVEMENT_LOG.md "Session 9").
+PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
 Session 6 = dead-code purge + scrapyard retention + hardening pass
@@ -12,6 +14,13 @@ folder + automatic per-site folder + tag/artist collection folder + picture-set
 archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 
 ## Done
+
+- [x] **(Session 9, 6.0.0) UI/UX rework** — popup → Side Panel queue
+      (Twitter-style rows/counters/dock), generic toolbar → per-site
+      URL-routed content scripts, nh-dw page fetcher (ranges / all pages),
+      rule34video.com playlists + homepage/search crawling, rule34.world
+      pics+videos batch fetch through the search API. New offline suites
+      `site-routes.test.mjs` + `panel-queue.test.mjs`.
 
 - [x] **(Session 8, 5.0.0) Master folder** — `chrome.storage.sync`
       `masterFolder`, default `R34V`; empty string = off (flat layout); slashes
@@ -240,6 +249,25 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 - [ ] Link points to `github.com/freeforall1932-design/rule34video/releases/latest`.
 
 ## To-do / improvements (ordered)
+
+- [ ] **(Session 9) Manual browser matrix for the Side Panel** — open the
+      panel on: rule34video.com video page (Download this post), a search
+      page (List this page = the visible cards; Fetch pages `2-3`; Download all
+      pages stops at the real last page), a playlist (Whole playlist pill), the
+      homepage; rule34.world post (picture and video), a tag page (media filter
+      pics / videos; page 2 in the panel == page 2 on the site), `/hot`, a
+      playlist while logged in. Check that the toolbar icon opens the panel,
+      the context-menu item, Stop mid-crawl, and restore after a
+      `chrome://extensions` reload.
+- [ ] **(Session 9)** rule34.world total-count field in the search response
+      is inferred (`totalCount` / `total` / `count` / `totalItems`); if the live
+      API uses another name the page count reads "unknown" and `all` asks for
+      an explicit range — verify live and pin the field.
+- [ ] **(Session 9)** `background-bridge.js` still carries the v5 content
+      progress forwarders (`notifyContentDownloadStarted`, `forwardMP4Progress`,
+      …). They are harmless (no receiver) but could be trimmed together with
+      the legacy `downloadVideo` / `batchDownloadPosts` handlers once nothing
+      external depends on them.
 
 - [ ] **Verify rule34.world listing-card selectors on a live page**; adjust
       `post-actions.js` `pinContainerFor()` / `processCards()` if needed.

@@ -255,7 +255,7 @@ async function loadBackground(chromeMock) {
   globalThis.chrome.downloads = chromeMock.downloadsApi;
   const tmp = join(tmpdir(), "r34-e2e-bg-" + Date.now() + "-" + Math.random().toString(36).slice(2));
   mkdirSync(tmp, { recursive: true });
-  for (const name of ["background-enhanced.js", "site-config.js", "logger.js", "background-bridge.js", "folder-naming.js"]) {
+  for (const name of ["background-enhanced.js", "site-config.js", "logger.js", "background-bridge.js", "folder-naming.js", "site-routes.js", "panel-queue.js"]) {
     let code = readFileSync(join(extensionDir, name), "utf8");
     code = code
       .replace(/from\s+['"]\.\/([\w-]+)\.js['"]/g, "from './$1.mjs'")

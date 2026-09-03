@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Downloader for Rule 34",
-  "description": "Fast, private, one-click video downloads from Rule 34.",
-  "version": "5.0.1",
+  "description": "Side-panel batch downloader for rule34video.com and rule34.world: playlists, searches, homepages, multi-page crawls, pictures and videos.",
+  "version": "6.0.0",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -12,6 +12,7 @@
     "downloads",
     "activeTab",
     "storage",
+    "sidePanel",
     "notifications",
     "contextMenus",
     "tabs",
@@ -41,59 +42,44 @@
   "content_scripts": [
     {
       "matches": [
-        "https://rule34.world/*",
-        "https://*.rule34.world/*",
-        "http://rule34.world/*",
-        "http://*.rule34.world/*",
-        "https://www.rule34.world/*",
-        "http://www.rule34.world/*",
         "https://rule34video.com/*",
         "https://*.rule34video.com/*",
         "http://rule34video.com/*",
         "http://*.rule34video.com/*"
       ],
       "js": [
-        "site-config.js",
-        "logger.js",
-        "download-manager.js",
-        "content-bridge.js",
-        "content.js",
-        "player-button.js",
-        "post-actions.js"
+        "site-routes.js",
+        "content-rule34video.js"
       ],
       "run_at": "document_idle"
-    }
-  ],
-  "action": {
-    "default_title": "Downloader for Rule 34",
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
-  },
-  "web_accessible_resources": [
+    },
     {
-      "resources": [
-        "inject.js",
-        "styles/download-manager.css",
-        "styles/player-button.css"
-      ],
       "matches": [
         "https://rule34.world/*",
         "https://*.rule34.world/*",
         "http://rule34.world/*",
         "http://*.rule34.world/*",
         "https://www.rule34.world/*",
-        "http://www.rule34.world/*",
-        "https://rule34video.com/*",
-        "https://*.rule34video.com/*",
-        "http://rule34video.com/*",
-        "http://*.rule34video.com/*"
-      ]
+        "http://www.rule34.world/*"
+      ],
+      "js": [
+        "site-routes.js",
+        "content-rule34world.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
+  "action": {
+    "default_title": "Rule 34 Downloader — open the download panel",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
     "sandbox": "sandbox allow-scripts allow-forms allow-popups allow-modals; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; child-src 'self';"

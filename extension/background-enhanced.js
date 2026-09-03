@@ -4,12 +4,20 @@ import './site-config.js';
 import './logger.js';
 import './background-bridge.js';
 import './folder-naming.js';
+import './site-routes.js';
+import './panel-queue.js';
 
 const SiteConfig = globalThis.SiteConfig || {};
 const Bridge = globalThis.Rule34BackgroundBridge || {};
 const Adapter = globalThis.Rule34SiteAdapter || {};
 // Pure naming engine shared with the popup (extension/folder-naming.js).
 const FolderNaming = globalThis.R34FolderNaming || {};
+// URL router + listing parsers shared with the side panel and content scripts.
+const Routes = globalThis.R34Routes || null;
+// Side-panel queue engine factory (extension/panel-queue.js); instantiated
+// further down once the resolvers and the download pipeline exist.
+const PanelQueueFactory = globalThis.R34PanelQueue || null;
+let panelQueue = null;
 const logger = (globalThis.Logger && globalThis.Logger.createLogger("[Rule 34 BG]")) || { log() {}, warn() {}, error() {} };
 const downloadProgress = new Map();
 const observedMediaByTab = new Map();
@@ -367,9 +375,17 @@ async function pumpDownloadQueue() {
         const job = downloadQueue.shift();
         persistQueueState();
         try {
-          await runQueuedDownload(job.videoInfo, job.tabId);
+          const result = await runQueuedDownload(job.videoInfo, job.tabId);
+          // A panel row that was parked under the temporary "queued-…" id now
+          // follows the real download id so its completion is tracked.
+          if (result?.downloadId !== undefined && result?.downloadId !== null) {
+            panelQueue?.rebindDownload?.(job.queuedId, result.downloadId);
+          } else {
+            panelQueue?.notifyOutcome(job.queuedId, { ok: true });
+          }
         } catch (error) {
           logger.error("Queued download failed", error);
+          panelQueue?.notifyOutcome(job.queuedId, { ok: false, error: error?.message || "Queued download failed." });
           if (!job?.videoInfo?.__fromBatch) notify("Download failed", error?.message || "Queued download failed.");
         }
       }
@@ -423,12 +439,18 @@ async function retryInterruptedDownload(delta) {
   const title = sanitizeFilename(videoInfo.title || videoInfo.id || "Video");
   try {
     const result = await queueDownloadRequest(videoInfo, { quiet: true });
+    if (result?.downloadId !== undefined && result?.downloadId !== null) {
+      panelQueue?.rebindDownload?.(downloadId, result.downloadId);
+    } else {
+      panelQueue?.notifyOutcome(downloadId, { ok: false, error: "Retry on the backup host could not start." });
+    }
     notify(
       "Download restarted",
       `"${title}" restarted on the backup file host${result?.queued ? ` (queued #${result.queuePosition || "?"})` : ""}.`,
     );
   } catch (error) {
     logger.warn("Fallback download retry failed", error);
+    panelQueue?.notifyOutcome(downloadId, { ok: false, error: error?.message || "Retry on the backup host failed." });
     notify("Download failed", error?.message || `Could not restart "${title}" on the backup file host.`);
   }
 }
@@ -440,9 +462,27 @@ try {
     const state = delta.state.current;
     if (state !== "complete" && state !== "interrupted") return;
     releaseQueueSlot(delta.id);
-    if (state === "interrupted") void retryInterruptedDownload(delta);
+    if (state === "interrupted") {
+      // A fallback-host retry re-enqueues the same panel item under a new
+      // download id, so only report the failure when no retry is possible.
+      const key = String(delta.id);
+      const canRetry = Boolean(downloadRetryContext.get(key)?.format?.fallbackUrl)
+        && !userCancelledDownloads.has(key)
+        && !retriedInterruptedDownloads.has(key);
+      if (!canRetry) panelQueue?.notifyOutcome(delta.id, { ok: false, error: describeInterrupt(delta) });
+      void retryInterruptedDownload(delta);
+    } else {
+      panelQueue?.notifyOutcome(delta.id, { ok: true });
+    }
   });
 } catch {}
+
+function describeInterrupt(delta) {
+  const reason = String(delta?.error?.current || "").replace(/_/g, " ").toLowerCase();
+  if (!reason) return "Download interrupted";
+  if (reason.includes("user canceled")) return "Cancelled";
+  return `Download interrupted (${reason})`;
+}
 
 // Re-pump when the user changes the limit from the popup.
 try {
@@ -457,12 +497,21 @@ try {
 // ---------------------------------------------------------------------------
 const WORLD_CDN_ROOT = "https://rule34storage.b-cdn.net";
 const WORLD_ROOT = "https://rule34.world";
-// rule34.world file format ids -> [extension, label, kind] (best first)
+// rule34.world file format ids -> [extension, label, kind, preview] (best
+// first). Taken from the site's own file-type table (the SPA's
+// `typesStr`, session 9): 100 is the source the site's Download button uses,
+// 111-114 are the 360/480/720/1080 ladders, and 101/102 are the 256px grid
+// previews — kept last, flagged, so they are only ever offered when a post
+// has nothing else (the queue never picks a preview over a real file).
 const WORLD_FORMATS = [
-  ["100", "mov.mp4", "Source MP4", "mp4"],
-  ["101", "mov720.mp4", "720p", "mp4"],
-  ["102", "mov480.mp4", "480p", "mp4"],
-  ["10", "pic.jpg", "Image", "image"],
+  ["100", "mov.mp4", "Source MP4", "mp4", false],
+  ["114", "1080.mp4", "1080p", "mp4", false],
+  ["113", "mov720.mp4", "720p", "mp4", false],
+  ["112", "mov480.mp4", "480p", "mp4", false],
+  ["111", "360.mp4", "360p", "mp4", false],
+  ["101", "mov256.mp4", "256p preview", "mp4", true],
+  ["102", "mov256ex.mp4", "256p preview", "mp4", true],
+  ["10", "pic.jpg", "Image", "image", false],
 ];
 // The rule34.world post API reports, per file, whether it lives on the
 // BunnyCDN root or the site origin. In practice the CDN has been observed
@@ -650,11 +699,11 @@ async function resolveRule34WorldPost(postId, pageUrl) {
   const directory = Math.floor(idNumber / 1000);
 
   const entries = [];
-  for (const [formatId, extension, label, kind] of WORLD_FORMATS) {
+  for (const [formatId, extension, label, kind, preview] of WORLD_FORMATS) {
     if (!(formatId in files)) continue;
     const flags = files[formatId];
     const useCdn = Array.isArray(flags) ? Boolean(flags[0]) : Boolean(flags);
-    entries.push({ extension, label, kind, useCdn });
+    entries.push({ extension, label, kind, useCdn, preview });
   }
   if (!entries.length) throw new Error("No downloadable files listed for this post.");
 
@@ -673,7 +722,7 @@ async function resolveRule34WorldPost(postId, pageUrl) {
     return { root: other, altRoot: preferredOk ? preferred : "" };
   };
 
-  const formats = entries.map(({ extension, label, kind, useCdn }) => {
+  const formats = entries.map(({ extension, label, kind, useCdn, preview }) => {
     const { root, altRoot } = pickRoots(useCdn);
     const format = {
       url: `${root}/posts/${directory}/${idNumber}/${idNumber}.${extension}`,
@@ -685,6 +734,7 @@ async function resolveRule34WorldPost(postId, pageUrl) {
       protocol: "https",
       source: "rule34world-api",
     };
+    if (preview) format.preview = true;
     if (altRoot) format.fallbackUrl = `${altRoot}/posts/${directory}/${idNumber}/${idNumber}.${extension}`;
     return format;
   });
@@ -2882,26 +2932,163 @@ async function downloadVideo(videoInfo = {}) {
   return { downloadId, format: selectedFormat };
 }
 
+// ---------------------------------------------------------------------------
+// Side panel: the Twitter-style batch queue + nh-dw style page crawler.
+// The engine lives in extension/panel-queue.js; this is only the wiring to
+// the resolvers, the download pipeline and the tab that asked.
+// ---------------------------------------------------------------------------
+const PANEL_SNAPSHOT_MESSAGE = "panel.snapshot";
+
+function broadcastPanelSnapshot(snapshot) {
+  try {
+    chrome.runtime.sendMessage({ action: PANEL_SNAPSHOT_MESSAGE, snapshot }, () => {
+      void chrome.runtime.lastError; // no panel open — fine
+    });
+  } catch {}
+}
+
+// Ask the rule34video.com content script for the cards currently rendered
+// (keeps the user's on-page sort/filters). Returns null when there is no
+// content script (e.g. the tab needs a reload) so the caller can fetch instead.
+function collectPageItemsFromTab(tabId) {
+  return new Promise((resolve) => {
+    try {
+      chrome.tabs.sendMessage(tabId, { action: "collectListing" }, (response) => {
+        if (chrome.runtime.lastError || !response || !response.success) return resolve(null);
+        resolve(Array.isArray(response.items) ? response.items : null);
+      });
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+if (PanelQueueFactory && Routes) {
+  try {
+    panelQueue = PanelQueueFactory.create({
+      chrome,
+      routes: Routes,
+      logger,
+      resolvePost: resolveKnownPost,
+      // Every panel download flows through the same concurrency-aware queue as
+      // the popup / corner buttons, so the two limits compose instead of
+      // fighting (the panel's own worker pool is the outer limit).
+      startDownload: (videoInfo) => queueDownloadRequest(videoInfo, { quiet: true }),
+      cancelDownload: (downloadId) => {
+        try {
+          if (typeof downloadId === "number") {
+            userCancelledDownloads.add(String(downloadId));
+            chrome.downloads.cancel(downloadId);
+          } else if (typeof downloadId === "string" && downloadId.startsWith("queued-")) {
+            removeQueuedDownload(downloadId);
+          }
+          downloadProgress.delete(downloadId);
+          releaseQueueSlot(downloadId);
+        } catch {}
+      },
+      collectPageItems: collectPageItemsFromTab,
+      broadcast: broadcastPanelSnapshot,
+      setCurrentTab: (tabId) => { if (tabId) currentDownloadTabId = tabId; },
+    });
+    void panelQueue.restore();
+  } catch (error) {
+    logger.error("Side-panel queue failed to start", error);
+    panelQueue = null;
+  }
+}
+
+async function openSidePanelForSender(sender, request = {}) {
+  const tabId = Number(request?.tabId) || sender?.tab?.id || null;
+  const windowId = Number(request?.windowId) || sender?.tab?.windowId || null;
+  if (!chrome.sidePanel?.open) throw new Error("Side panel API unavailable (Chrome 114+ required).");
+  if (tabId) {
+    try { await chrome.sidePanel.open({ tabId }); return; } catch {}
+  }
+  if (windowId) {
+    await chrome.sidePanel.open({ windowId });
+    return;
+  }
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.windowId) throw new Error("No active window.");
+  await chrome.sidePanel.open({ windowId: tab.windowId });
+}
+
+// Clicking the toolbar icon opens the side panel directly (the popup is gone:
+// the panel IS the UI). Chrome only lets us set this once at startup.
+try {
+  chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
+} catch {}
+
 // Restore the persisted session queue (waiting downloads, batch URLs,
 // in-flight job slots) after a service-worker restart, then keep draining.
 void restoreQueueState();
 
+// Context menu: "Download with Rule 34 Downloader" on links and pages of the
+// two sites. URL-routed like everything else — a post link queues that post,
+// a listing link/page lists it in the panel, anything else is ignored.
+const CONTEXT_MENU_ID = "r34-download";
+const CONTEXT_MENU_PATTERNS = [
+  "https://rule34.world/*", "https://*.rule34.world/*", "http://rule34.world/*", "http://*.rule34.world/*",
+  "https://rule34video.com/*", "https://*.rule34video.com/*", "http://rule34video.com/*", "http://*.rule34video.com/*",
+];
+
 chrome.runtime.onInstalled.addListener(() => {
-  Bridge.createConfiguredContextMenu?.({ logger });
+  try {
+    chrome.contextMenus.removeAll(() => {
+      void chrome.runtime.lastError;
+      try {
+        chrome.contextMenus.create({
+          id: CONTEXT_MENU_ID,
+          title: "Download with Rule 34 Downloader",
+          contexts: ["link", "page", "video", "image"],
+          documentUrlPatterns: CONTEXT_MENU_PATTERNS,
+        }, () => void chrome.runtime.lastError);
+      } catch (error) {
+        logger.warn("Could not create the context menu", error);
+      }
+    });
+  } catch {}
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  Bridge.handleConfiguredContextMenuClick?.({
-    info,
-    tab,
-    downloadVideo: queueDownloadRequest,
-    setCurrentDownloadTabId(tabId) { currentDownloadTabId = tabId; },
-    logger,
-  });
+  if (info?.menuItemId !== CONTEXT_MENU_ID || !panelQueue || !Routes) return;
+  const candidates = [info.linkUrl, info.pageUrl, tab?.url].filter(Boolean);
+  for (const url of candidates) {
+    const route = Routes.match(url);
+    if (!route) continue;
+    if (tab?.id) currentDownloadTabId = tab.id;
+    if (Routes.isSinglePost(route)) {
+      void panelQueue.handleMessage({ action: "panel.add", items: [{ url: route.canonicalUrl || url }], start: true, tabId: tab?.id }, { tab });
+      return;
+    }
+    if (Routes.isListing(route)) {
+      void panelQueue.handleMessage({ action: "panel.listPage", url, tabId: tab?.id }, { tab })
+        .then(() => openSidePanelForSender({ tab }, {}))
+        .catch(() => {});
+      return;
+    }
+  }
 });
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const action = request?.action || request?.type;
+  // Side-panel queue / crawler ("panel.*") — see extension/panel-queue.js.
+  if (panelQueue && panelQueue.isPanelAction(request)) {
+    panelQueue.handleMessage(request, sender)
+      .then((response) => { try { sendResponse(response); } catch {} })
+      .catch((error) => { try { sendResponse({ success: false, error: error?.message || String(error) }); } catch {} });
+    return true;
+  }
+  if (action === "openSidePanel") {
+    openSidePanelForSender(sender, request)
+      .then(() => { try { sendResponse({ success: true }); } catch {} })
+      .catch((error) => { try { sendResponse({ success: false, error: error?.message || String(error) }); } catch {} });
+    return true;
+  }
+  if (action === "routeMatch") {
+    try { sendResponse({ success: true, route: Routes ? Routes.match(request?.url || sender?.tab?.url || "") : null }); } catch {}
+    return false;
+  }
   switch (action) {
     case "downloadVideo":
       return Bridge.handleDownloadVideoMessage({
@@ -3010,6 +3197,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ active_downloads: Object.fromEntries(downloadProgress) });
       return false;
     case "HLS_PROCESSING_PROGRESS":
+      panelQueue?.notifyProgress(request?.downloadId, request?.progress);
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -3017,6 +3205,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     case "HLS_PROCESSING_COMPLETE":
       releaseQueueSlot(request?.downloadId);
+      panelQueue?.notifyOutcome(request?.downloadId, { ok: true });
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -3024,12 +3213,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     case "HLS_PROCESSING_ERROR":
       releaseQueueSlot(request?.downloadId);
+      panelQueue?.notifyOutcome(request?.downloadId, { ok: false, error: String(request?.error || request?.message || "Download failed") });
       return Bridge.handleForwardAck({
         request,
         sendResponse,
         forwarder: forwardHLSError,
       });
     case "MP4_DOWNLOAD_PROGRESS":
+      panelQueue?.notifyProgress(request?.downloadId, request?.progress);
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -3042,6 +3233,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     case "MP4_DOWNLOAD_COMPLETE":
       releaseQueueSlot(request?.downloadId);
+      panelQueue?.notifyOutcome(request?.downloadId, { ok: true });
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -3054,6 +3246,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     case "MP4_DOWNLOAD_ERROR":
       releaseQueueSlot(request?.downloadId);
+      panelQueue?.notifyOutcome(request?.downloadId, { ok: false, error: String(request?.error || request?.message || "Download failed") });
       return Bridge.handleForwardAck({
         request,
         sendResponse,
@@ -3082,6 +3275,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       return true;
     }
     case "IMAGE_SET_PROGRESS": {
+      panelQueue?.notifyProgress(request?.downloadId, request?.progress);
       const entry = downloadProgress.get(request?.downloadId) || {};
       downloadProgress.set(request?.downloadId, {
         ...entry,
@@ -3099,6 +3293,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     case "IMAGE_SET_COMPLETE": {
       releaseQueueSlot(request?.downloadId);
+      panelQueue?.notifyOutcome(request?.downloadId, { ok: true });
       downloadProgress.delete(request?.downloadId);
       notify("Download Complete", `${request?.fileName || "Archive"} has been downloaded successfully.`);
       Bridge.forwardMP4Complete?.({
@@ -3112,6 +3307,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     case "IMAGE_SET_ERROR": {
       releaseQueueSlot(request?.downloadId);
+      panelQueue?.notifyOutcome(request?.downloadId, { ok: false, error: String(request?.error || request?.message || "Download failed") });
       downloadProgress.delete(request?.downloadId);
       notify("Download Failed", String(request?.error || "The archive could not be built."));
       Bridge.forwardMP4Error?.({
@@ -3143,6 +3339,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         downloadProgress.delete(request.downloadId);
         releaseQueueSlot(request.downloadId);
+        panelQueue?.notifyOutcome(request.downloadId, { ok: false, error: "Cancelled" });
         sendResponse({ success: true });
       } catch (error) {
         sendResponse({ success: false, error: error?.message || "cancel failed" });

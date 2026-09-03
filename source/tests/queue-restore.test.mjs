@@ -119,6 +119,8 @@ for (const [src, dst] of Object.entries({
   "logger.js": "logger.mjs",
   "background-bridge.js": "background-bridge.mjs",
   "folder-naming.js": "folder-naming.mjs",
+  "site-routes.js": "site-routes.mjs",
+  "panel-queue.js": "panel-queue.mjs",
 })) {
   const code = readFileSync(join(srcDir, src), "utf8")
     .replace(/from\s+['"]\.\/([\w-]+)\.js['"]/g, "from './$1.mjs'")

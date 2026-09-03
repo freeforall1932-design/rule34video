@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Rule 34 Downloader</title>
+  <link rel="stylesheet" href="styles/sidepanel.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="eyebrow" id="siteEyebrow">RULE 34 DOWNLOADER</p>
+      <h1 id="panelTitle">Download queue</h1>
+    </div>
+    <span id="engineStatus" class="status-pill idle">Ready</span>
+  </header>
+
+  <main>
+    <!-- Which page am I looking at? Everything below adapts to it. -->
+    <section id="tabStatus" class="tab-status">
+      <span id="tabStatusDot" class="dot"></span>
+      <div class="tab-status-text">
+        <strong id="tabStatusTitle">Checking active tab…</strong>
+        <span id="tabStatusDetail">Open rule34video.com or rule34.world to begin.</span>
+      </div>
+      <button id="refreshTabBtn" class="icon-button" title="Re-read the active tab" aria-label="Re-read the active tab">⟳</button>
+    </section>
+
+    <!-- Single post: one-click download of the page you are on. -->
+    <section id="postCard" class="source-card hidden" aria-label="This post">
+      <div class="post-row">
+        <img id="postThumb" class="post-thumb" alt="" hidden>
+        <div class="post-info">
+          <strong id="postTitle">Post</strong>
+          <span id="postMeta" class="muted"></span>
+        </div>
+      </div>
+      <div class="action-row">
+        <button id="downloadPostBtn" class="button primary">Download this post</button>
+        <button id="listPostBtn" class="button secondary" title="Add to the list without downloading">Add to list</button>
+      </div>
+      <p id="postHint" class="hint"></p>
+    </section>
+
+    <!-- Listing: nh-dw style fetcher. -->
+    <section id="listingCard" class="source-card hidden" aria-label="Fetch posts from this listing">
+      <div class="panel-heading">
+        <div>
+          <strong id="listingTitle">Listing</strong>
+          <div id="listingMeta" class="muted small">Reading page info…</div>
+        </div>
+        <span id="listingKind" class="kind-badge"></span>
+      </div>
+
+      <div class="action-row">
+        <button id="listPageBtn" class="button primary">List this page</button>
+        <button id="downloadPageBtn" class="button secondary" title="List every post on this page and start downloading immediately">Download page</button>
+      </div>
+
+      <div class="range-row">
+        <label for="pageRange" class="range-label">Pages</label>
+        <input id="pageRange" type="text" autocomplete="off" spellcheck="false" placeholder="1-99">
+        <button id="rangeHelpBtn" class="icon-button small" title="Page ranges" aria-label="Page range help">?</button>
+        <button id="allPagesBtn" class="text-button" title="Fill in every page">all</button>
+      </div>
+      <p id="rangeHelp" class="hint help-box hidden">
+        Comma-separated pages and ranges, exactly like nh-dw: <code>2,4,6-10</code>, <code>1-99</code>, <code>50-</code> (to the end) or <code>all</code>.
+        Pages past the last one are ignored.
+      </p>
+
+      <div id="worldFilters" class="source-options hidden">
+        <label>Media
+          <select id="mediaTypeSelect">
+            <option value="all">Pics + videos</option>
+            <option value="video">Videos only</option>
+            <option value="image">Pics only</option>
+          </select>
+        </label>
+        <label class="check-label" title="Downloaded before? Then it is not listed again."><input id="skipDownloaded" type="checkbox" checked> Skip downloaded</label>
+      </div>
+      <div id="videoFilters" class="source-options hidden">
+        <label class="check-label" title="Downloaded before? Then it is not listed again."><input id="skipDownloadedVideo" type="checkbox" checked> Skip downloaded</label>
+      </div>
+
+      <div class="action-row">
+        <button id="crawlListBtn" class="button secondary">Fetch pages</button>
+        <button id="crawlDownloadBtn" class="button primary">Download all pages</button>
+        <button id="crawlStopBtn" class="button danger hidden">Stop</button>
+      </div>
+      <div id="crawlProgress" class="crawl-progress hidden">
+        <div class="bar"><div id="crawlBar" class="bar-fill"></div></div>
+        <span id="crawlText" class="small muted"></span>
+      </div>
+      <p id="listingHint" class="hint"></p>
+    </section>
+
+    <!-- Remote fetch: paste any listing / playlist URL of either site. -->
+    <details id="remoteCard" class="source-card remote-card">
+      <summary>Fetch from a URL — playlist, search, tag or artist page</summary>
+      <div class="target-row">
+        <input id="remoteInput" type="text" autocomplete="off" spellcheck="false" placeholder="https://rule34video.com/playlists/… or https://rule34.world/touhou">
+        <button id="remoteUseTabBtn" class="icon-button" title="Use the active tab" aria-label="Use the active tab">⌁</button>
+      </div>
+      <div class="range-row">
+        <label for="remoteRange" class="range-label">Pages</label>
+        <input id="remoteRange" type="text" autocomplete="off" spellcheck="false" placeholder="all">
+      </div>
+      <div class="action-row">
+        <button id="remoteListBtn" class="button secondary">Fetch pages</button>
+        <button id="remoteDownloadBtn" class="button primary">Download all</button>
+      </div>
+      <p id="remoteHint" class="hint">rule34video.com playlists, searches, tags, artists and members; rule34.world tags, feeds and playlists.</p>
+    </details>
+
+    <section class="summary" aria-label="Queue summary">
+      <div><strong id="listedCount">0</strong><span>listed</span></div>
+      <div><strong id="selectedCount">0</strong><span>selected</span></div>
+      <div><strong id="completedCount">0</strong><span>completed</span></div>
+    </section>
+
+    <section class="toolbar" aria-label="Selection controls">
+      <label class="check-label"><input id="selectAll" type="checkbox"> Select all</label>
+      <button id="invertBtn" class="text-button" title="Invert the selection of the rows shown">Invert</button>
+      <select id="mediaFilter" aria-label="Filter list">
+        <option value="all">All media</option>
+        <option value="video">Videos</option>
+        <option value="image">Pictures</option>
+      </select>
+    </section>
+
+    <section class="toolbar secondary-toolbar" aria-label="Queue maintenance">
+      <button id="retryFailedBtn" class="text-button">Retry failed</button>
+      <button id="clearFinishedBtn" class="text-button" title="Remove completed and failed rows, keep the rest.">Clear finished</button>
+      <button id="resetHistoryBtn" class="text-button" title="Forget which posts were already downloaded, so they can be listed again.">Reset history</button>
+      <button id="clearListBtn" class="text-button danger">Clear list</button>
+    </section>
+
+    <details id="outputSettings" class="source-card output-settings">
+      <summary>Output settings — folders, names, picture format</summary>
+
+      <label class="settings-label" for="masterFolder">Master folder</label>
+      <input id="masterFolder" type="text" autocomplete="off" placeholder="R34V (empty = off)">
+      <p class="hint">Files save as <code>Downloads/&lt;master&gt;/&lt;site&gt;/&lt;collection&gt;/file</code>. The site folder (<code>rule34video</code> / <code>rule34world</code>) is automatic so the two sites never mix. Empty = no master folder.</p>
+
+      <label class="settings-label">Collection folder is built from</label>
+      <div id="tokenChecks" class="template-checks"></div>
+      <input id="collectionTemplate" type="text" autocomplete="off" spellcheck="false" placeholder="{artist} - {title} - {id}">
+      <p class="hint">Nothing checked → the search / tag / playlist name, then the post id.</p>
+
+      <label class="check-label settings-check"><input id="artistFolderMode" type="checkbox"> One folder per artist (artist → uploader → id)</label>
+
+      <label class="settings-label" for="pictureSaveMode">Picture posts save as</label>
+      <select id="pictureSaveMode">
+        <option value="loose">Numbered originals (001.jpg …)</option>
+        <option value="zip">One ZIP per post</option>
+        <option value="cbz">One CBZ per post</option>
+        <option value="pdf">One PDF per post</option>
+      </select>
+
+      <label class="settings-label" for="duplicateBehaviour">If the file already exists</label>
+      <select id="duplicateBehaviour">
+        <option value="uniquify">Keep both (add a number)</option>
+        <option value="overwrite">Overwrite</option>
+      </select>
+      <p id="namePreview" class="hint name-preview"></p>
+    </details>
+
+    <div class="container"></div>
+
+    <section id="queue" class="queue" aria-live="polite">
+      <div class="empty-state">
+        <div class="empty-icon">↓</div>
+        <h2>Nothing listed yet</h2>
+        <p>Open a search, tag, playlist or homepage and press <strong>List this page</strong>, or fetch a range of pages.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="download-dock">
+    <div class="dock-controls">
+      <div class="concurrency-control">
+        <span>At once</span>
+        <div class="segmented" role="group" aria-label="Concurrent downloads" id="concurrencyGroup">
+          <button data-concurrency="1">1</button>
+          <button data-concurrency="2" class="selected">2</button>
+          <button data-concurrency="3">3</button>
+          <button data-concurrency="5">5</button>
+        </div>
+      </div>
+      <div class="concurrency-control">
+        <span>Quality</span>
+        <select id="qualitySelect" aria-label="Preferred video quality">
+          <option value="best">Best</option>
+          <option value="1080">1080p</option>
+          <option value="720">720p</option>
+          <option value="480">480p</option>
+          <option value="360">360p</option>
+        </select>
+      </div>
+    </div>
+    <div class="action-row">
+      <button id="downloadSelectedBtn" class="button primary" disabled>Download selected</button>
+      <button id="stopBtn" class="button secondary" disabled>Stop</button>
+    </div>
+    <p id="dockNotice" class="download-notice">Tick posts (or Select all), then download. Downloads keep running while you browse.</p>
+  </footer>
+
+  <script src="site-config.js"></script>
+  <script src="folder-naming.js"></script>
+  <script src="site-routes.js"></script>
+  <script src="sidepanel.js"></script>
+  <script src="update-notifier.js" defer></script>
+</body>
+</html>

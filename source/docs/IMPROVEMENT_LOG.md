@@ -685,6 +685,105 @@ verified by the offline suites (`npm test`, now 59 fixture checks + smoke +
   `queue-job-N` key never blocks a slot, and waiting/batch jobs are restored.
   Confirmed to fail on the pre-fix code.
 
+## Session 9 — UI/UX rework: Side Panel queue + URL-routed page adapters (6.0.0)
+
+Goal (owner): rework the entire UI/UX; fire only on specific URLs instead of
+one generic surface for both domains; borrow the download ease + panel look of
+`twitter-batch-download` and the fetching system of `nh-dw-2.0`;
+rule34video.com = playlists + homepage/search fetch with page crawling;
+rule34.world = Twitter-style panel with auto batch fetch of pictures AND
+videos, page-range / all-pages crawling.
+
+### New files
+
+- `extension/site-routes.js` — the URL router (`R34Routes.match`) covering
+  every supported page of both sites (video/post, home, latest, search, tag,
+  category, artist, member, playlist, world feeds), the nh-dw page-range
+  grammar (`2,4,6-10`, `1-99`, `50-`, `all`, clamped to the real last page,
+  hard cap 1000), the rule34video.com listing/pagination parser (regex, works
+  in the worker), the KVS `get_block` ajax page-URL builder (block ids and
+  `from`/`from_videos` verified against the live site: search uses
+  `custom_list_videos_videos_list_search` + `from_videos`, playlists
+  `playlist_view_playlist_view` + `from`, tags/categories/models
+  `custom_list_videos_common_videos`, latest `custom_list_videos_most_recent_videos`)
+  and the rule34.world `/api/v2/post/search/root` body builder (30 posts per
+  page = the SPA's `posts.default.pageSize`, so page N in the panel is page N
+  on the site; `type` 0/1 media filter; `sort` → `OrderBy`).
+- `extension/panel-queue.js` — the Side Panel queue engine, a dependency-
+  injected factory living in the service worker: one persistent list
+  (`r34.panelQueue.v1`) with per-row status listed → queued → resolving →
+  downloading → completed/failed, worker pool (1/2/3/5), quality preference
+  (best/1080/720/480/360, image posts always take the picture pipeline),
+  one automatic retry, download history (`r34.panelHistory.v1`, cap 20 000,
+  "skip already downloaded"), throttled `panel.snapshot` broadcasts, restore
+  after worker restart (chrome downloads re-verified via `search({id})`,
+  offscreen jobs re-queued). The crawler drives one adapter per site
+  (rule34video: fetch listing HTML pages; rule34.world: POST the search API,
+  playlists via `/post/search/playlist/{id}`), supports "list only" or
+  "download as found", stops early on two empty/duplicate pages of an
+  open-ended range, and can be stopped at any time.
+- `extension/sidepanel.html` / `sidepanel.js` / `styles/sidepanel.css` — the
+  panel. Adapts to the ACTIVE TAB via the router: post card (Download this
+  post), listing card (List this page · Download page · page range with `?`
+  help and `all` · Fetch pages · Download all pages · Stop, media filter on
+  rule34.world), "Fetch from a URL" for pasted playlists/searches, summary
+  counters, Select all / Invert / filter, Retry failed / Clear finished /
+  Reset history / Clear list, collapsible Output settings (same
+  `chrome.storage.sync` keys as before, live path preview), queue rows with
+  thumbnail, site + type badges, page number, progress bar, per-row remove,
+  fixed dock with concurrency + quality + "Download N selected" + Stop.
+- `extension/content-rule34video.js`, `extension/content-rule34world.js` —
+  URL-routed page adapters (replace `post-actions.js` / `player-button.js` /
+  `content.js`). Corner ⬇ per card, a floating pill (video page: Download ·
+  Panel; listing: N videos · Download page · [Whole playlist] · Panel;
+  rule34.world listing: N pics · N videos · Download page · All pages ·
+  Panel), `collectListing` for the panel so "List this page" reflects the
+  user's sort/filters, SPA navigation tracking on rule34.world, observer
+  loop guard for self-inflicted mutations. Nothing renders on unsupported
+  routes (`/terms`, `/auth/login`, …).
+
+### Changed
+
+- `manifest.json` 6.0.0: `sidePanel` permission + `side_panel.default_path`;
+  the action opens the panel (`setPanelBehavior({ openPanelOnActionClick })`),
+  no popup; two content-script blocks, one per domain, each `site-routes.js`
+  + its adapter; `web_accessible_resources` dropped (nothing injected).
+- `background-enhanced.js`: imports the router + engine, instantiates the
+  engine with `resolveKnownPost` / `queueDownloadRequest` / cancel hooks,
+  routes every `panel.*` message to it, adds `openSidePanel` and `routeMatch`;
+  completion plumbing for the panel from `chrome.downloads.onChanged`,
+  `MP4_/HLS_/IMAGE_SET_*` offscreen messages, `cancelDownload`, the queued →
+  real download-id hand-over in `pumpDownloadQueue` and the fallback-host
+  retry (`rebindDownload`); context menu rebuilt as a URL-routed
+  "Download with Rule 34 Downloader" (post link → queue it; listing → list it
+  in the panel). Legacy actions (`downloadVideo`, `batchDownloadPosts`,
+  `bulkDownloadTag`, `getQueueItems`, …) are kept unchanged for compatibility.
+- `update-notifier.js` now runs inside the panel (banner styled in
+  `sidepanel.css`).
+
+### Retired (kept, never packaged)
+
+- `source/retired/v5-popup-ui/`: `popup.html/.js`, `post-actions.js`,
+  `player-button.js`, `content.js`, `content-bridge.js`, `download-manager.js`,
+  `inject.js`, `styles/{styles,popup-enhanced,player-button,download-manager}.css`.
+  `background-bridge.js` still contains the content-progress forwarders; they
+  now simply find no receiver (`sendMessageToTabSafely` swallows it).
+
+### Tests
+
+- `source/tests/site-routes.test.mjs` (14) — every route of both sites,
+  negatives, ajax URL builder, world search body, page-range grammar, the
+  listing parser against `source/page-source/rule34video-listing.html`
+  (35 cards, 9136 pages).
+- `source/tests/panel-queue.test.mjs` (19) — list page (tab / HTML fallback /
+  world API / single post), describe, explicit + `all` + `1-99` crawls
+  (search, playlist, homepage, world with media filter + auto-download),
+  bad range, non-listing refusal, worker pool with outcomes/rebind/early
+  outcome, retry + Retry failed, Stop + cancel-remove, select all / invert /
+  clear, history skip + reset, restore after restart.
+- Existing suites updated for the two new worker imports; `npm test` green
+  (96 fixture checks + smoke + e2e).
+
 ## Known issues / notes
 
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not
