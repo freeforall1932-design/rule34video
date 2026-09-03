@@ -10,6 +10,97 @@
 > Updated: 2026-08-31 (session 6 — dead-code purge, extension 2.2 MB → 0.85 MB).
 > Updated: 2026-08-31 (session 7 — top-level restructure: `extension/` + `source/`).
 > Updated: 2026-09-01 (session 8 — source-separated, tag-named output folders, v5.0.0).
+> Updated: 2026-09-03 (session 10 — UI/UX rework: Side Panel queue + URL-routed page adapters, v6.0.0).
+
+---
+
+## 0a. TL;DR — session 10 (2026-09-03): the 6.0.0 UI/UX rework (PR #10)
+
+Read this block first; everything below it describes the v5 popup era and is
+kept for history. **The popup is gone.** The toolbar icon opens a **Side
+Panel** (`sidepanel.html/.js`, `styles/sidepanel.css`), modelled on the
+user's `twitter-batch-download` panel, and the one generic both-domain content
+script is replaced by two **URL-routed** page adapters that render nothing on
+unmatched URLs:
+
+| Where | What the user sees | Backend |
+|---|---|---|
+| rule34video.com `/video/{id}/{slug}/` | pill "⬇ Download · Panel" | `panel.add` → `resolveRule34VideoPost` |
+| rule34video.com home, `/latest-updates[/N]`, `/search/<q>[/N]`, `/tags/<id>`, `/categories/<slug>`, `/models/<slug>`, `/members/<id>` | corner ⬇ per card; pill "N videos · Download page · Panel"; panel listing card with **List this page / Download page / page range (`2,4,6-10`, `1-99`, `50-`, `all`) / Fetch pages / Download all pages / Stop** | `panel.listPage` (asks the tab's `collectListing` first, else fetches), `panel.crawl.start` through the KVS `?mode=async&function=get_block&block_id=<*_items>&from…=N` ajax pages |
+| rule34video.com `/playlists/{id}/{slug}/` | same + pill "Whole playlist" | crawl with `block_id=playlist_view_playlist_view&from=N` |
+| rule34.world `/post/{id}` | pill Download (image or video) | `panel.add` → `resolveRule34WorldPost` |
+| rule34.world `/`, `/{tag}[|{tag2}]`, `/hot|highest|trends`, `/playlists/view/{id}` | corner ⬇, pill "N pics · N videos · Download page · All pages · Panel"; panel media filter all/video/image | `POST /api/v2/post/search/root` (or `/playlist/{id}`), 30/page = site page N |
+| context menu "Download with Rule 34 Downloader" | post link → queued; listing → listed + panel opened | `background-enhanced.js` ~3061 |
+
+Key files (all new in 6.0.0 unless noted): `extension/site-routes.js` (the
+single routing table + listing parsers + `parsePageRange`),
+`extension/panel-queue.js` (the queue/crawler engine, DI'd for tests),
+`extension/sidepanel.*`, `extension/content-rule34video.js`,
+`extension/content-rule34world.js`; `manifest.json` (6.0.0: `sidePanel`
+permission, no `default_popup`, per-host content scripts, no
+`web_accessible_resources`); `background-enhanced.js` (imports the two new
+scripts, creates the engine ~2966, routes `panel.*` / `openSidePanel` /
+`routeMatch` at the top of the message router, feeds outcomes to
+`panelQueue.notifyOutcome/notifyProgress/rebindDownload`). The v5 popup,
+`content.js`, `content-bridge.js`, `player-button.js`, `post-actions.js`,
+`download-manager.js`, `inject.js` and their CSS live in
+`source/retired/v5-popup-ui/` (never packaged; README there has restore
+notes).
+
+Panel contract (`panel-queue.js`): messages `panel.get/describe/listPage/
+crawl.start/crawl.stop/add/select/selectAll/invert/remove/clear/retryFailed/
+start/stop/settings.set/history.reset`; broadcast `panel.snapshot` (250 ms
+throttle). Storage `r34.panelQueue.v1` (≤ 6000 rows), `r34.panelHistory.v1`
+(≤ 20000 ids, "Skip already downloaded"), `r34.panelSettings.v1`
+(concurrency 1/2/3/5, quality preference, media filter). Statuses
+`listed → queued → resolving → downloading → completed | failed | stopped`;
+one automatic retry; completed rows are skipped by Select all / Invert but can
+be re-ticked; page buttons on already-listed posts re-arm them. The panel pool
+is the *outer* limit — every download still flows through the legacy
+`queueDownloadRequest` / `downloadConcurrencyLimit` queue.
+
+Site facts re-verified this session (fetch tool, 2026-09-03):
+- rule34video.com **404s on slug-less `/video/{id}/`** URLs but redirects any
+  slug to the real one → `R34Routes.match(...).canonicalUrl` keeps the slug or
+  pads with the id (`/video/{id}/{id}/`); `resolveRule34VideoPost` pads too
+  (`padRule34VideoSlug`). Search pages: `/search/<q>/` with ajax block
+  `custom_list_videos_videos_list_search&q=<q>&from_videos=N`; `/search/<q>/2/`
+  is a 404 (paging is ajax-only). Home block id
+  `custom_list_videos_most_recent_videos`; playlists
+  `/playlists/{id}/{slug}/` + `playlist_view_playlist_view&from=N`.
+- rule34.world `GET /api/v2/post/{id}` returns full JSON **without**
+  `?full=true` (`?full=true` → 451; a stale id → 500). `files` keys seen on a
+  2026 video: `10,11,12,13,14,30,31,32,34,100,101,102,112,113`, each `[2]`
+  (the root flag is truthy → CDN, same rule gallery-dl uses); an image post
+  has `10,11,12,13,14,31,32`. Artist = tag `type===8`; `created` present.
+  Media bodies can't be fetched through the tool, so the `WORLD_FORMATS`
+  ladder `100 mov.mp4 / 114 1080.mp4 / 113 mov720.mp4 / 112 mov480.mp4 /
+  111 360.mp4` (+ `101/102` flagged `preview`, `10 pic.jpg`) — taken from
+  the SPA's `typesStr` table in session 9 — is **unverified against real
+  files**; gallery-dl's older map is `100 mov / 101 mov720 / 102 mov480 /
+  10 pic`. Keep the code; if 720p downloads come back as 256px previews,
+  swap `101/102` back to real ladders.
+- Search API: `POST /api/v2/post/search/root` `{ includeTags, Skip, take:30,
+  CountTotal, IncludeLinks, OrderBy, type?, cursor }`. The total-count field
+  name is unconfirmed → the engine reads
+  `totalCount|total|count|totalItems|itemsCount|pagination.total` and falls
+  back to an **open-ended crawl** (stop after 2 empty pages, cap
+  `OPEN_ENDED_CRAWL_MAX_PAGES = 300`, same cap as the SPA's `maxPages`).
+  `/playlists` needs login; `/hot` sometimes returns a UK "Access Restricted"
+  page.
+
+Tests: `npm test` = check + fixtures (**99** node:test cases: site-routes 15,
+panel-queue 21, folder-naming 35, pdf 12, zip 10, queue-restore 6) + smoke +
+e2e (now also A10: `cancelDownload` forwards `mp4-*/hls-*/imageset-*` ids to
+the offscreen `CANCEL_*` handlers — new in this session, they had **no
+sender** before). Sandbox limits this session: no direct network to either
+site (fetch tool only), `npx playwright install` fails (jsdom was used for
+UI smoke), and two earlier commits were lost with a sandbox rebuild — the
+work was re-committed from the working tree, so `git log` shows one big
+6.0.0 commit.
+
+Open follow-ups are listed in `WORKLIST.md` → "(Session 10, post-6.0.0)
+Review + bug hunt" and `IMPROVEMENT_LOG.md` → 6.0.0 "Known issues".
 
 ---
 
@@ -195,6 +286,8 @@ first** — do not trust the local checkout to be current.
 - Docs dir: `/home/user/rule34video/source/docs`
 - Session branch (session 8): `arena/01a05d53-rule34video` (branched from
   `origin/main` @ `c3bb9bd`, version `4.4.2` → **`5.0.0`**).
+- Session branch (session 10): `arena/01a06482-rule34video` (branched from
+  `origin/main` @ `d47b69f` = merge of PR #9, version `5.0.0` → **`6.0.0`**).
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
   `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
@@ -229,6 +322,18 @@ All third-party paywall/auth/trial machinery from the original generator
 ## 3. Architecture (how the pieces fit)
 
 ### 3.1 Extension surfaces (`manifest.json`)
+
+> **6.0.0 (session 10):** the surfaces are now — service worker
+> `background-enhanced.js` (imports `site-config.js`, `logger.js`,
+> `background-bridge.js`, `folder-naming.js`, **`site-routes.js`,
+> `panel-queue.js`**); **Side Panel** `sidepanel.html` (loads `site-config.js`,
+> `folder-naming.js`, `site-routes.js`, `sidepanel.js`, `update-notifier.js`);
+> content scripts **per host** — rule34video.com: `site-routes.js` +
+> `content-rule34video.js`; rule34.world: `site-routes.js` +
+> `content-rule34world.js`; offscreen document unchanged. There is no popup,
+> no `inject.js`, no `web_accessible_resources`. The paragraphs below describe
+> the v5 layout for history.
+
 - **Service worker (module):** `background-enhanced.js` — imports
   `site-config.js`, `logger.js`, `background-bridge.js`. (The generic
   multi-hoster `site-adapter.js` was moved to `legacy/` in session 4 and to
@@ -492,24 +597,23 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 
 | File | Role |
 |---|---|
-| `manifest.json` | MV3 config; surface registration; permissions |
+| `manifest.json` | MV3 config; surface registration; permissions (6.0.0: `sidePanel`, per-host content scripts, no popup) |
+| `site-routes.js` | **6.0.0** — `globalThis.R34Routes`: URL → route table for both sites (`match`, `isListing`, `isSinglePost`), `parsePageRange`, rule34video listing HTML parser (main `*_items` block only) + ajax page URL builder, rule34.world search body / thumbnail / post-URL helpers. Loaded by the worker, the panel and both content scripts |
+| `panel-queue.js` | **6.0.0** — `globalThis.R34PanelQueue.create(deps)`: the Side Panel queue + crawler engine (listing, page ranges, download pool, history, persistence, `panel.*` message handler, `pickFormat`). Pure logic with injected `chrome`/`fetch`/resolvers so `panel-queue.test.mjs` runs it offline |
+| `sidepanel.html` / `sidepanel.js` / `styles/sidepanel.css` | **6.0.0** — the Side Panel UI (counters, page card, queue rows, output settings, footer dock). Renders `panel.snapshot`, follows the active tab |
+| `content-rule34video.js` | **6.0.0** — rule34video.com page adapter: corner ⬇ per card, bottom pill, `collectListing` / `routeMatch` responders; renders only on routed URLs |
+| `content-rule34world.js` | **6.0.0** — rule34.world (Angular SPA) page adapter: same surface, history/observer hooks for SPA navigation |
 | `background-enhanced.js` | SW: queue, post resolvers, batch, message router, download routing |
 | `background-bridge.js` | SW helpers (offscreen doc, DNR rules, progress forwarders, response wrappers) |
 | `site-config.js` | SITE_NAME, folder, player-button selectors, context-menu patterns, update-check config, colors |
 | `folder-naming.js` | **Pure output-path engine** (session 8): master folder, hostname→site slug map, path sanitizer, collection-template engine. Classic script for the popup + ESM import for the worker (`globalThis.R34FolderNaming`) |
-| `content.js` | Generic content adapter; `getVideoInfo` extractor |
-| `content-bridge.js` | Content-side message bridge / progress UI glue (`Rule34ContentBridge`) |
-| `post-actions.js` | **Corner buttons + batch toolbar + toasts** (new in PR #1) |
-| `player-button.js` | In-page player download button (single-video) |
-| `popup.html` / `popup.js` | Toolbar popup UI; concurrency controls; download trigger |
+| `content.js`, `content-bridge.js`, `post-actions.js`, `player-button.js`, `popup.html/.js`, `download-manager.js`, `inject.js` | **Retired in 6.0.0** → `source/retired/v5-popup-ui/` (generic content adapter, content bridge, corner buttons/toolbar, player button, toolbar popup, in-page progress UI, page-context script). Not packaged |
 | `offscreen.html` / `offscreen.js` | Offscreen doc: HLS transmux / MP4 fetch / **picture-set archive assembly** (session 8); relays finished blobs to the worker for saving |
 | `modules/archive/zipBuilder.mjs` | **Dependency-free ZIP/CBZ writer** (session 8): CRC-32, central directory, raw deflate via `CompressionStream` with STORE fallback |
 | `modules/archive/pdfBuilder.mjs` | **Dependency-free PDF 1.4 writer** ported from the sister project (session 8): JPEGs embedded verbatim from SOF dims, exact xref; `OffscreenCanvas` re-encode for PNG/WebP |
-| `download-manager.js` | In-page download progress UI |
-| `update-notifier.js` | GitHub release update check |
-| `inject.js` | Page-context injected script |
+| `update-notifier.js` | GitHub release update check (mounted in the Side Panel's `.container` since 6.0.0) |
 | `logger.js` | Logging + log mirroring to SW |
-| `styles/*` | popup / player-button / download-manager CSS |
+| `styles/*` | `sidepanel.css` (6.0.0); the popup / player-button / download-manager CSS moved to `source/retired/v5-popup-ui/` |
 | `modules/hls/hls.mjs` | Vendored **hls.js** bundle (~400 KB, Apache-2.0) — only the demux/remux exports are used |
 | `modules/hls2mp4/*` | HLS → MP4 transmux pipeline (loaded by `offscreen.js` at runtime) |
 | `modules/FSBlob.mjs`, `modules/network/IndexedDBManager.mjs`, `modules/eventemitter.mjs`, `modules/utils/EnvUtils.mjs` | Vendored helpers used by the transmux pipeline |
@@ -546,9 +650,11 @@ Everything is an npm script, run from the repo root. CI runs exactly these.
 ```bash
 npm run check          # syntax (all extension/*.js + modules/**/*.mjs + the ESM
                        # worker), JSON parse, forbidden paywall/auth grep
-npm run test:fixtures  # node --test: naming, ZIP, PDF, queue-restore  (59 checks)
+npm run test:fixtures  # node --test: site-routes, panel-queue, naming, ZIP, PDF,
+                       # queue-restore  (99 cases as of 6.0.0)
 npm run test:smoke     # mocked chrome + fetch, real service worker
-npm run test:e2e       # 50 checks: real worker + real offscreen document
+npm run test:e2e       # real worker + real offscreen document (paths, archives,
+                       # batch metadata, offscreen cancel plumbing)
 npm test               # all four, in order
 ```
 
@@ -562,6 +668,13 @@ already drifted between the two copies.
 the exact relative path handed to `chrome.downloads.download` for both sites,
 the naming priority chain, the master-folder-off layout, the filename guard,
 and the archives the offscreen document actually builds.
+
+`source/tests/site-routes.test.mjs` + `source/tests/panel-queue.test.mjs`
+(session 10) are the ones to re-run after touching the routing table or the
+panel engine: the latter builds the engine with fake `chrome`/`fetch`/resolvers
+(`createEngine`) and drives listing, page-range crawls (both sites, incl. the
+open-ended `all` path), the download pool, stop/cancel, selection semantics,
+history and restart-restore.
 
 `source/tests/queue-restore.test.mjs` (session 9) covers restore-on-startup:
 its `chrome.downloads` mock deliberately implements only `search()`, exactly
@@ -600,9 +713,15 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
 - **Always** use a merge commit (`--merge`), per the user's preference.
 - Do not switch/push to other branches; the session is tied to its `arena/*` branch.
 - PR #2 (session 2): popup fallback + image-routing fix + docs refresh.
-- PR #3 (session 3, this session): CDN-outage host probe + fallback retry,
+- PR #3 (session 3): CDN-outage host probe + fallback retry,
   persistent session queue + popup queue list, batch hardening, re-resolve
   on dispatch failure, filename title fix, version `4.2.0`, docs refresh.
+- PR #4–#7 (sessions 4–7): legacy purge, restructure into `extension/` +
+  `source/`, CI. PR #8 / #9 (sessions 8–9): output folders + naming engine
+  (5.0.0), review pass + queue-restore fix + CI workflow rewrite.
+- PR #10 (session 10, this session): the 6.0.0 UI/UX rework — Side Panel
+  queue, URL-routed page adapters, page-range / all-pages crawling on both
+  sites, popup retired. Merged with a merge commit like the others.
 
 ---
 
@@ -622,6 +741,15 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   batch mode must resolve each post page individually (it does).
 - Card structure: `div.item.thumb[data-video-card-id]` → `a.th.js-open-popup`
   → `div.img.wrap_image` (corner-button pinning target) → `img.thumb`.
+- **Session 10:** slug-less `/video/{id}/` → **404** (any slug redirects to the
+  real one; `/video/{id}/{id}/` works). Listing paging is ajax-only:
+  `?mode=async&function=get_block&block_id=<id>&<from-param>=N` where the
+  block id / from-param pairs are `custom_list_videos_most_recent_videos` /
+  `from` (home, `/latest-updates`), `custom_list_videos_videos_list_search` /
+  `from_videos` (+ `q=`) for `/search/<q>/`, and `playlist_view_playlist_view`
+  / `from` for `/playlists/{id}/{slug}/`. The page HTML also contains a
+  `temp_blacklist_items` block — the parser only reads the main `*_items`
+  block. `/search/<q>/2/` is a 404.
 
 ### rule34.world
 - Angular SPA (`<app-root>`); data via API, not static HTML.
@@ -631,8 +759,12 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   `post {id}`).
 - `type: 1` = video (has `duration` + `101`/`102` [and sometimes `100`]),
   `type: 0` = image (`10` + derivatives `11/12/13/14/31/34`).
-- Artist tag = `tag.type === 8`. (Other ids seen: `112`, `113` — unmapped
-  derivatives; ignore, gallery-dl does the same.)
+- Artist tag = `tag.type === 8`. (Other ids seen: `112`, `113` — session 9/10
+  map them as the 480p/720p ladders, see `WORLD_FORMATS`; unverified against
+  real files, see §0a.)
+- **Session 10:** `?full=true` on the post API → 451; a stale id → 500. The
+  search API pages 30 at a time (site page N == `Skip = 30·(N−1)`); the
+  SPA's own config caps listings at 300 pages.
 - File URL: `{root}/posts/{floor(id/1000)}/{id}/{id}.{mov.mp4|mov720.mp4|mov480.mp4|pic.jpg}`,
   where `root` = `rule34storage.b-cdn.net` (CDN) or `rule34.world` (origin)
   per the file flag — **session 3: the CDN was 500ing on every post while

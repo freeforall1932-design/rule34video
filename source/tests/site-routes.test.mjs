@@ -29,6 +29,10 @@ describe("rule34video.com routes", () => {
     assert.equal(R.isSinglePost(route), true);
     assert.equal(R.isListing(route), false);
     assert.equal(R.match("https://rule34video.com/popup-video/4573905/?popup_id=1").id, "4573905");
+    // The site 404s on slug-less /video/{id}/ URLs: keep the slug, pad with the id.
+    assert.equal(route.canonicalUrl, "https://rule34video.com/video/4573905/3-girls-and-1-ryouji-sub-espanol/");
+    assert.equal(R.match("https://rule34video.com/video/4573905/").canonicalUrl, "https://rule34video.com/video/4573905/4573905/");
+    assert.equal(R.match("https://rule34video.com/popup-video/4573905/?popup_id=1").canonicalUrl, "https://rule34video.com/video/4573905/4573905/");
   });
 
   it("recognises the homepage as the latest-updates listing", () => {

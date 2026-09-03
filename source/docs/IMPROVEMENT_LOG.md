@@ -685,7 +685,7 @@ verified by the offline suites (`npm test`, now 59 fixture checks + smoke +
   `queue-job-N` key never blocks a slot, and waiting/batch jobs are restored.
   Confirmed to fail on the pre-fix code.
 
-## Session 9 — UI/UX rework: Side Panel queue + URL-routed page adapters (6.0.0)
+## Session 10 (2026-09-03) — UI/UX rework: Side Panel queue + URL-routed page adapters (6.0.0, PR #10)
 
 Goal (owner): rework the entire UI/UX; fire only on specific URLs instead of
 one generic surface for both domains; borrow the download ease + panel look of
@@ -771,24 +771,101 @@ videos, page-range / all-pages crawling.
 
 ### Tests
 
-- `source/tests/site-routes.test.mjs` (14) — every route of both sites,
+- `source/tests/site-routes.test.mjs` (15) — every route of both sites,
   negatives, ajax URL builder, world search body, page-range grammar, the
   listing parser against `source/page-source/rule34video-listing.html`
   (35 cards, 9136 pages).
-- `source/tests/panel-queue.test.mjs` (19) — list page (tab / HTML fallback /
+- `source/tests/panel-queue.test.mjs` (21) — list page (tab / HTML fallback /
   world API / single post), describe, explicit + `all` + `1-99` crawls
   (search, playlist, homepage, world with media filter + auto-download),
   bad range, non-listing refusal, worker pool with outcomes/rebind/early
   outcome, retry + Retry failed, Stop + cancel-remove, select all / invert /
   clear, history skip + reset, restore after restart.
 - Existing suites updated for the two new worker imports; `npm test` green
-  (96 fixture checks + smoke + e2e).
+  (99 fixture checks + smoke + e2e).
+
+### Second pass (same session) — things the first cut got wrong
+
+- **rule34.world format ladder.** v5 mapped `100/101/102/10` as
+  source/720p/480p/image (gallery-dl's table). The SPA's own file-type table
+  says `101/102` are the 256px grid previews and the real ladders are
+  `111 360 / 112 480 / 113 720 / 114 1080`. `WORLD_FORMATS` now lists
+  `100, 114, 113, 112, 111`, then `101/102` flagged `preview: true`, then
+  `10`; `pickFormat` never chooses a preview while a real file exists (and
+  the panel's quality preference only considers non-previews). A live post
+  (2026-09-03, `/api/v2/post/1391557`) lists `100,101,102,112,113` — so at
+  least `112/113` really exist — but media bodies can't be fetched from the
+  sandbox, so which extension each id maps to is still unverified.
+- **Open-ended crawls.** `parsePageRange("all")` / `"50-"` throws when the
+  page count is unknown (rule34.world search gives no confirmed total). The
+  engine no longer goes through the parser for those: it walks page by page,
+  stops after two consecutive empty pages, and caps at
+  `OPEN_ENDED_CRAWL_MAX_PAGES = 300` (the SPA's own `maxPages`).
+- **Listing parser scope.** rule34video.com pages carry a second
+  `temp_blacklist_items` block whose cards were being listed too; the parser
+  now reads only the main `*_items` block (the fixture still yields 35 cards).
+- **Completed rows.** Select all / Invert leave completed rows alone (like the
+  Twitter panel) but a completed row can be re-ticked and re-downloaded, and a
+  page corner button on an already-downloaded post downloads it again
+  (`duplicates: 1`, re-armed). Tested.
+- **Observer self-mutation.** Both content scripts guard their
+  `MutationObserver` against their own pill/corner/toast mutations
+  (`isOwnMutation`) — the first cut looped on rule34.world.
+- **Slug-less video URLs.** rule34video.com **404s** on `/video/{id}/`
+  (verified live); any slug redirects to the real one. `canonicalUrl` keeps
+  the slug or pads with the id (`/video/{id}/{id}/`), `resolveRule34VideoPost`
+  pads (`padRule34VideoSlug`), and the legacy `searchRule34VideoTag` emits
+  padded URLs. Without this every panel row that came from a context-menu
+  click on a bare link, or from the legacy tag search, failed to resolve.
+- **Panel Stop could not abort offscreen jobs.** `offscreen.js` has had
+  `CANCEL_MP4_DOWNLOAD` / `CANCEL_HLS_PROCESSING` / `CANCEL_IMAGE_SET`
+  handlers since v4 but nothing ever sent them: the panel's `cancelDownload`
+  hook and the legacy `cancelDownload` action only handled numeric
+  chrome.downloads ids and `queued-*` ids. `cancelOffscreenJob()` now maps
+  `mp4-*` / `hls-*` / `imageset-*` ids to the right message (e2e A10).
+- **Update banner styling.** `update-notifier.js` injects its own v5 popup
+  CSS (`.update-notice { margin-top: 14px; border: #15d5ff … }`) into
+  `<head>`, which competed with `sidepanel.css`; the panel rules are now
+  scoped under `.container` so they win on specificity.
+- **Verification.** Playwright could not be installed in the sandbox
+  (`ECONNRESET`), so the panel + both content scripts were smoke-run under
+  jsdom (render, click handlers, `collectListing`, SPA navigation) in
+  addition to the node:test suites. Real-browser testing is still owed — see
+  WORKLIST.md.
+- **Process note.** Two earlier commits of this work were lost together with
+  the first sandbox (auth was invalid at the time, the push failed, and the
+  rebuilt sandbox came up as a fresh clone). The files survived in the
+  working tree and were re-committed as one 6.0.0 commit.
 
 ## Known issues / notes
 
+### Open after 6.0.0 (session 10)
+
+- **Legacy batch path still alive.** `searchRule34VideoTag` /
+  `searchRule34WorldPosts` / `processBatchJob` (`bulkDownloadTag`,
+  `batchDownloadPosts`) are still reachable and `processBatchJob` picks
+  `resolved.formats[0]`, not `pickFormat` — so a legacy batch of a
+  rule34.world post whose only real file is `100` behaves the same, but one
+  with only previews would download a preview. Nothing in 6.0.0 sends those
+  actions; either route them through the panel engine or retire them.
+- **Loose image sets report the first file only.** `downloadImageSet` in
+  `loose` mode returns the chrome id of the *first* image, so the panel row
+  flips to "completed" when image 1 finishes, not when the set does.
+  (Archive modes — zip/cbz/pdf — complete correctly via `IMAGE_SET_COMPLETE`.)
+- `panel-queue.js`: status `"skipped"` is in the status sets but never
+  assigned; the `autoList` setting is stored but unused. Harmless.
+- `getDownloadLimit()` (`background-enhanced.js` ~60) is the legacy inner
+  limit; the panel's concurrency is the outer limit. Two knobs for one
+  thing — consider surfacing only the panel's.
+- `background-bridge.js` still carries the content-progress forwarders and
+  `site-config.js` / `folder-naming.js` still mention popup-era ids
+  (`cssId`, a comment); dead but harmless.
 - rule34.world listing DOM (`app-post-card`, `mat-card`) is inferred, not
   confirmed from a live page (Angular shell has no SSR; verified the
   rule34video.com side live). Verify during browser testing.
+
+### Older notes
+
 - rule34.world file CDN (b-cdn.net) was **fully down** at review time; if it
   comes back the probe will start using it again automatically (flag
   preferred when both roots are healthy).

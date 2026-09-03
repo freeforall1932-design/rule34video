@@ -83,9 +83,13 @@
     let match;
 
     if ((match = path.match(/^\/(?:video|videos|popup-video)\/(\d+)(?:\/([^/]*))?/i))) {
+      // The site 404s on slug-less `/video/{id}/` URLs (verified 2026-09-03)
+      // but redirects any slug to the real one, so the canonical URL keeps
+      // the slug when we have it and pads with the id when we don't.
+      const rawSlug = String(match[2] || "").trim();
       return {
-        site: "video", kind: "video", id: match[1], slug: decode(match[2] || ""),
-        listingUrl: "", page: 1, title: "", canonicalUrl: `${base}/video/${match[1]}/`,
+        site: "video", kind: "video", id: match[1], slug: decode(rawSlug),
+        listingUrl: "", page: 1, title: "", canonicalUrl: `${base}/video/${match[1]}/${rawSlug || match[1]}/`,
       };
     }
     if (segments.length === 0) {

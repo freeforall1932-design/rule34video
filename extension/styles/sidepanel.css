@@ -193,9 +193,11 @@ input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; p
 .download-notice.error { color: #fda4af; }
 .download-notice.ok { color: #86efac; }
 
-/* release notice (update-notifier.js) */
-.update-notice { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #4c4770; border-radius: 10px; background: var(--accent-soft); }
-.update-notice-text { color: var(--text); font-size: 12px; line-height: 1.4; }
-.update-notice-actions { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
-.update-notice-link { color: #c4b5fd; text-decoration: none; font-size: 12px; font-weight: 700; }
-.update-notice-dismiss { margin-left: auto; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); border-radius: 6px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
+/* release notice (update-notifier.js). The notifier injects its own legacy
+   popup rules into <head>; these are scoped under .container so they win. */
+.container .update-notice { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #4c4770; border-radius: 10px; background: var(--accent-soft); }
+.container .update-notice-text { color: var(--text); font-size: 12px; line-height: 1.4; }
+.container .update-notice-actions { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+.container .update-notice-link { color: #c4b5fd; text-decoration: none; font-size: 12px; font-weight: 700; }
+.container .update-notice-dismiss { margin-left: auto; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); border-radius: 6px; font-size: 11px; padding: 4px 8px; cursor: pointer; }
+.container .update-notice-dismiss:hover { border-color: #c4b5fd; color: var(--text); }

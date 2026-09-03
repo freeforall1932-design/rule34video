@@ -499,7 +499,7 @@ const WORLD_CDN_ROOT = "https://rule34storage.b-cdn.net";
 const WORLD_ROOT = "https://rule34.world";
 // rule34.world file format ids -> [extension, label, kind, preview] (best
 // first). Taken from the site's own file-type table (the SPA's
-// `typesStr`, session 9): 100 is the source the site's Download button uses,
+// `typesStr`, session 10): 100 is the source the site's Download button uses,
 // 111-114 are the 360/480/720/1080 ladders, and 101/102 are the 256px grid
 // previews — kept last, flagged, so they are only ever offered when a post
 // has nothing else (the queue never picks a preview over a real file).
@@ -622,7 +622,18 @@ function collectRule34VideoDate(html) {
   return match ? match[1] : "";
 }
 
+// rule34video.com answers 404 for slug-less `/video/{id}/` URLs but redirects
+// any slug to the real one (verified 2026-09-03), so pad missing slugs with
+// the id before fetching.
+function padRule34VideoSlug(url) {
+  return String(url || "").replace(
+    /^(https?:\/\/(?:www\.)?rule34video\.com\/(?:video|popup-video)\/(\d+))\/?(?:[?#].*)?$/i,
+    "$1/$2/",
+  );
+}
+
 async function resolveRule34VideoPost(pageUrl) {
+  pageUrl = padRule34VideoSlug(pageUrl);
   const response = await fetch(pageUrl, {
     credentials: "include",
     headers: { Accept: "text/html,application/xhtml+xml,*/*" },
@@ -790,7 +801,7 @@ async function searchRule34VideoTag({ tags, maxUrls = BATCH_MAX_URLS } = {}) {
     if (ids.size >= maxUrls) break;
     ids.add(match[1]);
   }
-  return Array.from(ids).map((id) => `https://rule34video.com/video/${id}`);
+  return Array.from(ids).map((id) => `https://rule34video.com/video/${id}/${id}/`);
 }
 
 // rule34.world cursor-paginated search (confirmed from the gallery-dl
@@ -2939,6 +2950,27 @@ async function downloadVideo(videoInfo = {}) {
 // ---------------------------------------------------------------------------
 const PANEL_SNAPSHOT_MESSAGE = "panel.snapshot";
 
+// Offscreen jobs (`mp4-*`, `hls-*`, `imageset-*`) are not chrome.downloads
+// items, so cancelling them means telling the offscreen document to abort.
+// Its CANCEL_* handlers exist since v4; nothing sent to them before 6.0.0.
+function cancelOffscreenJob(downloadId) {
+  const id = String(downloadId || "");
+  const type = id.startsWith("mp4-")
+    ? "CANCEL_MP4_DOWNLOAD"
+    : id.startsWith("hls-")
+      ? "CANCEL_HLS_PROCESSING"
+      : id.startsWith("imageset-")
+        ? "CANCEL_IMAGE_SET"
+        : "";
+  if (!type) return false;
+  try {
+    chrome.runtime.sendMessage({ type, downloadId: id }, () => {
+      void chrome.runtime.lastError; // no offscreen document — nothing to cancel
+    });
+  } catch {}
+  return true;
+}
+
 function broadcastPanelSnapshot(snapshot) {
   try {
     chrome.runtime.sendMessage({ action: PANEL_SNAPSHOT_MESSAGE, snapshot }, () => {
@@ -2981,6 +3013,8 @@ if (PanelQueueFactory && Routes) {
             chrome.downloads.cancel(downloadId);
           } else if (typeof downloadId === "string" && downloadId.startsWith("queued-")) {
             removeQueuedDownload(downloadId);
+          } else {
+            cancelOffscreenJob(downloadId);
           }
           downloadProgress.delete(downloadId);
           releaseQueueSlot(downloadId);
@@ -3336,6 +3370,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         if (typeof request.downloadId === "string" && request.downloadId.startsWith("queued-")) {
           removeQueuedDownload(request.downloadId);
+        } else {
+          cancelOffscreenJob(request.downloadId);
         }
         downloadProgress.delete(request.downloadId);
         releaseQueueSlot(request.downloadId);

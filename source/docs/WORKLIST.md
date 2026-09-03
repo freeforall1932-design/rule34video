@@ -2,8 +2,8 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-02 (session 9, v6.0.0 — Side Panel queue + URL-routed
-page adapters; see IMPROVEMENT_LOG.md "Session 9").
+Last updated: 2026-09-03 (session 10, v6.0.0 — Side Panel queue + URL-routed
+page adapters, PR #10; see IMPROVEMENT_LOG.md "Session 10").
 PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
@@ -15,12 +15,18 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 
 ## Done
 
-- [x] **(Session 9, 6.0.0) UI/UX rework** — popup → Side Panel queue
+- [x] **(Session 10, 6.0.0) UI/UX rework** — popup → Side Panel queue
       (Twitter-style rows/counters/dock), generic toolbar → per-site
       URL-routed content scripts, nh-dw page fetcher (ranges / all pages),
       rule34video.com playlists + homepage/search crawling, rule34.world
       pics+videos batch fetch through the search API. New offline suites
       `site-routes.test.mjs` + `panel-queue.test.mjs`.
+- [x] **(Session 10) Second-pass fixes** — real rule34.world format ladder
+      (`100/114/113/112/111`, `101/102` flagged as previews), open-ended
+      `all` crawls (300-page cap), listing parser scoped to the main block,
+      slug-less `/video/{id}/` URLs padded (the site 404s on them), panel Stop
+      now reaches the offscreen `CANCEL_*` handlers (they had no sender),
+      update banner CSS scoped to the panel.
 
 - [x] **(Session 8, 5.0.0) Master folder** — `chrome.storage.sync`
       `masterFolder`, default `R34V`; empty string = off (flat layout); slashes
@@ -175,30 +181,33 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 > Load the unpacked extension from `extension/` at
 > `chrome://extensions` (Developer mode), then test on the live sites.
 
+> 6.0.0: read "popup" as **Side Panel**, "Download visible" toolbar as the
+> bottom **pill** ("Download page"), and expect nothing at all on unmatched
+> URLs (`/terms`, `/auth/login`, …).
+
 ### rule34video.com
 - [ ] Listing page: corner `↓` button appears on each `.item.thumb` card.
-- [ ] Clicking a corner button enqueues exactly that post (toast).
-- [ ] "Download visible" enqueues all in-viewport cards.
-- [ ] Clicking "Download visible" a second time toasts "already in the queue"
-      and does NOT re-enqueue (skipped count).
-- [ ] Single video page (`/video/{id}/...`): popup opens (no "No video found"),
-      lists 1080p/720p/480p/360p after the background resolver runs.
-- [ ] Popup "Download Video" downloads the selected quality (signed link works).
+- [ ] Clicking a corner button queues exactly that post (row in the panel).
+- [ ] Pill "Download page" queues all cards of the page; pressing it again
+      re-arms already-listed rows instead of duplicating them.
+- [ ] Single video page (`/video/{id}/{slug}/`): the panel's post card offers
+      "Download this post / Add to list"; the row resolves to 1080p/720p/480p/360p
+      and the quality preference picks the right one.
 - [ ] Preview MP4s (`data-preview`, `_preview.mp4`) are never used as final downloads.
-- [ ] Popup title/thumbnail populate (from `apiTitle` / `apiThumbnail`).
+- [ ] Panel row title/thumbnail populate (from the resolver).
 - [ ] Saved file is named `artist/title_1080p.mp4`-ish, not `video.mp4`.
 
 ### Naming feature (Session 8, v5.0.0) — live spot-check
-- [ ] Same post via **popup** download vs via **corner `↓` button / "Download
-      visible"** lands in the **same** collection folder (same folder name). This
-      is the batch-metadata fix + the rule34.world artist de-dup; a mismatch here
-      means a capture path is still dropping/duplicating a token.
-- [ ] The popup's "Tags on this page" list matches the tags that actually reach the
-      folder name when the same post is started from the corner button (the
-      content-DOM `extractPageTags` and the worker `collectRule34VideoTags` should
-      agree). If they differ, one path names the folder with a tag the other can't
-      see — see `source/docs/NAMING_REVIEW.md` → "page-tag collection diverges by
-      capture path".
+- [ ] Same post via the **panel post card** vs via **corner `↓` button / pill
+      "Download page"** lands in the **same** collection folder (same folder
+      name). In 6.0.0 both go through `panel-queue.runItem` → `resolvePost` →
+      `startDownload` with `__fromBatch` / `__searchContext` / `__panelKey`, so
+      a mismatch means the resolver metadata is being dropped somewhere.
+- [ ] A row listed from a **search page** names its folder after the query when
+      the template is empty (`__searchContext` from `searchContextFor(route)`);
+      the same post queued from its own page falls back to `artist - title - id`.
+      See `source/docs/NAMING_REVIEW.md` (written for the v5 paths — the
+      popup/corner-button distinction there is now panel-card/pill).
 - [ ] A post whose title is all illegal chars (e.g. `???`) saves as
       `<artist> - <id>` (no double/trailing `- `), and a folder called `CON` /
       `NUL` still saves under a `_CON` / `_NUL` master folder.
@@ -208,8 +217,16 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 ### rule34.world
 - [ ] Hot/listing page: corner `↓` button appears on each post card
       (**verify the `app-post-card` / `mat-card` / `[class*=post]` selectors**).
-- [ ] Single video post (`/post/{id}`): popup opens and lists Source/720p/480p.
-      (Video post ids are in the high range — e.g. `/post/3571567`.)
+- [ ] Single video post (`/post/{id}`): the panel post card lists the real
+      ladder (Source / 1080p / 720p / 480p / 360p as available) and **never a
+      256p preview** while a real file exists. **Confirm which file each
+      `WORLD_FORMATS` id really is** (`111`–`114` vs `101`/`102`) by
+      downloading one post at "720p" and checking its resolution — this is the
+      one unverified assumption of 6.0.0. (Video ids are in the high range —
+      e.g. `/post/1391557`, 2026.)
+- [ ] Tag page in the panel: "N pics · N videos", media filter all/video/image,
+      page 2 in the panel == page 2 on the site (30/page), `1-3` / `all` crawls
+      stop at the real end (or after two empty pages).
 - [ ] Image post (`/post/{id}`) downloads directly as `.jpg` (**PR #2 fix** —
       confirm it does NOT spin through the HLS/offscreen "Preparing…" state).
 - [ ] **With the CDN down (as of 2026-08-30):** downloads save from the
@@ -245,12 +262,40 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       notification. Cancelling manually never auto-restarts.
 
 ### Update checker
-- [ ] Popup shows update notice when a newer GitHub release exists.
+- [ ] The panel shows the update notice when a newer GitHub release exists
+      (banner mounts in `sidepanel.html` `.container`, styled by `sidepanel.css`).
 - [ ] Link points to `github.com/freeforall1932-design/rule34video/releases/latest`.
 
 ## To-do / improvements (ordered)
 
-- [ ] **(Session 9) Manual browser matrix for the Side Panel** — open the
+- [ ] **(Session 10, post-6.0.0) Review + bug hunt** — a fresh pass over the
+      rework, in this order:
+      1. Dead references to retired files: `site-config.js` `cssId`,
+         `folder-naming.js` line ~21 comment, `background-bridge.js`
+         content-progress forwarders (`notifyContentDownloadStarted`,
+         `forwardMP4Progress`, …) — trim or leave with a note.
+      2. Legacy helpers still reachable: `searchRule34VideoTag`,
+         `searchRule34WorldPosts`, `processBatchJob` (`bulkDownloadTag` /
+         `batchDownloadPosts`). `processBatchJob` picks `resolved.formats[0]`,
+         not `pickFormat`, so it could download a flagged preview; route them
+         through the panel engine or retire them.
+      3. Panel ↔ worker contract: `panel.*` actions, `collectListing`,
+         `routeMatch`, `openSidePanel`; the outcome/rebind hooks in
+         `background-enhanced.js` (`chrome.downloads.onChanged`, the
+         `MP4_/HLS_/IMAGE_SET_*` cases, `pumpDownloadQueue` hand-over,
+         fallback-host `rebindDownload`) and the restore path
+         (`panelQueue.restore()` + `restoreQueueState`).
+      4. Loose image sets return only the **first** chrome download id → the
+         panel row completes on image 1. Track all ids (or complete on the last).
+      5. `panel-queue.js`: status `"skipped"` never assigned, `autoList`
+         setting unused, `parsePageRange("all")` throws when `maxPage` is
+         unknown while the engine has its own open-ended path — unify.
+      6. `getDownloadLimit()` (legacy inner limit) vs the panel concurrency —
+         one knob, or document the composition in the panel.
+      7. `NAMING_REVIEW.md` describes the v5 capture paths; the v6 paths all go
+         through `panel-queue.runItem` (`__fromBatch`, `__searchContext`,
+         `__panelKey`) — re-read its findings against that.
+- [ ] **(Session 10) Manual browser matrix for the Side Panel** — open the
       panel on: rule34video.com video page (Download this post), a search
       page (List this page = the visible cards; Fetch pages `2-3`; Download all
       pages stops at the real last page), a playlist (Whole playlist pill), the
@@ -259,18 +304,19 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       playlist while logged in. Check that the toolbar icon opens the panel,
       the context-menu item, Stop mid-crawl, and restore after a
       `chrome://extensions` reload.
-- [ ] **(Session 9)** rule34.world total-count field in the search response
-      is inferred (`totalCount` / `total` / `count` / `totalItems`); if the live
-      API uses another name the page count reads "unknown" and `all` asks for
-      an explicit range — verify live and pin the field.
-- [ ] **(Session 9)** `background-bridge.js` still carries the v5 content
+- [ ] **(Session 10)** rule34.world total-count field in the search response
+      is inferred (`totalCount` / `total` / `count` / `totalItems` /
+      `itemsCount` / `pagination.total`); if the live API uses another name
+      the page count reads "unknown" and `all` walks pages until two come back
+      empty (cap 300) — verify live and pin the field.
+- [ ] **(Session 10)** `background-bridge.js` still carries the v5 content
       progress forwarders (`notifyContentDownloadStarted`, `forwardMP4Progress`,
       …). They are harmless (no receiver) but could be trimmed together with
       the legacy `downloadVideo` / `batchDownloadPosts` handlers once nothing
       external depends on them.
 
 - [ ] **Verify rule34.world listing-card selectors on a live page**; adjust
-      `post-actions.js` `pinContainerFor()` / `processCards()` if needed.
+      `content-rule34world.js` `CARD_SELECTOR` / `cardsOnPage()` if needed.
       (rule34video.com selectors were verified against live HTML in session 3.)
 - [ ] **(Session 6) Remux-only hls.js build** — `modules/hls/hls.mjs` is a ~400 KB
       full-player hls.js bundle, but `transmuxer.mjs` only imports 6 symbols
@@ -354,7 +400,10 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 ## Git notes
 
 - PR #1 = merged (`42cc212`). PR #2 = session-2 fixes. PR #3 = session-3
-  review fixes (this session).
+  review fixes. PR #4–#7 = sessions 4–7 (purge, restructure, CI). PR #8 =
+  session 8 (5.0.0 output folders). PR #9 = session 9 (review pass,
+  queue-restore fix, CI rewrite). PR #10 = session 10 (6.0.0 UI/UX rework,
+  this session). All merged with merge commits.
 - Always merge with a **merge commit** (`gh pr merge <n> --merge`), not squash.
 - `git fetch origin` and work from `origin/main` at the start of every session;
   the local checkout may be behind.

@@ -502,6 +502,25 @@ chromeMock.__tabUrl = VIDEO_POST_URL;
 await setSettings({ collectionTemplate: "{artist} - {title} - {id}" });
 
 // ---------------------------------------------------------------------------
+// Phase A-cancel: cancelling an offscreen job reaches the offscreen document.
+// (6.0.0: the side panel's Stop / row × used to only cancel chrome.downloads
+// ids, so mp4-*/hls-* relays kept running to completion.)
+// ---------------------------------------------------------------------------
+section("A10. cancelDownload tells the offscreen document to abort its job");
+chromeMock.runtimeMessages.length = 0;
+const cancelResponse = await bg.call({ action: "cancelDownload", downloadId: "mp4-1234" });
+check("cancelDownload answers success", cancelResponse?.success === true, JSON.stringify(cancelResponse));
+const cancelMessage = lastMessage(chromeMock, "CANCEL_MP4_DOWNLOAD");
+check("an mp4-* id is forwarded as CANCEL_MP4_DOWNLOAD", cancelMessage?.downloadId === "mp4-1234", JSON.stringify(chromeMock.runtimeMessages.map((m) => m.type)));
+await bg.call({ action: "cancelDownload", downloadId: "hls-99" });
+check("an hls-* id is forwarded as CANCEL_HLS_PROCESSING", lastMessage(chromeMock, "CANCEL_HLS_PROCESSING")?.downloadId === "hls-99");
+await bg.call({ action: "cancelDownload", downloadId: "imageset-7" });
+check("an imageset-* id is forwarded as CANCEL_IMAGE_SET", lastMessage(chromeMock, "CANCEL_IMAGE_SET")?.downloadId === "imageset-7");
+chromeMock.runtimeMessages.length = 0;
+await bg.call({ action: "cancelDownload", downloadId: 42 });
+check("a chrome.downloads id is not sent to the offscreen document", !chromeMock.runtimeMessages.some((m) => /^CANCEL_/.test(String(m.type || ""))), JSON.stringify(chromeMock.runtimeMessages.map((m) => m.type)));
+
+// ---------------------------------------------------------------------------
 // Phase B: the offscreen document really builds the archives.
 // ---------------------------------------------------------------------------
 section("B. offscreen document builds the picture-set archives");
