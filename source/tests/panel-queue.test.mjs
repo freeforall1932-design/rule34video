@@ -92,7 +92,10 @@ function createEngine(overrides = {}) {
       // rule34video.com: three listing pages of 3 cards.
       if (/rule34video\.com/.test(url)) {
         const u = new URL(url);
-        const page = Number(u.searchParams.get("from") || u.searchParams.get("from_videos") || 1);
+        // The crawler must use the canonical /…/N/ page a browser sees, not
+        // KVS's failing undocumented get_block endpoint.
+        const match = u.pathname.match(/\/(?:latest-updates|search\/[^/]+|playlists\/\d+\/[^/]+)\/(\d+)\/?$/i);
+        const page = Number(match?.[1] || 1);
         if (page > 3) return { ok: true, status: 200, text: async () => "<html><body></body></html>" };
         return { ok: true, status: 200, text: async () => videoListingPage(100 + page * 10, 3, 3) };
       }
@@ -224,8 +227,8 @@ describe("page crawls", () => {
     assert.equal(snap.crawl.found, 6);
     assert.equal(snap.crawl.added, 6);
     assert.deepEqual(snap.items.map((item) => item.id).sort(), ["110", "111", "112", "130", "131", "132"]);
-    assert.ok(fetchLog.some((url) => /from_videos=3/.test(url)), "page 3 was fetched through the ajax block URL");
-    assert.ok(!fetchLog.some((url) => /from_videos=2/.test(url)), "page 2 was not requested");
+    assert.ok(fetchLog.some((url) => /\/search\/touhou\/3\/$/.test(url)), "page 3 was fetched through its canonical URL");
+    assert.ok(!fetchLog.some((url) => /\/search\/touhou\/2\/$/.test(url)), "page 2 was not requested");
 
     // Crawling the same range again adds nothing.
     await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34video.com/search/touhou/", pages: "1-3" });
@@ -241,7 +244,7 @@ describe("page crawls", () => {
     const snap = engine.snapshot();
     assert.equal(snap.crawl.pageCount, 3);
     assert.equal(snap.items.length, 9);
-    assert.ok(fetchLog.some((url) => /block_id=playlist_view_playlist_view/.test(url) && /from=2/.test(url)));
+    assert.ok(fetchLog.some((url) => /\/playlists\/3072\/bioshock3\/2\/$/.test(url)), "playlist page 2 uses its canonical URL");
     assert.equal(snap.items[0].sourceTitle, "Playlist bioshock3");
   });
 
@@ -253,18 +256,26 @@ describe("page crawls", () => {
     assert.equal(fetchLog.filter((url) => /latest-updates/.test(url)).length, 3, "first page fetched once (describe), pages 2-3 once each");
   });
 
-  it("crawls rule34.world pages through the API with a media filter and auto-download", async () => {
+  it("crawls rule34.world pages through the API for review, never auto-downloading", async () => {
     const { engine, started } = createEngine({ autoComplete: true });
-    await engine.handleMessage({ action: "panel.settings.set", settings: { concurrency: 5 } });
+    await engine.handleMessage({ action: "panel.settings.set", settings: { concurrency: 3 } });
+    // Even a stale caller that still sends autoDownload must only list rows.
     await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34.world/touhou", pages: "all", mediaType: "video", autoDownload: true });
     await waitFor(() => !engine.snapshot().crawl.running);
     // 15 even ids on page 1 + 8 on page 2 are videos.
-    await waitFor(() => engine.snapshot().counts.completed === 23 && !engine.snapshot().running, 6000);
-    const snap = engine.snapshot();
+    let snap = engine.snapshot();
     assert.equal(snap.crawl.pageCount, 2);
+    assert.equal(snap.crawl.autoDownload, false);
     assert.ok(snap.items.every((item) => item.type === "video"), "only videos were listed");
     assert.equal(snap.items.length, 23);
-    assert.equal(started.length, 23, "every found video was handed to the download pipeline");
+    assert.equal(snap.counts.selected, 23, "found posts are ready for an explicit user start");
+    assert.equal(started.length, 0, "a page fetch never starts a download stream");
+
+    // The explicit queue action then starts no more than the chosen three.
+    await engine.handleMessage({ action: "panel.start" });
+    await waitFor(() => engine.snapshot().counts.completed === 23 && !engine.snapshot().running, 6000);
+    snap = engine.snapshot();
+    assert.equal(started.length, 23, "every explicitly selected video was handed to the download pipeline");
     assert.ok(started.every((entry) => entry.videoInfo.selectedFormat.height === 720), "best format by default");
     assert.ok(started.every((entry) => entry.videoInfo.__fromBatch === true));
     assert.equal(started[0].videoInfo.__searchContext, "touhou");
@@ -290,6 +301,37 @@ describe("page crawls", () => {
     assert.ok(snap.crawl.pageIndex <= 5, "stopped shortly after the pages ran dry, not at 300");
   });
 
+  it("aborts the in-flight page request when Stop fetch is pressed", async () => {
+    let requestStarted = false;
+    let aborted = false;
+    const { engine } = createEngine({
+      fetch: async (url, init) => {
+        if (!/rule34video\.com/.test(url)) return null;
+        requestStarted = true;
+        return new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            aborted = true;
+            const error = new Error("fetch aborted");
+            error.name = "AbortError";
+            reject(error);
+          }, { once: true });
+        });
+      },
+    });
+    await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34video.com/search/touhou/", pages: "1-2" });
+    await waitFor(() => requestStarted);
+    const stopped = await engine.handleMessage({ action: "panel.crawl.stop" });
+    assert.equal(stopped.success, true);
+    await waitFor(() => aborted);
+    // Let the rejected request unwind through the crawler's catch/finally.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const snap = engine.snapshot();
+    assert.equal(snap.crawl.running, false);
+    assert.equal(snap.crawl.stopped, true);
+    assert.equal(snap.crawl.error, "", "an intentional abort is not shown as a fetch error");
+    assert.equal(snap.items.length, 0);
+  });
+
   it("reports a bad range instead of crawling", async () => {
     const { engine } = createEngine();
     await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34video.com/search/touhou/", pages: "banana" });
@@ -307,30 +349,38 @@ describe("page crawls", () => {
 });
 
 describe("download pool", () => {
+  it("defaults to three active downloads", () => {
+    const { engine } = createEngine();
+    assert.equal(PanelQueue.DEFAULT_SETTINGS.concurrency, 3);
+    assert.equal(engine.snapshot().settings.concurrency, 3);
+  });
+
   it("runs at most `concurrency` downloads at once and completes them from outcomes", async () => {
     const pending = [];
     const { engine } = createEngine({
       startDownload: async (videoInfo) => new Promise((resolve) => pending.push({ videoInfo, resolve })),
     });
-    await engine.handleMessage({ action: "panel.settings.set", settings: { concurrency: 2, quality: "720" } });
+    await engine.handleMessage({ action: "panel.settings.set", settings: { concurrency: 3, quality: "720" } });
     await engine.handleMessage({ action: "panel.listPage", url: "https://rule34video.com/search/touhou/" });
+    await engine.handleMessage({ action: "panel.add", items: [{ url: "https://rule34.world/post/42", title: "Fourth row" }] });
     const response = await engine.handleMessage({ action: "panel.start" });
-    assert.equal(response.queued, 3);
-    await waitFor(() => pending.length === 2);
+    assert.equal(response.queued, 4);
+    await waitFor(() => pending.length === 3);
     let snap = engine.snapshot();
-    assert.equal(snap.counts.active, 2);
+    assert.equal(snap.counts.active, 3, "the user-selected cap of three is enforced");
     assert.equal(snap.counts.queued, 1);
     assert.equal(snap.running, true);
     assert.ok(pending.every((entry) => entry.videoInfo.selectedFormat.height === 720), "quality preference applied");
 
-    // First download starts (gets an id) and then finishes.
+    // First download starts (gets an id) and then finishes, releasing exactly
+    // one slot for the waiting row.
     pending[0].resolve({ downloadId: 501 });
     await waitFor(() => engine.snapshot().items.some((item) => item.downloadId === 501));
     assert.equal(engine.notifyOutcome(501, { ok: true }), true);
-    await waitFor(() => pending.length === 3, 2000);
+    await waitFor(() => pending.length === 4, 2000);
     snap = engine.snapshot();
     assert.equal(snap.counts.completed, 1);
-    assert.equal(snap.counts.active, 2);
+    assert.equal(snap.counts.active, 3);
 
     // Second fails outright, third gets rebound (queued-> real id) then completes.
     pending[1].resolve({ downloadId: 502 });
@@ -340,12 +390,15 @@ describe("download pool", () => {
     await waitFor(() => engine.snapshot().items.some((item) => item.downloadId === "queued-1-1"));
     assert.equal(engine.rebindDownload("queued-1-1", 777), true);
     engine.notifyOutcome(777, { ok: true });
+    pending[3].resolve({ downloadId: 778 });
+    await waitFor(() => engine.snapshot().items.some((item) => item.downloadId === 778));
+    engine.notifyOutcome(778, { ok: true });
     await waitFor(() => !engine.snapshot().running);
     snap = engine.snapshot();
-    assert.equal(snap.counts.completed, 2);
+    assert.equal(snap.counts.completed, 3);
     assert.equal(snap.counts.failed, 1);
     assert.equal(snap.items.find((item) => item.status === "failed").error, "boom");
-    assert.equal(snap.historySize, 2);
+    assert.equal(snap.historySize, 3);
   });
 
   it("an outcome that races ahead of the download id is not lost", async () => {

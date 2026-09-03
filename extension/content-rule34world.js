@@ -9,9 +9,9 @@
 // videos, 30 per page like the site). What this script adds on the page:
 //   post     -> floating "Download" pill (picture or video, best file)
 //   listing  -> corner ⬇ on every card that is rendered, plus a pill with
-//               "Download page" (the posts currently on screen), "All pages"
-//               (crawl 1..last through the API, Twitter-style queue in the
-//               panel) and "Panel"
+//               "Download page" (the posts currently on screen), "Fetch batch"
+//               (list a bounded range through the API for review in the panel)
+//               and "Panel"
 // It also answers `collectListing` with the post cards currently rendered so
 // the panel can list exactly what the user sees.
 (function () {
@@ -150,10 +150,17 @@
     return response;
   }
 
-  async function downloadAllPages() {
-    const response = await send({ action: "panel.crawl.start", url: state.route.listingUrl, pages: "all", autoDownload: true });
-    if (!response.success) toast(response.error || "Could not start the crawl.", "error");
-    else toast("Fetching every page through the API — pictures and videos queue as they are found.", "ok");
+  function pageBatchRange() {
+    const start = Math.max(1, Number(state.route?.page) || 1);
+    const cap = Math.max(1, Number(Routes?.PAGE_RANGE_HARD_CAP) || 150);
+    return `${start}-${start + cap - 1}`;
+  }
+
+  async function fetchPageBatch() {
+    const pages = pageBatchRange();
+    const response = await send({ action: "panel.crawl.start", url: state.route.listingUrl, pages });
+    if (!response.success) toast(response.error || "Could not start the fetch.", "error");
+    else toast(`Fetching pages ${pages} — review the selected rows in the panel before downloading.`, "ok");
     void openPanel();
   }
 
@@ -233,7 +240,7 @@
     }
     state.pillCount.textContent = pillCountText();
     pill.appendChild(button("⬇ Download page", "", () => queueItems(cardsOnPage(), true)));
-    pill.appendChild(button("All pages", "", downloadAllPages));
+    pill.appendChild(button("Fetch batch", "", fetchPageBatch));
     pill.appendChild(button("Panel", PREFIX + "-ghost", openPanel));
   }
 

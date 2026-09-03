@@ -146,7 +146,7 @@
       el.videoFilters.classList.toggle("hidden", site !== "video");
       el.pageRange.value = String(route.page || 1);
       hint(el.listingHint, site === "video" && route.kind === "playlist"
-        ? "Playlists: “Download all pages” grabs every video in the playlist."
+        ? "Choose a page batch to list the playlist, review it, then download only the checked videos."
         : site === "world"
           ? "Fetches pictures AND videos through the site API — page N here is page N on the site."
           : "");
@@ -162,6 +162,14 @@
 
   function cleanTitle(title) {
     return String(title || "").replace(/\s*[-|–]\s*Rule ?34.*$/i, "").trim();
+  }
+
+  function safePageBatchRange(route, totalPages) {
+    const start = Math.max(1, Number(route?.page) || 1);
+    const cap = Math.max(1, Number(Routes?.PAGE_RANGE_HARD_CAP) || 150);
+    const knownLast = Math.max(0, Number(totalPages) || 0);
+    const end = knownLast ? Math.min(knownLast, start + cap - 1) : start + cap - 1;
+    return start === end ? String(start) : `${start}-${end}`;
   }
 
   async function describeListing() {
@@ -183,9 +191,11 @@
     if (total) bits.push(`${total.toLocaleString()} posts`);
     if (pages) bits.push(`${pages.toLocaleString()} pages`);
     if (perPage) bits.push(`${perPage} per page`);
-    el.listingMeta.textContent = bits.length ? bits.join(" · ") : "Page count unknown — “all” walks forward until the pages run dry.";
+    el.listingMeta.textContent = bits.length
+      ? bits.join(" · ")
+      : "Page count unknown — fetch an explicit, bounded range such as 1-20.";
     if (pages && (!el.pageRange.value || el.pageRange.value === String(route.page || 1))) {
-      el.pageRange.value = pages > 1 ? `${route.page || 1}-${pages}` : "1";
+      el.pageRange.value = safePageBatchRange(route, pages);
     }
   }
 
@@ -213,18 +223,30 @@
     }
   }
 
-  async function startCrawl(url, pages, autoDownload, hintNode) {
+  async function startCrawl(url, pages, hintNode) {
     if (!url) return;
     const response = await send({
       action: "panel.crawl.start",
       url,
       pages,
-      autoDownload: Boolean(autoDownload),
       mediaType: el.mediaTypeSelect.value,
       tabId: state.tab?.id,
     });
     if (!response.success) hint(hintNode, response.error || "Could not start.", "error");
-    else hint(hintNode, autoDownload ? "Fetching pages — every post found is queued for download." : "Fetching pages…", "ok");
+    else hint(hintNode, "Fetching pages — posts are listed and checked, never auto-downloaded.", "ok");
+  }
+
+  async function downloadSelected(hintNode) {
+    const response = await send({ action: "panel.start" });
+    if (!response.success) {
+      if (hintNode) hint(hintNode, response.error || "Could not start downloads.", "error");
+      else notice(response.error || "Could not start downloads.", "error");
+      return response;
+    }
+    const text = response.queued ? `${plural(response.queued, "selected post")} queued — the active-download limit is applied.` : "No selected posts are ready to download.";
+    if (hintNode) hint(hintNode, text, response.queued ? "ok" : "");
+    else notice(text, response.queued ? "ok" : "");
+    return response;
   }
 
   // --- single post -----------------------------------------------------------------------
@@ -275,6 +297,8 @@
     const selected = counts.selected || 0;
     el.downloadSelectedBtn.textContent = selected ? `Download ${selected} selected` : "Download selected";
     el.downloadSelectedBtn.disabled = !selected;
+    el.crawlDownloadBtn.disabled = !selected;
+    el.remoteDownloadBtn.disabled = !selected;
     const busy = Boolean(state.snapshot?.running) || Boolean(state.snapshot?.crawl?.running);
     el.stopBtn.disabled = !busy;
     const shown = visibleItems();
@@ -303,9 +327,9 @@
     const running = Boolean(crawl?.running);
     el.crawlStopBtn.classList.toggle("hidden", !running);
     el.crawlListBtn.disabled = running;
-    el.crawlDownloadBtn.disabled = running;
+    // Starting already checked rows remains safe while a fetch runs: newly
+    // found rows stay listed until the user explicitly starts them later.
     el.remoteListBtn.disabled = running;
-    el.remoteDownloadBtn.disabled = running;
     const show = running || (crawl && crawl.finishedAt && Date.now() - crawl.finishedAt < 30000);
     el.crawlProgress.classList.toggle("hidden", !show);
     if (!crawl || !show) return;
@@ -314,7 +338,9 @@
     el.crawlBar.style.width = total ? `${Math.round((done / total) * 100)}%` : (running ? "15%" : "100%");
     const parts = [];
     if (running) parts.push(`Page ${crawl.currentPage || "…"}${total ? ` (${crawl.pageIndex}/${total})` : ""}`);
-    else parts.push(crawl.error ? "Stopped" : `Done — ${plural(total, "page")}`);
+    else if (crawl.stopped) parts.push("Stopped");
+    else if (crawl.error) parts.push("Ended early");
+    else parts.push(`Done — ${plural(total, "page")}`);
     parts.push(`${crawl.found || 0} found`, `${crawl.added || 0} new`);
     if (crawl.duplicates) parts.push(`${crawl.duplicates} dup`);
     if (crawl.alreadyDownloaded) parts.push(`${crawl.alreadyDownloaded} downloaded before`);
@@ -552,14 +578,16 @@
     el.downloadPageBtn.addEventListener("click", () => void listCurrentPage(true));
     el.rangeHelpBtn.addEventListener("click", () => el.rangeHelp.classList.toggle("hidden"));
     el.allPagesBtn.addEventListener("click", () => {
-      const pages = Number(state.listingInfo?.totalPages) || 0;
-      el.pageRange.value = pages ? `1-${pages}` : "all";
+      // Do not turn a 9,000-page listing into an accidental download job.
+      // This fills only the next reviewable batch; the user can enter any
+      // specific page/range (including a later one) themselves.
+      el.pageRange.value = safePageBatchRange(state.route, state.listingInfo?.totalPages);
       el.pageRange.focus();
     });
-    el.crawlListBtn.addEventListener("click", () => void startCrawl(state.tab?.url, el.pageRange.value, false, el.listingHint));
-    el.crawlDownloadBtn.addEventListener("click", () => void startCrawl(state.tab?.url, el.pageRange.value, true, el.listingHint));
+    el.crawlListBtn.addEventListener("click", () => void startCrawl(state.tab?.url, el.pageRange.value, el.listingHint));
+    el.crawlDownloadBtn.addEventListener("click", () => void downloadSelected(el.listingHint));
     el.crawlStopBtn.addEventListener("click", () => void send({ action: "panel.crawl.stop" }));
-    el.pageRange.addEventListener("keydown", (event) => { if (event.key === "Enter") void startCrawl(state.tab?.url, el.pageRange.value, false, el.listingHint); });
+    el.pageRange.addEventListener("keydown", (event) => { if (event.key === "Enter") void startCrawl(state.tab?.url, el.pageRange.value, el.listingHint); });
 
     el.mediaTypeSelect.addEventListener("change", () => {
       void send({ action: "panel.settings.set", settings: { mediaType: el.mediaTypeSelect.value } });
@@ -570,9 +598,9 @@
     el.skipDownloadedVideo.addEventListener("change", () => toggleSkip(el.skipDownloadedVideo.checked));
 
     el.remoteUseTabBtn.addEventListener("click", () => { if (state.tab?.url) el.remoteInput.value = state.tab.url; });
-    el.remoteListBtn.addEventListener("click", () => void startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "all", false, el.remoteHint));
-    el.remoteDownloadBtn.addEventListener("click", () => void startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "all", true, el.remoteHint));
-    el.remoteInput.addEventListener("keydown", (event) => { if (event.key === "Enter") void startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "all", false, el.remoteHint); });
+    el.remoteListBtn.addEventListener("click", () => void startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "1-150", el.remoteHint));
+    el.remoteDownloadBtn.addEventListener("click", () => void downloadSelected(el.remoteHint));
+    el.remoteInput.addEventListener("keydown", (event) => { if (event.key === "Enter") void startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "1-150", el.remoteHint); });
 
     el.selectAll.addEventListener("change", () => void send({ action: "panel.selectAll", selected: el.selectAll.checked, filter: { type: state.filter } }));
     el.invertBtn.addEventListener("click", () => void send({ action: "panel.invert", filter: { type: state.filter } }));
@@ -593,9 +621,7 @@
     el.qualitySelect.addEventListener("change", () => void send({ action: "panel.settings.set", settings: { quality: el.qualitySelect.value } }));
     el.downloadSelectedBtn.addEventListener("click", async () => {
       el.downloadSelectedBtn.disabled = true;
-      const response = await send({ action: "panel.start" });
-      if (!response.success) notice(response.error || "Could not start.", "error");
-      else notice(`${plural(response.queued || 0, "download")} queued.`, "ok");
+      await downloadSelected();
     });
     el.stopBtn.addEventListener("click", async () => {
       await send({ action: "panel.stop" });

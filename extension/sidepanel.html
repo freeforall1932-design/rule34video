@@ -60,11 +60,11 @@
         <label for="pageRange" class="range-label">Pages</label>
         <input id="pageRange" type="text" autocomplete="off" spellcheck="false" placeholder="1-99">
         <button id="rangeHelpBtn" class="icon-button small" title="Page ranges" aria-label="Page range help">?</button>
-        <button id="allPagesBtn" class="text-button" title="Fill in every page">all</button>
+        <button id="allPagesBtn" class="text-button" title="Fill a safe page batch">batch</button>
       </div>
       <p id="rangeHelp" class="hint help-box hidden">
-        Comma-separated pages and ranges, exactly like nh-dw: <code>2,4,6-10</code>, <code>1-99</code>, <code>50-</code> (to the end) or <code>all</code>.
-        Pages past the last one are ignored.
+        Comma-separated pages and ranges: <code>2,4,6-10</code>, <code>1-99</code>, <code>50-</code> (to the end) or <code>all</code>.
+        To keep the list reviewable, one fetch may contain at most <strong>150 pages</strong>; fetch large listings in separate batches. Pages past the last one are ignored.
       </p>
 
       <div id="worldFilters" class="source-options hidden">
@@ -82,10 +82,11 @@
       </div>
 
       <div class="action-row">
-        <button id="crawlListBtn" class="button secondary">Fetch pages</button>
-        <button id="crawlDownloadBtn" class="button primary">Download all pages</button>
-        <button id="crawlStopBtn" class="button danger hidden">Stop</button>
+        <button id="crawlListBtn" class="button secondary">Fetch selected pages</button>
+        <button id="crawlDownloadBtn" class="button primary" title="Start only the checked posts in the queue">Download selected</button>
+        <button id="crawlStopBtn" class="button danger hidden">Stop fetch</button>
       </div>
+      <p class="hint">Fetching only adds checked posts to the queue. Review or untick them, then use <strong>Download selected</strong>; it never auto-downloads every page.</p>
       <div id="crawlProgress" class="crawl-progress hidden">
         <div class="bar"><div id="crawlBar" class="bar-fill"></div></div>
         <span id="crawlText" class="small muted"></span>
@@ -102,13 +103,13 @@
       </div>
       <div class="range-row">
         <label for="remoteRange" class="range-label">Pages</label>
-        <input id="remoteRange" type="text" autocomplete="off" spellcheck="false" placeholder="all">
+        <input id="remoteRange" type="text" autocomplete="off" spellcheck="false" placeholder="1-150">
       </div>
       <div class="action-row">
-        <button id="remoteListBtn" class="button secondary">Fetch pages</button>
-        <button id="remoteDownloadBtn" class="button primary">Download all</button>
+        <button id="remoteListBtn" class="button secondary">Fetch selected pages</button>
+        <button id="remoteDownloadBtn" class="button primary" title="Start only the checked posts in the queue">Download selected</button>
       </div>
-      <p id="remoteHint" class="hint">rule34video.com playlists, searches, tags, artists and members; rule34.world tags, feeds and playlists.</p>
+      <p id="remoteHint" class="hint">Fetches add posts to the queue without downloading them. rule34video.com playlists, searches, tags, artists and members; rule34.world tags, feeds and playlists.</p>
     </details>
 
     <section class="summary" aria-label="Queue summary">
@@ -177,12 +178,12 @@
 
   <footer class="download-dock">
     <div class="dock-controls">
-      <div class="concurrency-control">
-        <span>At once</span>
-        <div class="segmented" role="group" aria-label="Concurrent downloads" id="concurrencyGroup">
+      <div class="concurrency-control" title="Maximum active downloads. The remaining selected posts stay safely queued.">
+        <span>Downloads at once</span>
+        <div class="segmented" role="group" aria-label="Maximum concurrent downloads" id="concurrencyGroup">
           <button data-concurrency="1">1</button>
-          <button data-concurrency="2" class="selected">2</button>
-          <button data-concurrency="3">3</button>
+          <button data-concurrency="2">2</button>
+          <button data-concurrency="3" class="selected" title="Recommended default">3</button>
           <button data-concurrency="5">5</button>
         </div>
       </div>

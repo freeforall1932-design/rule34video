@@ -11,6 +11,31 @@
 > Updated: 2026-08-31 (session 7 — top-level restructure: `extension/` + `source/`).
 > Updated: 2026-09-01 (session 8 — source-separated, tag-named output folders, v5.0.0).
 > Updated: 2026-09-03 (session 10 — UI/UX rework: Side Panel queue + URL-routed page adapters, v6.0.0).
+> Updated: 2026-09-03 (v6.0.1 — canonical-page crawler repair + bounded review-first fetches).
+
+---
+
+## 0. v6.0.1 follow-up (2026-09-03): repaired pagination and made crawls safe
+
+Live verification found the reason a rule34video.com range fetch listed only
+the current page: the old crawler's undocumented KVS
+`?mode=async&function=get_block…` request now returns **HTTP 500** to an
+extension fetch. `R34Routes.videoListingPageUrl()` now uses the site's normal
+canonical page URLs (`/search/<term>/2/`, `/latest-updates/3/`, playlist page
+paths), which return the next page's cards correctly.
+
+Range fetches are now **review-first**. They only add checked rows to the
+panel; `panel.crawl.start` ignores the retired `autoDownload` flag, so a stale
+button/message cannot turn a 9,000-page listing into a download stream. The
+new **Fetch selected pages** UI separates that operation from **Download
+selected**. The existing 1/2/3/5 panel worker-pool controls the active count
+(choose 3 for three active rows; the rest wait), while **Stop fetch** aborts
+an in-flight network request and prevents the next page from being requested.
+
+A fetch is deliberately limited to **150 pages**. Larger listings must be
+split into successive ranges such as `1-150`, then `151-300`; the parser now
+reports this rather than silently truncating the requested range. The queue's
+6,000-row maximum is also reported to the user if it is reached.
 
 ---
 
@@ -26,10 +51,10 @@ unmatched URLs:
 | Where | What the user sees | Backend |
 |---|---|---|
 | rule34video.com `/video/{id}/{slug}/` | pill "⬇ Download · Panel" | `panel.add` → `resolveRule34VideoPost` |
-| rule34video.com home, `/latest-updates[/N]`, `/search/<q>[/N]`, `/tags/<id>`, `/categories/<slug>`, `/models/<slug>`, `/members/<id>` | corner ⬇ per card; pill "N videos · Download page · Panel"; panel listing card with **List this page / Download page / page range (`2,4,6-10`, `1-99`, `50-`, `all`) / Fetch pages / Download all pages / Stop** | `panel.listPage` (asks the tab's `collectListing` first, else fetches), `panel.crawl.start` through the KVS `?mode=async&function=get_block&block_id=<*_items>&from…=N` ajax pages |
-| rule34video.com `/playlists/{id}/{slug}/` | same + pill "Whole playlist" | crawl with `block_id=playlist_view_playlist_view&from=N` |
+| rule34video.com home, `/latest-updates[/N]`, `/search/<q>[/N]`, `/tags/<id>`, `/categories/<slug>`, `/models/<slug>`, `/members/<id>` | corner ⬇ per card; pill "N videos · Download page · Panel"; panel listing card with **List this page / Download page / page range (`2,4,6-10`, `1-99`, `50-`) / Fetch selected pages / Download selected / Stop fetch** | `panel.listPage` (asks the tab's `collectListing` first, else fetches), `panel.crawl.start` through canonical `/…/N/` page URLs (not the broken KVS ajax endpoint) |
+| rule34video.com `/playlists/{id}/{slug}/` | same + pill "Fetch page batch" | bounded canonical-page crawl |
 | rule34.world `/post/{id}` | pill Download (image or video) | `panel.add` → `resolveRule34WorldPost` |
-| rule34.world `/`, `/{tag}[|{tag2}]`, `/hot|highest|trends`, `/playlists/view/{id}` | corner ⬇, pill "N pics · N videos · Download page · All pages · Panel"; panel media filter all/video/image | `POST /api/v2/post/search/root` (or `/playlist/{id}`), 30/page = site page N |
+| rule34.world `/`, `/{tag}[|{tag2}]`, `/hot|highest|trends`, `/playlists/view/{id}` | corner ⬇, pill "N pics · N videos · Download page · Fetch batch · Panel"; panel media filter all/video/image | `POST /api/v2/post/search/root` (or `/playlist/{id}`), 30/page = site page N |
 | context menu "Download with Rule 34 Downloader" | post link → queued; listing → listed + panel opened | `background-enhanced.js` ~3061 |
 
 Key files (all new in 6.0.0 unless noted): `extension/site-routes.js` (the
@@ -63,11 +88,10 @@ Site facts re-verified this session (fetch tool, 2026-09-03):
 - rule34video.com **404s on slug-less `/video/{id}/`** URLs but redirects any
   slug to the real one → `R34Routes.match(...).canonicalUrl` keeps the slug or
   pads with the id (`/video/{id}/{id}/`); `resolveRule34VideoPost` pads too
-  (`padRule34VideoSlug`). Search pages: `/search/<q>/` with ajax block
-  `custom_list_videos_videos_list_search&q=<q>&from_videos=N`; `/search/<q>/2/`
-  is a 404 (paging is ajax-only). Home block id
-  `custom_list_videos_most_recent_videos`; playlists
-  `/playlists/{id}/{slug}/` + `playlist_view_playlist_view&from=N`.
+  (`padRule34VideoSlug`). Listing pagination is served by regular page URLs:
+  `/search/<q>/2/`, `/latest-updates/3/`, and
+  `/playlists/{id}/{slug}/2/`. Use these rather than the undocumented KVS ajax
+  endpoint, which now answers HTTP 500 to extension fetches.
 - rule34.world `GET /api/v2/post/{id}` returns full JSON **without**
   `?full=true` (`?full=true` → 451; a stale id → 500). `files` keys seen on a
   2026 video: `10,11,12,13,14,30,31,32,34,100,101,102,112,113`, each `[2]`

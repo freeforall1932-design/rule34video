@@ -8,7 +8,7 @@
 //   video     -> a floating "Download" pill (best quality, or opens the panel)
 //   listing   -> a small corner ⬇ on every card (one-click, queued through the
 //                panel), plus a floating pill "N videos · Download page · Panel"
-//   playlist  -> same as listing, with a "Download playlist (all pages)" button
+//   playlist  -> same as listing, with a bounded "Fetch page batch" button
 //
 // The page never talks to the download pipeline directly: every action is a
 // "panel.*" message, so what you click here shows up (and can be stopped) in
@@ -158,15 +158,21 @@
     return "";
   }
 
-  async function downloadWholeListing() {
+  function pageBatchRange() {
+    const start = Math.max(1, Number(state.route?.page) || 1);
+    const cap = Math.max(1, Number(Routes?.PAGE_RANGE_HARD_CAP) || 150);
+    return `${start}-${start + cap - 1}`;
+  }
+
+  async function fetchPageBatch() {
+    const pages = pageBatchRange();
     const response = await send({
       action: "panel.crawl.start",
       url: state.route.listingUrl,
-      pages: "all",
-      autoDownload: true,
+      pages,
     });
-    if (!response.success) toast(response.error || "Could not start the crawl.", "error");
-    else toast("Fetching every page — downloads start as posts are found. Open the panel to follow along.", "ok");
+    if (!response.success) toast(response.error || "Could not start the fetch.", "error");
+    else toast(`Fetching pages ${pages} — review the selected rows in the panel before downloading.`, "ok");
     void openPanel();
   }
 
@@ -246,7 +252,7 @@
     }
     state.pillCount.textContent = pillCountText();
     pill.appendChild(button("⬇ Download page", "", () => queueItems(cardsOnPage(), true)));
-    if (route.kind === "playlist") pill.appendChild(button("Whole playlist", "", downloadWholeListing));
+    if (route.kind === "playlist") pill.appendChild(button("Fetch page batch", "", fetchPageBatch));
     pill.appendChild(button("Panel", PREFIX + "-ghost", openPanel));
   }
 

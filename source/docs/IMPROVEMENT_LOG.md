@@ -5,6 +5,28 @@ Date: 2026-08-29 (Asia/Jakarta)
 This log records changes made while rebranding the extension into a free,
 community **Rule34 Downloader** for both `rule34.world` and `rule34video.com`.
 
+## v6.0.1 — Safe, inspect-first listing fetches (2026-09-03)
+
+- Fixed rule34video.com multi-page fetching. The crawler now fetches the
+  canonical listing URLs (`/…/2/`, `/…/3/`) instead of the undocumented KVS
+  `get_block` ajax API, which was verified to return HTTP 500 to extension
+  requests. This lets a page-2-to-page-3 range work while page 1 remains open.
+- Removed the automatic crawler-to-download path. `panel.crawl.start` is
+  list-only even when an obsolete caller sends `autoDownload: true`; users
+  fetch rows, inspect their checked state, then choose **Download selected**.
+- Replaced unbounded all-page page pills/controls with a bounded **Fetch page
+  batch** / **Fetch selected pages** flow. A request may contain at most 150
+  pages; over-cap ranges show an error rather than silently truncating. The
+  batch shortcut pre-fills the current/next safe page range.
+- `Stop fetch` now aborts the active request as well as preventing following
+  pages. The 6,000-row staging capacity returns a visible crawl error instead
+  of silently dropping later listings.
+- Clarified the 1/2/3/5 panel worker-pool UI as **Downloads at once**; three
+  remains the recommended setting and is covered by pool-capacity tests.
+- Updated docs and tests for canonical pagination, explicit selection before
+  download, the 150-page guard, and aborting an in-flight fetch. Bumped
+  manifest/package version **6.0.0 → 6.0.1**.
+
 ## Phase 1 — Remove paywall / third-party auth
 
 - Deleted `auth.js`, `auth-ui.js`, `trial-banner.js` and the whole `auth/`
@@ -700,12 +722,9 @@ videos, page-range / all-pages crawling.
   every supported page of both sites (video/post, home, latest, search, tag,
   category, artist, member, playlist, world feeds), the nh-dw page-range
   grammar (`2,4,6-10`, `1-99`, `50-`, `all`, clamped to the real last page,
-  hard cap 1000), the rule34video.com listing/pagination parser (regex, works
-  in the worker), the KVS `get_block` ajax page-URL builder (block ids and
-  `from`/`from_videos` verified against the live site: search uses
-  `custom_list_videos_videos_list_search` + `from_videos`, playlists
-  `playlist_view_playlist_view` + `from`, tags/categories/models
-  `custom_list_videos_common_videos`, latest `custom_list_videos_most_recent_videos`)
+  now capped at 150 selected pages), the rule34video.com listing/pagination
+  parser (regex, works in the worker), canonical listing-page URL builder
+  (`/…/2/` rather than the subsequently broken KVS `get_block` ajax endpoint),
   and the rule34.world `/api/v2/post/search/root` body builder (30 posts per
   page = the SPA's `posts.default.pageSize`, so page N in the panel is page N
   on the site; `type` 0/1 media filter; `sort` → `OrderBy`).
@@ -719,14 +738,14 @@ videos, page-range / all-pages crawling.
   after worker restart (chrome downloads re-verified via `search({id})`,
   offscreen jobs re-queued). The crawler drives one adapter per site
   (rule34video: fetch listing HTML pages; rule34.world: POST the search API,
-  playlists via `/post/search/playlist/{id}`), supports "list only" or
-  "download as found", stops early on two empty/duplicate pages of an
-  open-ended range, and can be stopped at any time.
+  playlists via `/post/search/playlist/{id}`), supports list-only crawls,
+  stops early on two empty/duplicate pages of an open-ended range, aborts a
+  currently in-flight request, and can be stopped at any time.
 - `extension/sidepanel.html` / `sidepanel.js` / `styles/sidepanel.css` — the
   panel. Adapts to the ACTIVE TAB via the router: post card (Download this
-  post), listing card (List this page · Download page · page range with `?`
-  help and `all` · Fetch pages · Download all pages · Stop, media filter on
-  rule34.world), "Fetch from a URL" for pasted playlists/searches, summary
+  post), listing card (List this page · Download page · bounded page range
+  with `?` help · Fetch selected pages · Download selected · Stop fetch,
+  media filter on rule34.world), "Fetch from a URL" for pasted playlists/searches, summary
   counters, Select all / Invert / filter, Retry failed / Clear finished /
   Reset history / Clear list, collapsible Output settings (same
   `chrome.storage.sync` keys as before, live path preview), queue rows with
@@ -735,8 +754,8 @@ videos, page-range / all-pages crawling.
 - `extension/content-rule34video.js`, `extension/content-rule34world.js` —
   URL-routed page adapters (replace `post-actions.js` / `player-button.js` /
   `content.js`). Corner ⬇ per card, a floating pill (video page: Download ·
-  Panel; listing: N videos · Download page · [Whole playlist] · Panel;
-  rule34.world listing: N pics · N videos · Download page · All pages ·
+  Panel; listing: N videos · Download page · [Fetch page batch] · Panel;
+  rule34.world listing: N pics · N videos · Download page · Fetch batch ·
   Panel), `collectListing` for the panel so "List this page" reflects the
   user's sort/filters, SPA navigation tracking on rule34.world, observer
   loop guard for self-inflicted mutations. Nothing renders on unsupported

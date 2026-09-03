@@ -8,11 +8,12 @@
 // through a small worker pool. On top of that sits the nh-dw style page
 // crawler: "fetch pages 2,4,6-10 / 1-99 / all" of the listing the user is
 // looking at (or of any pasted listing/playlist URL), listing every post it
-// finds — optionally downloading them straight away ("Download all pages").
+// finds. Crawling never starts downloads: the user reviews the list, then
+// explicitly presses "Download N selected".
 //
 // Site specifics are isolated in two tiny adapters at the bottom:
-//   rule34video.com  — scrape listing HTML (cards + pagination), KVS get_block
-//                      ajax pages, playlists included
+//   rule34video.com  — scrape canonical listing HTML pages (cards + pagination),
+//                      playlists included
 //   rule34.world     — POST /api/v2/post/search/root (30 posts/page, the
 //                      SPA's page size) so page N here == page N on the site;
 //                      images AND videos, filterable
@@ -42,7 +43,7 @@
   const STALE_ACTIVE_MS = 3 * 60 * 60 * 1000;
   const VIDEO_PAGE_DELAY_MS = 450;
   const WORLD_PAGE_DELAY_MS = 250;
-  const OPEN_ENDED_CRAWL_MAX_PAGES = 300; // rule34.world's own maxPages
+  const OPEN_ENDED_CRAWL_MAX_PAGES = 150; // fallback when the router is unavailable
 
   const ACTIVE_STATUSES = new Set(["resolving", "downloading"]);
   // "completed" is startable too: a row the user re-ticks downloads again
@@ -53,7 +54,9 @@
   const CONCURRENCY_OPTIONS = [1, 2, 3, 5];
 
   const DEFAULT_SETTINGS = {
-    concurrency: 2,
+    // A conservative default that still gives batch downloads useful
+    // throughput. Users can lower it to 1/2 or deliberately choose 5.
+    concurrency: 3,
     quality: "best",
     skipDownloaded: true,
     autoList: true,
@@ -147,6 +150,10 @@
     let broadcastTimer = null;
     let broadcastDirty = false;
     let crawlToken = 0;
+    // Cancels the currently in-flight page request as well as preventing the
+    // next page from starting. A token alone cannot interrupt fetch(), which
+    // made Stop look ineffective on a slow listing response.
+    let crawlController = null;
     const crawl = emptyCrawlState();
 
     function emptyCrawlState() {
@@ -166,8 +173,11 @@
         duplicates: 0,
         alreadyDownloaded: 0,
         filtered: 0,
+        // Kept in snapshots for forward-compatible clients. It is always
+        // false: range fetches only list selected pages, never start a stream.
         autoDownload: false,
         openEnded: false,
+        stopped: false,
         error: "",
         startedAt: 0,
         finishedAt: 0,
@@ -387,7 +397,7 @@
     // because they were downloaded before (when skipDownloaded is on).
     function addItems(rawItems, options = {}) {
       const source = options.source || {};
-      const result = { added: 0, duplicates: 0, alreadyDownloaded: 0, filtered: 0, keys: [] };
+      const result = { added: 0, duplicates: 0, alreadyDownloaded: 0, filtered: 0, capacityReached: false, keys: [] };
       const mediaType = options.mediaType || "all";
       for (const raw of Array.isArray(rawItems) ? rawItems : []) {
         const item = normalizeIncoming(raw, source);
@@ -409,7 +419,10 @@
           result.alreadyDownloaded += 1;
           continue;
         }
-        if (items.size >= MAX_ITEMS) break;
+        if (items.size >= MAX_ITEMS) {
+          result.capacityReached = true;
+          break;
+        }
         items.set(item.key, item);
         result.added += 1;
         result.keys.push(item.key);
@@ -737,7 +750,10 @@
     function stopCrawl() {
       if (!crawl.running) return false;
       crawlToken += 1;
+      try { crawlController?.abort(); } catch {}
+      crawlController = null;
       crawl.running = false;
+      crawl.stopped = true;
       crawl.finishedAt = now();
       scheduleBroadcast();
       return true;
@@ -766,13 +782,16 @@
       const adapter = route.site === "video" ? videoAdapter : worldAdapter;
       const mediaType = route.site === "world" ? (options.mediaType || settings.mediaType || "all") : "all";
       const token = ++crawlToken;
+      crawlController = typeof AbortController === "function" ? new AbortController() : null;
       Object.assign(crawl, emptyCrawlState(), {
         running: true,
         site: route.site,
         kind: route.kind,
         title: route.title || "",
         sourceUrl: url,
-        autoDownload: Boolean(options.autoDownload),
+        // Range fetching must be reviewable and cancellable. Do not let an old
+        // message sender turn a page fetch into an unbounded download stream.
+        autoDownload: false,
         startedAt: now(),
       });
       scheduleBroadcast();
@@ -782,7 +801,7 @@
 
       (async () => {
         try {
-          const info = await adapter.describe(route);
+          const info = await adapter.describe(route, { signal: crawlController?.signal });
           if (token !== crawlToken) return;
           crawl.totalPages = info.totalPages || 0;
           crawl.totalItems = info.totalItems || 0;
@@ -792,9 +811,11 @@
             pages = routes.parsePageRange(requested, crawl.totalPages);
           } catch (error) {
             // "all" with an unknown total (the API did not report a count):
-            // walk forward from page 1 until two empty pages in a row.
+            // walk forward only through the same bounded, reviewable batch
+            // size as explicit selections, stopping after two empty pages.
             if (/^(all|\*)?$/i.test(requested.trim()) && !crawl.totalPages) {
-              pages = routes.parsePageRange(`1-${OPEN_ENDED_CRAWL_MAX_PAGES}`, 0);
+              const max = Math.max(1, Number(routes.PAGE_RANGE_HARD_CAP) || OPEN_ENDED_CRAWL_MAX_PAGES);
+              pages = routes.parsePageRange(`1-${max}`, 0);
               crawl.openEnded = true;
             } else {
               throw new Error(error?.message || "Bad page range.");
@@ -816,8 +837,12 @@
             scheduleBroadcast();
             let found;
             try {
-              found = await adapter.fetchPage(route, page, { mediaType, info });
+              found = await adapter.fetchPage(route, page, { mediaType, info, signal: crawlController?.signal });
             } catch (error) {
+              // Stop fetch deliberately aborts the request. Do not overwrite
+              // its clean "Stopped" state with a misleading AbortError, and do
+              // not wait for a retry delay before honouring the stop token.
+              if (token !== crawlToken) return;
               logger.warn("crawl page failed", route.kind, page, error);
               crawl.error = `Page ${page}: ${error?.message || error}`;
               scheduleBroadcast();
@@ -826,19 +851,22 @@
             }
             if (token !== crawlToken) return;
             crawl.found += found.length;
-            const result = addItems(found.map((item) => ({ ...item, page })), { source, mediaType, start: crawl.autoDownload });
+            const result = addItems(found.map((item) => ({ ...item, page })), { source, mediaType });
             crawl.added += result.added;
             crawl.duplicates += result.duplicates;
             crawl.alreadyDownloaded += result.alreadyDownloaded;
             crawl.filtered += result.filtered;
-            if (crawl.autoDownload && result.keys.length) start(result.keys);
-            // Past the last page: KVS repeats the final page or returns
-            // nothing, the world API returns []. Two empty/duplicate pages in a
-            // row end an open-ended "1-99" crawl early.
-            // An empty page (or, on KVS, a page that only repeats the previous
-            // one) means we walked past the end: stop open-ended crawls after
-            // two of them in a row, and any crawl once the known last page is
-            // empty.
+            // Do not download while we enumerate: rows are selected so the user
+            // can inspect or untick them, then intentionally start the queue.
+            if (result.capacityReached) {
+              crawl.error = `List limit reached (${MAX_ITEMS.toLocaleString()} posts). Start or clear the queue, then fetch the next page batch.`;
+              break;
+            }
+            // Past the last page, a listing can be empty or repeat cards while
+            // the world API returns []. Two empty/duplicate pages in a row end
+            // an open-ended range early. An empty/repeated page means we walked
+            // past the end, so stop open-ended crawls after two of them and a
+            // known-length crawl when its last page is empty.
             if (!found.length || (!result.added && result.duplicates === found.length && index > 0)) emptyStreak += 1;
             else emptyStreak = 0;
             if (emptyStreak >= 2 && (!crawl.totalPages || crawl.openEnded)) break;
@@ -850,6 +878,7 @@
           if (token === crawlToken) crawl.error = error?.message || String(error);
         } finally {
           if (token === crawlToken) {
+            crawlController = null;
             crawl.running = false;
             crawl.finishedAt = now();
             persistSoon();
@@ -872,16 +901,20 @@
     }
 
     // --- site adapters -----------------------------------------------------------------
-    async function fetchText(url) {
-      const response = await fetchImpl(url, { credentials: "include", headers: { Accept: "text/html,application/xhtml+xml,*/*" } });
+    async function fetchText(url, signal) {
+      const response = await fetchImpl(url, {
+        credentials: "include",
+        headers: { Accept: "text/html,application/xhtml+xml,*/*" },
+        ...(signal ? { signal } : {}),
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return await response.text();
     }
 
     const videoAdapter = {
       delayMs: VIDEO_PAGE_DELAY_MS,
-      async describe(route) {
-        const html = await fetchText(routes.videoListingPageUrl(route, 1));
+      async describe(route, context = {}) {
+        const html = await fetchText(routes.videoListingPageUrl(route, 1), context.signal);
         const items = routes.parseVideoListing(html, route.listingUrl);
         let totalPages = routes.parseVideoListingPageCount(html);
         const totalItems = routes.parseVideoListingTotal(html);
@@ -889,9 +922,9 @@
         if (!totalPages && items.length) totalPages = 1;
         return { totalPages, totalItems, perPage: items.length, firstPage: items };
       },
-      async fetchPage(route, page, context) {
-        if (page === 1 && context?.info?.firstPage) return context.info.firstPage;
-        const html = await fetchText(routes.videoListingPageUrl(route, page));
+      async fetchPage(route, page, context = {}) {
+        if (page === 1 && context.info?.firstPage) return context.info.firstPage;
+        const html = await fetchText(routes.videoListingPageUrl(route, page), context.signal);
         return routes.parseVideoListing(html, route.listingUrl);
       },
     };
@@ -902,7 +935,7 @@
         if (route.kind === "playlist") return `https://rule34.world/api/v2/post/search/playlist/${encodeURIComponent(route.id)}`;
         return "https://rule34.world/api/v2/post/search/root";
       },
-      async request(route, page, mediaType) {
+      async request(route, page, mediaType, context = {}) {
         const body = routes.worldSearchBody({ ...route, mediaType: mediaType || route.mediaType }, page);
         if (route.kind === "playlist") delete body.includeTags;
         const response = await fetchImpl(this.endpoint(route), {
@@ -910,6 +943,7 @@
           credentials: "include",
           headers: { Accept: "application/json", "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          ...(context.signal ? { signal: context.signal } : {}),
         });
         if (!response.ok) throw new Error(`rule34.world API ${response.status}`);
         const data = await response.json();
@@ -917,14 +951,16 @@
         const total = Number(data?.totalCount ?? data?.total ?? data?.count ?? data?.totalItems ?? data?.itemsCount ?? data?.pagination?.total ?? 0) || 0;
         return { items: list.map(worldItem).filter(Boolean), total, pageSize: body.take };
       },
-      async describe(route) {
-        const first = await this.request(route, 1, settings.mediaType);
-        const totalPages = first.total ? Math.min(Math.ceil(first.total / first.pageSize), 300) : 0;
+      async describe(route, context = {}) {
+        const first = await this.request(route, 1, settings.mediaType, context);
+        // The range parser makes the user split much larger listings into
+        // reviewable batches; retain the API's real count for the UI.
+        const totalPages = first.total ? Math.ceil(first.total / first.pageSize) : 0;
         return { totalPages, totalItems: first.total, perPage: first.pageSize, firstPage: first.items };
       },
-      async fetchPage(route, page, context) {
-        if (page === 1 && context?.info?.firstPage && (context.mediaType || "all") === (settings.mediaType || "all")) return context.info.firstPage;
-        const result = await this.request(route, page, context?.mediaType);
+      async fetchPage(route, page, context = {}) {
+        if (page === 1 && context.info?.firstPage && (context.mediaType || "all") === (settings.mediaType || "all")) return context.info.firstPage;
+        const result = await this.request(route, page, context.mediaType, context);
         return result.items;
       },
     };
@@ -1007,7 +1043,6 @@
             url: request.url,
             pages: request.pages,
             mediaType: request.mediaType,
-            autoDownload: Boolean(request.autoDownload),
             tabId: request.tabId || sender?.tab?.id,
           });
           return { success: true, snapshot: snapshot() };
