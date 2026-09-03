@@ -2,8 +2,8 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-03 (v6.0.1 — canonical listing pagination, bounded
-review-first fetches, and a three-download default; see IMPROVEMENT_LOG.md).
+Last updated: 2026-09-04 (world-domain listing pass — fetch deeper + From/To
+picker + stop-in-button; see IMPROVEMENT_LOG.md).
 PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
@@ -12,6 +12,49 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
 Session 8 = source-separated, tag-named output folders (v5.0.0): master
 folder + automatic per-site folder + tag/artist collection folder + picture-set
 archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
+
+## Follow-ups from the world-domain listing pass (next)
+
+Open tasks carried forward from the fetch-deeper / From-To / stop-in-button
+pass. Feasibility without extra data is noted per item — anything marked
+"needs data" is deliberately **not** being built blind.
+
+- [ ] **(Video domain — verify the new fetch UI on rule34video.com)** The
+      From/To picker, batch button, stop-morph and the engine fixes
+      (widened re-fetch walks every page; empty page ends a bounded walk) are
+      all in **shared** code, so rule34video.com already gets them. What is
+      left is **live verification** that a real video listing pre-fills
+      correctly (known total → To = last page / batch), that re-fetching a
+      widened range lists the new pages, and that nothing video-specific
+      regressed (playlists, member/artist, homepage crawl). **Data that helps
+      (optional but recommended):** one real saved listing page each for a
+      rule34video.com **search**, **tag**, **playlist** and **member** page
+      (they all share card markup but the main-block id differs), captured
+      like `source/page-source/rule34video-listing.html`. Without those, the
+      offline suites + the existing saved listing still pass, but real-browser
+      confirmation needs a manual check.
+- [ ] **(World "Show More"/deep DOM driver — Twitter-style in-page crawl)**
+      Porting the Twitter-repo style "drive the page to load older posts"
+      against rule34.world. The site is an Angular SPA that appends older
+      posts (a Show-More / infinite-scroll behaviour). **This is NOT being
+      built blind** — the API crawl already fetches the same older posts and
+      now stops correctly. **Data needed before coding:** one captured DOM
+      (`document.body.innerHTML`, or DevTools copy of the grid root) of a
+      rule34.world listing **before** and **after** clicking "Show more" /
+      scrolling to the bottom (to see whether it is a button vs pure scroll and
+      what class/id the appended-card container + button use), plus a note of
+      any "we're out of posts / you've reached the end" element. Only then can
+      the content-script driver (`content-rule34world.js`) be written against
+      real selectors.
+- [ ] **(World — pin the API total-count field live)** We broadened total
+      detection across response shapes, but the single live field name has not
+      been confirmed. **Data needed:** one raw JSON body returned by
+      `POST https://rule34.world/api/v2/post/search/root` (paste the response,
+      ids can be stripped) so we can pin the exact field and simplify.
+- [ ] **(Video domain — optional "single page" quick action)** A dedicated
+      one-click **List this page** already exists; if video wants a distinct
+      *single-page fetch* vs the *From/To* multi-page flow, that is a small UI
+      nicety and needs no data.
 
 ## Done
 

@@ -100,6 +100,16 @@ manual by design.
 
 ## Current state
 
+- **6.0.2-rc (world-domain listing pass, unnumbered build)** — listings no
+  longer act like a single page. Fetching picks pages by **From → To** fields
+  (leave To empty for "to the last page", with a warning), an **advanced**
+  free-text mode keeps the old `2,4,6-10 / all / 50-` syntax, and the fetch
+  button **morphs into "Stop fetch"** while a crawl runs so nothing is pushed
+  off-screen. Engine: widening a fetch (`1-2` → `1-5`) now really lists the new
+  pages instead of stopping on already-listed rows; a page that comes back
+  empty ends the walk; open-ended-from-page works even when the site reports no
+  total. rule34video.com already shares all of this; its real-browser
+  verification is tracked as a follow-up.
 - Version **6.0.1** — side-panel crawl safety and pagination repair: the
   rule34video.com crawler follows normal `/…/2/` page URLs (the old private
   ajax endpoint returns HTTP 500); a crawl only lists checked rows and never

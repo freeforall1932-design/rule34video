@@ -5,6 +5,38 @@ Date: 2026-08-29 (Asia/Jakarta)
 This log records changes made while rebranding the extension into a free,
 community **Rule34 Downloader** for both `rule34.world` and `rule34video.com`.
 
+## World-domain listing pass — fetch deeper, From/To picker, stop-in-button (2026-09-04)
+
+Follow-up to the session-10 rework, focused on the side-panel listing fetch for
+rule34.world (the shared code also covers rule34video.com; see the WORKLIST
+follow-ups for the video-domain verification).
+
+- **Bounded re-fetch bug fixed.** A widened fetch (`1-2` then `1-5`) used to
+  stop after the already-listed pages 1-2 and never list 3-5. Now a bounded
+  explicit range always walks every requested page; only an **open-ended**
+  "to the last page" crawl treats duplicate-only pages as the end. A page that
+  comes back truly **empty** still ends the walk (past the last page), so a big
+  range on a short listing does not fire a stream of empty requests.
+- **Open-ended-from-page.** `5-` (or `all` from page 1) now works even when the
+  listing's total is unknown: the engine walks a bounded batch and stops when
+  the pages run dry.
+- **rule34.world total detection broadened.** The SPA's response shape has
+  drifted between versions, so a missing/renamed count field used to leave the
+  panel pre-filled with a single page ("1"). The reader now accepts many total
+  field names (`totalCount`/`total`/`count`/`totalItems`/`itemsCount`/
+  `totalElements`/`found`/`result.total`/`data.total`/`pagination.*`/`meta.total`).
+- **From → To picker.** The single `Pages` box became two whole-page fields
+  with a live hint ("Pages 1–5 · 5 pages"); leaving To empty warns about (and
+  confirms) a fetch to the last page. **batch** pre-fills a reviewable run;
+  **advanced** restores the free-text syntax `2,4,6-10 / all / 50-`.
+- **Stop lives in the button.** While a fetch runs, "Fetch selected pages"
+  morphs into "Stop fetch" (danger) and its row's Download hides, so there is
+  no separate Stop pushed partly off-screen. `.action-row` also flex-wraps as a
+  fallback on narrow panels.
+- Offline regression tests added in `source/tests/panel-queue.test.mjs`
+  (widened re-fetch; open-range-from-page); full suite (fixtures + smoke + e2e)
+  green.
+
 ## v6.0.1 — Safe, inspect-first listing fetches (2026-09-03)
 
 - Fixed rule34video.com multi-page fetching. The crawler now fetches the
