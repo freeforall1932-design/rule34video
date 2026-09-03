@@ -301,6 +301,49 @@ describe("page crawls", () => {
     assert.ok(snap.crawl.pageIndex <= 5, "stopped shortly after the pages ran dry, not at 300");
   });
 
+  it("a widened re-fetch (1-2 then 1-5) still lists the new pages when the total is unknown", async () => {
+    const { engine } = createEngine({
+      fetch: async (url, init) => {
+        if (!/rule34\.world\/api/.test(url)) return null;
+        const body = JSON.parse(init.body);
+        const page = body.Skip / body.take + 1;
+        const ids = page <= 4 ? Array.from({ length: 30 }, (_, i) => 9000 + (page - 1) * 30 + i) : [];
+        return { ok: true, status: 200, json: async () => ({ items: ids.map((id) => ({ id, type: 0 })) }) };
+      },
+    });
+    // First fetch 1-2 (listing has no reported total, but pages 1-4 exist).
+    await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34.world/touhou", pages: "1-2" });
+    await waitFor(() => !engine.snapshot().crawl.running);
+    assert.equal(engine.snapshot().items.length, 60, "first fetch listed pages 1-2");
+
+    // Widen to 1-5. The already-listed pages 1-2 must NOT stop the crawl early;
+    // pages 3-5 still get requested and listed (3-4 new, 5 empty).
+    await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34.world/touhou", pages: "1-5" });
+    await waitFor(() => !engine.snapshot().crawl.running);
+    const snap = engine.snapshot();
+    assert.equal(snap.items.length, 120, "pages 3-4 were listed on the widened re-fetch");
+    assert.equal(snap.crawl.error, "");
+    assert.ok(snap.crawl.duplicates >= 60, "pages 1-2 counted as duplicates but did not stop the run");
+  });
+
+  it("an open range from a page ('2-') with an unknown total starts there and stops when dry", async () => {
+    const { engine } = createEngine({
+      fetch: async (url, init) => {
+        if (!/rule34\.world\/api/.test(url)) return null;
+        const body = JSON.parse(init.body);
+        const page = body.Skip / body.take + 1;
+        const ids = page <= 3 ? Array.from({ length: 30 }, (_, i) => 12000 + (page - 1) * 30 + i) : [];
+        return { ok: true, status: 200, json: async () => ({ items: ids.map((id) => ({ id, type: 0 })) }) };
+      },
+    });
+    await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34.world/touhou", pages: "2-" });
+    await waitFor(() => !engine.snapshot().crawl.running);
+    const snap = engine.snapshot();
+    assert.equal(snap.crawl.error, "");
+    assert.equal(snap.items.length, 60, "listed pages 2 and 3, stopped when page 4 ran dry");
+    assert.ok(snap.items.every((item) => Number(item.id) >= 12030), "page 1 was not crawled");
+  });
+
   it("aborts the in-flight page request when Stop fetch is pressed", async () => {
     let requestStarted = false;
     let aborted = false;

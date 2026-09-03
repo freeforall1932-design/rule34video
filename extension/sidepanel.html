@@ -56,15 +56,27 @@
         <button id="downloadPageBtn" class="button secondary" title="List every post on this page and start downloading immediately">Download page</button>
       </div>
 
-      <div class="range-row">
+      <div class="range-row range-fromto" id="rangeFromToRow">
+        <label for="fromPage" class="range-label">From</label>
+        <input id="fromPage" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="1">
+        <label for="toPage" class="range-label">To</label>
+        <input id="toPage" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="last">
+        <button id="rangeAdvancedBtn" class="text-button" type="button" title="Exact pages / ranges such as 2,4,6-10">advanced</button>
+      </div>
+      <div class="range-row hidden" id="rangeAdvancedRow">
         <label for="pageRange" class="range-label">Pages</label>
-        <input id="pageRange" type="text" autocomplete="off" spellcheck="false" placeholder="1-99">
-        <button id="rangeHelpBtn" class="icon-button small" title="Page ranges" aria-label="Page range help">?</button>
-        <button id="allPagesBtn" class="text-button" title="Fill a safe page batch">batch</button>
+        <input id="pageRange" type="text" autocomplete="off" spellcheck="false" placeholder="2,4,6-10 · 1-99 · 50- · all">
+        <button id="rangeSimpleBtn" class="text-button" type="button" title="Back to From / To">simple</button>
+      </div>
+      <div class="range-row range-controls">
+        <span id="fromToHint" class="hint range-hint"></span>
+        <button id="allPagesBtn" class="text-button" type="button" title="Fill a reviewable batch from the current page">batch</button>
+        <button id="rangeHelpBtn" class="icon-button small" type="button" title="Page range help" aria-label="Page range help">?</button>
       </div>
       <p id="rangeHelp" class="hint help-box hidden">
-        Comma-separated pages and ranges: <code>2,4,6-10</code>, <code>1-99</code>, <code>50-</code> (to the end) or <code>all</code>.
-        To keep the list reviewable, one fetch may contain at most <strong>150 pages</strong>; fetch large listings in separate batches. Pages past the last one are ignored.
+        <strong>From … To</strong> lists every page in between. Leave <strong>To</strong> empty to fetch from <strong>From</strong> through the last page,
+        or press <strong>advanced</strong> for exact syntax (<code>2,4,6-10</code>, <code>1-99</code>, <code>50-</code>, <code>all</code>).
+        One fetch is limited to <strong>150 pages</strong> to keep the list reviewable.
       </p>
 
       <div id="worldFilters" class="source-options hidden">

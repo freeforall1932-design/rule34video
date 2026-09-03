@@ -15,6 +15,23 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 
 ## Done
 
+- [x] **(World-domain listing pass) Fetch deeper + From/To picker + stop-in-button** —
+      rule34.world listings no longer act like a single page. Engine: a bounded
+      explicit range (`1-5`) now always walks every requested page — widening a
+      fetch `1-2` → `1-5` really lists pages 3-5 instead of stopping on the
+      already-listed 1-2 (duplicate-based early-stop only applies to open-ended
+      "to the last page" crawls now); open-ended-from-page (`2-`) works even
+      when the API reports no total (walks a bounded batch, stops when dry);
+      rule34.world total-count detection broadened across response shapes.
+      Panel: the one `Pages` box became **From / To** whole-page fields with a
+      live hint, an **advanced** free-text mode (`2,4,6-10 · all · 50-`), a
+      **batch** pre-fill, and a warning/confirm for an uncapped "to the last
+      page" fetch. The listing fetch button **morphs into "Stop fetch"** while a
+      crawl runs and its Download hides (nothing pushed off-screen); `.action-row`
+      also flex-wraps as a fallback. Regression tests in `panel-queue.test.mjs`.
+      **(Follow-ups: apply the same fetch/UI pass to rule34video.com; drive the
+      live page's Show-More DOM on world as an optional deep-crawl once its
+      selectors are captured — not shipped blind.)**
 - [x] **(Session 10, 6.0.0–6.0.1) UI/UX rework and safety follow-up** — popup
       → Side Panel queue (Twitter-style rows/counters/dock), generic toolbar →
       per-site URL-routed content scripts, and an inspect-first nh-dw page

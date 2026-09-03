@@ -807,20 +807,29 @@
           crawl.totalItems = info.totalItems || 0;
           let pages;
           const requested = options.pages === undefined ? String(route.page || 1) : String(options.pages);
+          // An open range from a start page ("5-", or "all"/"*" from page 1)
+          // when the listing has no known total: walk a bounded batch and stop
+          // when the pages run dry, like "all". "1-5" and "5" (bounded) stay
+          // bounded and never auto-stop.
+          const openAll = /^(all|\*)?$/i.test(requested.trim());
+          const openFrom = requested.trim().match(/^(\d+)\s*-\s*$/);
+          const wantsOpenEnded = (openAll || openFrom) && !crawl.totalPages;
           try {
             pages = routes.parsePageRange(requested, crawl.totalPages);
           } catch (error) {
-            // "all" with an unknown total (the API did not report a count):
-            // walk forward only through the same bounded, reviewable batch
-            // size as explicit selections, stopping after two empty pages.
-            if (/^(all|\*)?$/i.test(requested.trim()) && !crawl.totalPages) {
+            if (wantsOpenEnded) {
               const max = Math.max(1, Number(routes.PAGE_RANGE_HARD_CAP) || OPEN_ENDED_CRAWL_MAX_PAGES);
-              pages = routes.parsePageRange(`1-${max}`, 0);
+              const from = openFrom ? Number(openFrom[1]) : 1;
+              pages = routes.parsePageRange(`${from}-${from + max - 1}`, 0);
               crawl.openEnded = true;
             } else {
               throw new Error(error?.message || "Bad page range.");
             }
           }
+          // A bounded open-ended request on a listing that DOES know its total
+          // (e.g. "5-" with a known page count) parses cleanly already — mark
+          // it open-ended so the walk-to-the-end semantics apply below.
+          if (openFrom && crawl.totalPages) crawl.openEnded = true;
           crawl.pages = pages;
           scheduleBroadcast();
           const source = {
@@ -863,14 +872,24 @@
               break;
             }
             // Past the last page, a listing can be empty or repeat cards while
-            // the world API returns []. Two empty/duplicate pages in a row end
-            // an open-ended range early. An empty/repeated page means we walked
-            // past the end, so stop open-ended crawls after two of them and a
-            // known-length crawl when its last page is empty.
-            if (!found.length || (!result.added && result.duplicates === found.length && index > 0)) emptyStreak += 1;
-            else emptyStreak = 0;
-            if (emptyStreak >= 2 && (!crawl.totalPages || crawl.openEnded)) break;
-            if (!found.length && crawl.totalPages && page >= crawl.totalPages) break;
+            // the world API returns []. A page coming back EMPTY means we are
+            // past the end (listings run newest → oldest, so nothing later is
+            // non-empty), so stop even a bounded range there — that keeps an
+            // explicit "1-150" on a short listing from making 150 calls. But an
+            // already-listed (duplicate) page is NOT the end: widening a fetch
+            // 1-2 → 1-5 must keep walking to list pages 3-5, so duplicates
+            // never stop a bounded crawl (this was the re-fetch bug). Open-ended
+            // "to the last page" crawls additionally treat two duplicate-only
+            // pages in a row as the end.
+            const emptyPage = !found.length;
+            if (crawl.openEnded) {
+              const dupOnlyPage = !result.added && result.duplicates === found.length && index > 0;
+              if (emptyPage || dupOnlyPage) emptyStreak += 1;
+              else emptyStreak = 0;
+              if (emptyStreak >= 2) break;
+            } else if (emptyPage) {
+              break;
+            }
             scheduleBroadcast();
             if (index < pages.length - 1) await sleep(adapter.delayMs);
           }
@@ -948,7 +967,15 @@
         if (!response.ok) throw new Error(`rule34.world API ${response.status}`);
         const data = await response.json();
         const list = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-        const total = Number(data?.totalCount ?? data?.total ?? data?.count ?? data?.totalItems ?? data?.itemsCount ?? data?.pagination?.total ?? 0) || 0;
+        // The SPA's response shape has drifted between versions; read the total
+        // from any of the names it has used so a listing is not mistaken for a
+        // single page (which used to leave the panel pre-filled with just "1").
+        const total = Number(
+          data?.totalCount ?? data?.total ?? data?.count ?? data?.totalItems ?? data?.itemsCount ?? data?.totalElements
+          ?? data?.found ?? data?.result?.total ?? data?.data?.total
+          ?? data?.pagination?.total ?? data?.pagination?.totalCount ?? data?.pagination?.totalItems
+          ?? data?.meta?.total ?? 0
+        ) || 0;
         return { items: list.map(worldItem).filter(Boolean), total, pageSize: body.take };
       },
       async describe(route, context = {}) {

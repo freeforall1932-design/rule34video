@@ -26,7 +26,11 @@
     tabStatus: $("tabStatus"), tabStatusTitle: $("tabStatusTitle"), tabStatusDetail: $("tabStatusDetail"), refreshTabBtn: $("refreshTabBtn"),
     postCard: $("postCard"), postThumb: $("postThumb"), postTitle: $("postTitle"), postMeta: $("postMeta"), downloadPostBtn: $("downloadPostBtn"), listPostBtn: $("listPostBtn"), postHint: $("postHint"),
     listingCard: $("listingCard"), listingTitle: $("listingTitle"), listingMeta: $("listingMeta"), listingKind: $("listingKind"),
-    listPageBtn: $("listPageBtn"), downloadPageBtn: $("downloadPageBtn"), pageRange: $("pageRange"), rangeHelpBtn: $("rangeHelpBtn"), rangeHelp: $("rangeHelp"), allPagesBtn: $("allPagesBtn"),
+    listPageBtn: $("listPageBtn"), downloadPageBtn: $("downloadPageBtn"),
+    fromPage: $("fromPage"), toPage: $("toPage"), pageRange: $("pageRange"),
+    rangeFromToRow: $("rangeFromToRow"), rangeAdvancedRow: $("rangeAdvancedRow"),
+    rangeAdvancedBtn: $("rangeAdvancedBtn"), rangeSimpleBtn: $("rangeSimpleBtn"), fromToHint: $("fromToHint"),
+    rangeHelpBtn: $("rangeHelpBtn"), rangeHelp: $("rangeHelp"), allPagesBtn: $("allPagesBtn"),
     worldFilters: $("worldFilters"), videoFilters: $("videoFilters"), mediaTypeSelect: $("mediaTypeSelect"), skipDownloaded: $("skipDownloaded"), skipDownloadedVideo: $("skipDownloadedVideo"),
     crawlListBtn: $("crawlListBtn"), crawlDownloadBtn: $("crawlDownloadBtn"), crawlStopBtn: $("crawlStopBtn"), crawlProgress: $("crawlProgress"), crawlBar: $("crawlBar"), crawlText: $("crawlText"), listingHint: $("listingHint"),
     remoteCard: $("remoteCard"), remoteInput: $("remoteInput"), remoteUseTabBtn: $("remoteUseTabBtn"), remoteRange: $("remoteRange"), remoteListBtn: $("remoteListBtn"), remoteDownloadBtn: $("remoteDownloadBtn"), remoteHint: $("remoteHint"),
@@ -47,6 +51,7 @@
     renderLimit: 400,
     settingsSaveTimer: null,
     noticeTimer: null,
+    userEditedRange: false,
   };
 
   // --- messaging ----------------------------------------------------------------
@@ -144,7 +149,11 @@
       el.listingMeta.textContent = "Reading page info…";
       el.worldFilters.classList.toggle("hidden", site !== "world");
       el.videoFilters.classList.toggle("hidden", site !== "video");
-      el.pageRange.value = String(route.page || 1);
+      state.userEditedRange = false;
+      el.fromPage.value = String(route.page || 1);
+      el.toPage.value = "";
+      el.pageRange.value = "";
+      showAdvancedRange(false);
       hint(el.listingHint, site === "video" && route.kind === "playlist"
         ? "Choose a page batch to list the playlist, review it, then download only the checked videos."
         : site === "world"
@@ -164,12 +173,100 @@
     return String(title || "").replace(/\s*[-|–]\s*Rule ?34.*$/i, "").trim();
   }
 
-  function safePageBatchRange(route, totalPages) {
+  // --- page range: From/To (with an advanced text mode) -------------------------
+  // The friendly picker is two whole-page number fields, From and To. Leave To
+  // empty for "to the last page". "advanced" swaps in the old free-text box for
+  // exact syntax (2,4,6-10, all, 50-). Whatever they produce is one range string
+  // fed to the shared nh-dw parser in the engine.
+  function readPage(text) {
+    const s = String(text || "").trim();
+    return /^\d+$/.test(s) ? Number(s) : null;
+  }
+
+  function isAdvancedRange() {
+    return !el.rangeAdvancedRow?.classList.contains("hidden");
+  }
+
+  // Reads whichever mode is visible and returns { text, from, to, openEnded,
+  // error }. `text` is what the engine's parsePageRange should receive.
+  function pageRangeSpec() {
+    if (isAdvancedRange()) {
+      const text = String(el.pageRange.value || "").trim();
+      const uncapped = /^\s*all\s*$/i.test(text) || /(^|,)\s*\d+\s*-\s*$/i.test(text);
+      return { text, from: null, to: null, openEnded: uncapped, advanced: true, error: "" };
+    }
+    const fromRaw = String(el.fromPage.value || "").trim();
+    const toRaw = String(el.toPage.value || "").trim();
+    const from = fromRaw === "" ? 1 : readPage(fromRaw);
+    if (fromRaw !== "" && from === null) return { error: `"${fromRaw}" is not a page number.`, openEnded: false };
+    const to = toRaw === "" ? null : readPage(toRaw);
+    if (toRaw !== "" && to === null) return { error: `"${toRaw}" is not a page number.`, openEnded: false };
+    if (to !== null && to < from) return { error: `End page ${to} is before start page ${from}.`, openEnded: false };
+    const openEnded = to === null;
+    const text = openEnded ? (from === 1 ? "all" : `${from}-`) : (from === to ? String(from) : `${from}-${to}`);
+    return { text, from, to, openEnded, advanced: false, error: "" };
+  }
+
+  function rangeHintText(spec) {
+    const cap = Math.max(1, Number(Routes?.PAGE_RANGE_HARD_CAP) || 150);
+    const pages = Number(state.listingInfo?.totalPages) || 0;
+    if (!spec) return { text: "", cls: "" };
+    if (spec.error) return { text: spec.error, cls: "error" };
+    if (spec.advanced) {
+      if (!spec.text) return { text: "Type exact pages and ranges, e.g. 2,4,6-10 · 1-99 · 50- · all.", cls: "" };
+      return { text: `Exact: ${spec.text}`, cls: spec.openEnded ? "warn" : "" };
+    }
+    const from = spec.from || 1;
+    if (spec.openEnded) {
+      const tail = pages ? `the last page (page ${Math.max(from, pages)})` : "the last page";
+      return {
+        text: `From page ${from} to ${tail} — lists every following page. One fetch is capped at ${cap} pages and stops when the listing runs dry.`,
+        cls: "warn",
+      };
+    }
+    const to = spec.to;
+    const cappedTo = pages && to > pages;
+    const shownTo = pages && to > pages ? pages : to;
+    const count = Math.max(1, shownTo - from + 1);
+    const cappedNote = cappedTo ? ` (listing ends at page ${pages})` : "";
+    return { text: `Pages ${from}–${shownTo} · ${count} page${count === 1 ? "" : "s"}${cappedNote}.`, cls: cappedTo ? "warn" : "" };
+  }
+
+  function updateRangeHints() {
+    const spec = pageRangeSpec();
+    const hint = rangeHintText(spec);
+    if (el.fromToHint) {
+      el.fromToHint.textContent = hint.text;
+      el.fromToHint.className = `hint range-hint ${hint.cls || ""}`.trim();
+    }
+    return spec;
+  }
+
+  function showAdvancedRange(advanced) {
+    const want = Boolean(advanced);
+    el.rangeAdvancedRow.classList.toggle("hidden", !want);
+    el.rangeFromToRow.classList.toggle("hidden", want);
+    if (want) {
+      // Seed the free-text box from From/To so switching is lossless.
+      const text = String(el.pageRange.value || "").trim();
+      if (!text) el.pageRange.value = String(el.fromPage.value || 1);
+    }
+    updateRangeHints();
+  }
+
+  // Fill From/To with the current page up to a reviewable end (the listing's
+  // last page when known; open-ended when the total is unknown so the crawl
+  // walks until the listing runs dry). Honors the user having typed a range.
+  function fillDefaultRange() {
+    const route = state.route;
     const start = Math.max(1, Number(route?.page) || 1);
     const cap = Math.max(1, Number(Routes?.PAGE_RANGE_HARD_CAP) || 150);
-    const knownLast = Math.max(0, Number(totalPages) || 0);
-    const end = knownLast ? Math.min(knownLast, start + cap - 1) : start + cap - 1;
-    return start === end ? String(start) : `${start}-${end}`;
+    const pages = Number(state.listingInfo?.totalPages) || 0;
+    el.fromPage.value = String(start);
+    el.toPage.value = pages ? String(Math.max(start, Math.min(pages, start + cap - 1))) : "";
+    el.pageRange.value = "";
+    showAdvancedRange(false);
+    state.userEditedRange = false;
   }
 
   async function describeListing() {
@@ -193,10 +290,9 @@
     if (perPage) bits.push(`${perPage} per page`);
     el.listingMeta.textContent = bits.length
       ? bits.join(" · ")
-      : "Page count unknown — fetch an explicit, bounded range such as 1-20.";
-    if (pages && (!el.pageRange.value || el.pageRange.value === String(route.page || 1))) {
-      el.pageRange.value = safePageBatchRange(route, pages);
-    }
+      : "Page count unknown — fetch from the current page; the crawl stops when the listing runs dry.";
+    if (!state.userEditedRange) fillDefaultRange();
+    else updateRangeHints();
   }
 
   // --- listing actions ------------------------------------------------------------------
@@ -247,6 +343,34 @@
     if (hintNode) hint(hintNode, text, response.queued ? "ok" : "");
     else notice(text, response.queued ? "ok" : "");
     return response;
+  }
+
+  // "Fetch selected pages" submit. Validates From/To, warns (and confirms) when
+  // it is an open-ended "to the last page" fetch, then hands one range string to
+  // the engine. When the fetch button has morphed into "Stop fetch" the click
+  // path sends crawl.stop instead (see listingButtonAction).
+  function submitListingFetch() {
+    if (crawlRunning()) return;
+    const url = state.tab?.url;
+    if (!url) return;
+    const spec = pageRangeSpec();
+    if (spec.error) { hint(el.listingHint, spec.error, "error"); updateRangeHints(); return; }
+    if (!spec.text) { hint(el.listingHint, "Pick a page range first.", "error"); return; }
+    if (spec.openEnded) {
+      const ok = window.confirm("Fetch EVERY following page to the end of this listing?\n\nThe crawl stops automatically when the pages run dry and is capped at a reviewable batch (see the Pages hint).");
+      if (!ok) { updateRangeHints(); return; }
+    }
+    startCrawl(url, spec.text, el.listingHint);
+  }
+
+  function listingButtonAction() {
+    if (crawlRunning()) { void send({ action: "panel.crawl.stop" }); return; }
+    submitListingFetch();
+  }
+
+  function remoteButtonAction() {
+    if (crawlRunning()) { void send({ action: "panel.crawl.stop" }); return; }
+    startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "1-150", el.remoteHint);
   }
 
   // --- single post -----------------------------------------------------------------------
@@ -322,14 +446,31 @@
     }
   }
 
+  function crawlRunning() {
+    return Boolean(state.snapshot?.crawl?.running);
+  }
+
+  // While a page fetch runs the listing "Fetch selected pages" (and the
+  // "Fetch from a URL" one) morphs into "Stop fetch" and its row's Download
+  // button hides — so the card never has to squeeze a third, separate Stop in
+  // (that was the button being pushed partially off-screen). The global Stop
+  // in the footer still stops downloads + a fetch.
+  function morphFetchButton(listBtn, downloadBtn, running, idleLabel) {
+    if (!listBtn || !downloadBtn) return;
+    downloadBtn.classList.toggle("hidden", running);
+    listBtn.textContent = running ? "Stop fetch" : idleLabel;
+    listBtn.classList.toggle("secondary", !running);
+    listBtn.classList.toggle("danger", running);
+    listBtn.disabled = false;
+  }
+
   function renderCrawl() {
     const crawl = state.snapshot?.crawl;
     const running = Boolean(crawl?.running);
-    el.crawlStopBtn.classList.toggle("hidden", !running);
-    el.crawlListBtn.disabled = running;
-    // Starting already checked rows remains safe while a fetch runs: newly
-    // found rows stay listed until the user explicitly starts them later.
-    el.remoteListBtn.disabled = running;
+    morphFetchButton(el.crawlListBtn, el.crawlDownloadBtn, running, "Fetch selected pages");
+    morphFetchButton(el.remoteListBtn, el.remoteDownloadBtn, running, "Fetch selected pages");
+    // The start button morphs into Stop, so this separate button is never shown.
+    el.crawlStopBtn.classList.add("hidden");
     const show = running || (crawl && crawl.finishedAt && Date.now() - crawl.finishedAt < 30000);
     el.crawlProgress.classList.toggle("hidden", !show);
     if (!crawl || !show) return;
@@ -577,17 +718,19 @@
     el.listPageBtn.addEventListener("click", () => void listCurrentPage(false));
     el.downloadPageBtn.addEventListener("click", () => void listCurrentPage(true));
     el.rangeHelpBtn.addEventListener("click", () => el.rangeHelp.classList.toggle("hidden"));
-    el.allPagesBtn.addEventListener("click", () => {
-      // Do not turn a 9,000-page listing into an accidental download job.
-      // This fills only the next reviewable batch; the user can enter any
-      // specific page/range (including a later one) themselves.
-      el.pageRange.value = safePageBatchRange(state.route, state.listingInfo?.totalPages);
-      el.pageRange.focus();
-    });
-    el.crawlListBtn.addEventListener("click", () => void startCrawl(state.tab?.url, el.pageRange.value, el.listingHint));
+    el.rangeAdvancedBtn.addEventListener("click", () => showAdvancedRange(true));
+    el.rangeSimpleBtn.addEventListener("click", () => showAdvancedRange(false));
+    el.allPagesBtn.addEventListener("click", () => { fillDefaultRange(); el.fromPage.focus(); });
+    const markEdited = () => { state.userEditedRange = true; updateRangeHints(); };
+    el.fromPage.addEventListener("input", markEdited);
+    el.toPage.addEventListener("input", markEdited);
+    el.pageRange.addEventListener("input", markEdited);
+    for (const input of [el.fromPage, el.toPage, el.pageRange]) {
+      input.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); submitListingFetch(); } });
+    }
+    el.crawlListBtn.addEventListener("click", listingButtonAction);
     el.crawlDownloadBtn.addEventListener("click", () => void downloadSelected(el.listingHint));
     el.crawlStopBtn.addEventListener("click", () => void send({ action: "panel.crawl.stop" }));
-    el.pageRange.addEventListener("keydown", (event) => { if (event.key === "Enter") void startCrawl(state.tab?.url, el.pageRange.value, el.listingHint); });
 
     el.mediaTypeSelect.addEventListener("change", () => {
       void send({ action: "panel.settings.set", settings: { mediaType: el.mediaTypeSelect.value } });
@@ -598,9 +741,10 @@
     el.skipDownloadedVideo.addEventListener("change", () => toggleSkip(el.skipDownloadedVideo.checked));
 
     el.remoteUseTabBtn.addEventListener("click", () => { if (state.tab?.url) el.remoteInput.value = state.tab.url; });
-    el.remoteListBtn.addEventListener("click", () => void startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "1-150", el.remoteHint));
+    el.remoteListBtn.addEventListener("click", remoteButtonAction);
     el.remoteDownloadBtn.addEventListener("click", () => void downloadSelected(el.remoteHint));
-    el.remoteInput.addEventListener("keydown", (event) => { if (event.key === "Enter") void startCrawl(el.remoteInput.value.trim(), el.remoteRange.value || "1-150", el.remoteHint); });
+    el.remoteRange.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); remoteButtonAction(); } });
+    el.remoteInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); remoteButtonAction(); } });
 
     el.selectAll.addEventListener("change", () => void send({ action: "panel.selectAll", selected: el.selectAll.checked, filter: { type: state.filter } }));
     el.invertBtn.addEventListener("click", () => void send({ action: "panel.invert", filter: { type: state.filter } }));
