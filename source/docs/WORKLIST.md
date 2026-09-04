@@ -19,6 +19,37 @@ Open tasks carried forward from the fetch-deeper / From-To / stop-in-button
 pass. Feasibility without extra data is noted per item — anything marked
 "needs data" is deliberately **not** being built blind.
 
+- [ ] **(World — ROOT CAUSE of "acts like a single page" found, code fix pending)**
+      Live captures (2026-09-04) prove the world crawler sends the WRONG JSON
+      keys. The extension posts `{ Skip, take, CountTotal, IncludeLinks,
+      OrderBy }`, but `POST rule34.world/api/v2/post/search/root` actually reads
+      a different lowercase payload the site itself sends:
+      `{ skip, cursor, take, countTotal, checkHasMore, filterAi, sortBy,
+      includeTags }`. JSON keys are case-sensitive, so the API ignores the
+      extension's `Skip`/`CountTotal`/`OrderBy` and returns page 1 every time —
+      the world crawl can never advance past the newest page. Response shape is
+      `{ items: [{id,type,duration,files,…}], cursor: "<lastId>", hasMore:
+      bool }` with **no** total-count field. Confirmed values: `skip` advances
+      by 30/page and the returned `cursor` equals the last returned post id;
+      termination is `hasMore:false`. Fix = make `worldSearchBody` +
+      `worldAdapter` send the real lowercase payload, thread the returned
+      `cursor` into the next request, and stop on `hasMore:false`. See the
+      "World crawler" item in the ordered To-do below. **One open decision (ask
+      the owner): sequential keyset walk vs skip-only offset** — affects whether
+      a deep "From page N" can jump straight there or must walk pages 1→N.
+      rule34video.com (canonical page-URL scraper) is unaffected by all of this.
+- [ ] **(World — live tag/search capture for the filter payload — PENDING,
+      needs live data, carry to a future session)** The root-feed capture above
+      (`includeTags:[]`, `sortBy:0`, `filterAi:false`) came from the homepage
+      feed. A **tag / search / pics-only / videos-only** listing almost
+      certainly adds fields to the payload (how `includeTags` carries the tag,
+      how the media-type filter is expressed, how sorting is requested). We will
+      NOT over-tune the adapter against the root feed alone. **Data needed:**
+      one request body + one response JSON for (a) a tag page like `/touhou`,
+      (b) a pics-only or videos-only filtered listing, and (c) a playlist, if
+      you want those to paginate correctly from the start. Until then the world
+      adapter can be built to the root schema and verified against a real
+      tag/search afterward.
 - [ ] **(Video domain — verify the new fetch UI on rule34video.com)** The
       From/To picker, batch button, stop-morph and the engine fixes
       (widened re-fetch walks every page; empty page ends a bounded walk) are
@@ -371,11 +402,21 @@ pass. Feasibility without extra data is noted per item — anything marked
       **3 Downloads at once**, start more than three selected rows, and verify
       only three are active. Check the toolbar icon, context-menu item, and
       restore after a `chrome://extensions` reload.
-- [ ] **(Session 10)** rule34.world total-count field in the search response
-      is inferred (`totalCount` / `total` / `count` / `totalItems` /
-      `itemsCount` / `pagination.total`); if the live API uses another name
-      the page count reads "unknown" and `all` walks pages until two come back
-      empty (cap 300) — verify live and pin the field.
+- [ ] **(World crawler — confirmed API fix)** `panel-queue.js` worldAdapter +
+      `site-routes.js` worldSearchBody must be rewritten to the REAL payload the
+      site sends (`{skip, cursor, take, countTotal:false, checkHasMore:true,
+      filterAi:false, sortBy, includeTags}`, lowercase, with the returned
+      `cursor` threaded into the next request and `hasMore:false` as the stop),
+      because the current `Skip`/`CountTotal`/`OrderBy` casing is ignored by
+      the API and the crawl never leaves page 1. Decide sequential-keyset vs
+      skip-offset first (see Follow-ups). Update the offline fixtures to model
+      `{items, cursor, hasMore}` so it is regression-tested. rule34video.com
+      unaffected (canonical page-URL scraper).
+- [ ] **(Session 10)** ~~rule34.world total-count field in the search response~~ —
+      SUPERSEDED: the live response has **no total-count field** (2026-09-04).
+      Termination is `hasMore:false` and page size is `take:30`; the crawler
+      walks a bounded range and stops on `hasMore:false` rather than reading a
+      page total.
 - [ ] **(Session 10)** `background-bridge.js` still carries the v5 content
       progress forwarders (`notifyContentDownloadStarted`, `forwardMP4Progress`,
       …). They are harmless (no receiver) but could be trimmed together with
@@ -425,12 +466,13 @@ pass. Feasibility without extra data is noted per item — anything marked
       channel open with `return true`; `const batchPending = []` hoisted above
       the queue helpers it references (was verified not a bug — this removes
       the fragility).
-- [ ] Optional: batch pagination / auto-scroll for rule34.world. Session 3
-      confirmed the exact API from gallery-dl's extractor: `POST
-      {root}/api/v2/post/search/root` with JSON
-      `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
-      OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
-      `/v2/post/search/playlist/{id}` for playlists.
+- [ ] Optional: batch pagination / auto-scroll for rule34.world. Live capture
+      (2026-09-04) supersedes the old gallery-dl-derived guess: `POST
+      {root}/api/v2/post/search/root` with the real payload
+      `{ skip, cursor, take:30, countTotal:false, checkHasMore:true,
+      filterAi:false, sortBy, includeTags }` → `{ items:[{id,type,duration,
+      files,…}], cursor:"<lastId>", hasMore:bool }` (30/page, cursor = last id,
+      no total). `/v2/post/search/playlist/{id}` is the playlist variant.
 - [x] **(Session 9) Simplified CI workflow applied by the owner.** GitHub
       rejected the agent's push (the bot token has no `workflows` scope), so
       the file shipped as `source/docs/ci-workflow.pending.yml` and the owner

@@ -37,6 +37,24 @@ follow-ups for the video-domain verification).
   (widened re-fetch; open-range-from-page); full suite (fixtures + smoke + e2e)
   green.
 
+## World crawler root cause confirmed (2026-09-04)
+
+Live network captures of `POST rule34.world/api/v2/post/search/root` exposed
+why the rule34.world listing "only ever acted like a single page": the world
+crawler (`worldSearchBody` in `site-routes.js`, `worldAdapter` in
+`panel-queue.js`) posts a payload that does not match what the API reads.
+JSON keys are case-sensitive; the extension sends `{ Skip, take, CountTotal,
+IncludeLinks, OrderBy }` while the site's own app posts `{ skip, cursor, take,
+countTotal:false, checkHasMore:true, filterAi:false, sortBy, includeTags }`.
+The API ignores the mismatched keys and returns page 1 on every request, so
+the crawl could never advance past the newest page. The real response is
+`{ items:[{id,type,duration,files,…}], cursor:"<lastId>", hasMore:bool }` with
+no total-count field; progression is the returned `cursor` (the last post id)
+and termination is `hasMore:false`. The fix (rewrite the adapter to the real
+lowercase payload, thread `cursor`, stop on `hasMore:false`, model it in the
+offline fixtures) is pending an owner decision on sequential-keyset vs
+skip-offset walking and is tracked in WORKLIST.md.
+
 ## v6.0.1 — Safe, inspect-first listing fetches (2026-09-03)
 
 - Fixed rule34video.com multi-page fetching. The crawler now fetches the
