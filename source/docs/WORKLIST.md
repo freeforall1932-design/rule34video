@@ -2,8 +2,9 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-04 (world-domain listing pass — fetch deeper + From/To
-picker + stop-in-button; see IMPROVEMENT_LOG.md).
+Last updated: 2026-09-04 (**PR #11** — world-domain listing pass + the
+rule34.world keyset-pagination fix, coded; real-browser world confirm still
+pending; see IMPROVEMENT_LOG.md and SESSION_HANDOFF.md).
 PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
@@ -12,6 +13,9 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
 Session 8 = source-separated, tag-named output folders (v5.0.0): master
 folder + automatic per-site folder + tag/artist collection folder + picture-set
 archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
+Session 10 (6.0.0/6.0.1) = Side Panel UI/UX + canonical-page crawler repair
+(PR #10). **Session 11 (this) = rule34.world keyset-pagination fix + world
+fetch-deeper UI (PR #11).**
 
 ## Follow-ups from the world-domain listing pass (next)
 
@@ -90,6 +94,23 @@ pass. Feasibility without extra data is noted per item — anything marked
       one-click **List this page** already exists; if video wants a distinct
       *single-page fetch* vs the *From/To* multi-page flow, that is a small UI
       nicety and needs no data.
+- [ ] **(Video domain — NOT tested/fixed this session; fetch-order accuracy is a
+      preference to decide later)** rule34video.com was untouched by the world
+      keyset fix and was **not** live-tested here (sandbox can't reach it), so
+      the earlier fetch-behaviour notes below still stand as open items:
+      - **Fetch order ≠ visual card order.** In the live capture the first item
+        fetched was **not** the first card on screen (e.g. "Frieren" was the 3rd
+        card in row 1 yet fetched first). This is a **preference**, not a bug to
+        fix blind — later choose between a **"slow but accurate"** fetch (fetch
+        strictly in the website's visual card order) and a **"fast"** fetch
+        (parallel, order-agnostic).
+      - **Video pagination is a SPA with no full reloads**, and there is **no
+        Show More** on rule34video.com; browser Back/Forward is constrained
+        (Back from a video to the list restores the list state; Forward resumes
+        the video). The user proposed adapting a SPA **page-marking** approach
+        to video fetching — or listing it as an alternative to world's Show More
+        — but this needs more testing and is deferred. No live video listing
+        data has been captured for this; don't build it blind.
 
 ## Done
 
@@ -100,7 +121,10 @@ pass. Feasibility without extra data is noted per item — anything marked
       already-listed 1-2 (duplicate-based early-stop only applies to open-ended
       "to the last page" crawls now); open-ended-from-page (`2-`) works even
       when the API reports no total (walks a bounded batch, stops when dry);
-      rule34.world total-count detection broadened across response shapes.
+      rule34.world total-count detection broadened across response shapes
+      (**superseded 2026-09-04**: the live API has NO total — see the "World
+      crawler — confirmed API fix" entry below; the crawler is now a keyset
+      walk that stops on `hasMore:false`).
       Panel: the one `Pages` box became **From / To** whole-page fields with a
       live hint, an **advanced** free-text mode (`2,4,6-10 · all · 50-`), a
       **batch** pre-fill, and a warning/confirm for an uncapped "to the last
@@ -517,8 +541,11 @@ pass. Feasibility without extra data is noted per item — anything marked
 - PR #1 = merged (`42cc212`). PR #2 = session-2 fixes. PR #3 = session-3
   review fixes. PR #4–#7 = sessions 4–7 (purge, restructure, CI). PR #8 =
   session 8 (5.0.0 output folders). PR #9 = session 9 (review pass,
-  queue-restore fix, CI rewrite). PR #10 = session 10 (6.0.0 UI/UX rework,
-  this session). All merged with merge commits.
+  queue-restore fix, CI rewrite). PR #10 = session 10 (6.0.0 UI/UX rework).
+  **PR #11 = session 11 (this session): world-domain listing pass + the
+  rule34.world keyset-pagination fix (real lowercase payload, cursor-threaded
+  walk, `hasMore:false` stop, open-ended world listings).** All merged with
+  merge commits.
 - Always merge with a **merge commit** (`gh pr merge <n> --merge`), not squash.
 - `git fetch origin` and work from `origin/main` at the start of every session;
   the local checkout may be behind.

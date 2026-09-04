@@ -12,6 +12,48 @@
 > Updated: 2026-09-01 (session 8 — source-separated, tag-named output folders, v5.0.0).
 > Updated: 2026-09-03 (session 10 — UI/UX rework: Side Panel queue + URL-routed page adapters, v6.0.0).
 > Updated: 2026-09-03 (v6.0.1 — canonical-page crawler repair + bounded review-first fetches).
+> Updated: 2026-09-04 (world listing pass + **rule34.world keyset-pagination fix** — see the top block).
+
+---
+
+## 0z. rule34.world keyset-pagination fix (2026-09-04) — READ FIRST
+
+Confirmed root cause + implemented fix for "**rule34.world acts like a single
+page**" (the world listing never advanced past the newest page). Details in
+`IMPROVEMENT_LOG.md`; regression status in `WORKLIST.md`.
+
+**Root cause.** Live network captures of `POST rule34.world/api/v2/post/search/root`
+showed the crawler (`worldSearchBody` in `site-routes.js`, `worldAdapter` in
+`panel-queue.js`) was posting the WRONG JSON casing. JSON keys are
+case-sensitive: the extension sent `{ Skip, take, CountTotal, IncludeLinks,
+OrderBy }`, but the API only reads the site's own lowercase payload
+`{ skip, cursor, take, countTotal:false, checkHasMore:true, filterAi:false,
+sortBy, includeTags }` and ignored every mismatched key — so every request
+returned page 1. The real response is `{ items:[{id,type,duration,files,…}],
+cursor:"<lastId>", hasMore:bool }` with **no total-count field**.
+
+**skip/take meaning (matches the SPA's "Show more", which ACCUMULATES).** Page N
+= posts `[(N-1)*30 .. N*30)`. `skip` = the offset of already-loaded posts, so
+`skip:0` → page 1, `skip:30` → page 2, …, `skip:120` → page 5; `take:30` loads
+exactly one page. There is no way to jump straight to a deep page — to reach
+page N you must first load pages 1→N, threading each response's `cursor`
+(= the last returned post id) into the next request. Termination is
+`hasMore:false`.
+
+**Decision + fix (owner approved sequential keyset walk, 2026-09-04).**
+`worldSearchBody` now emits the real lowercase payload + optional `cursor`
+continuation; `worldAdapter` carries a per-crawl cursor/sequence
+(`context.info.seq`) and walks the keyset 1→N, stopping on `hasMore:false`. A
+deep "From page N" crawl silently advances pages 1→N first (skip-only offset
+was rejected as keyset-unsafe because the site's Show More cannot jump and a
+page-number jump wipes the loaded list). The panel treats a world listing as
+**open-ended** (no total exists) and stops shortly after the pages run dry.
+Offline fixtures/tests now model the real `{items, cursor, hasMore}` schema
+(`site-routes.test.mjs`, `panel-queue.test.mjs`); fixtures + smoke + e2e green.
+
+**Still needs a real-browser pass on rule34.world** (this sandbox cannot reach
+the site) to confirm a listing pages past the newest page. rule34video.com
+(canonical page-URL scraper) is unaffected by the world change.
 
 ---
 
@@ -104,20 +146,23 @@ Site facts re-verified this session (fetch tool, 2026-09-03):
   files**; gallery-dl's older map is `100 mov / 101 mov720 / 102 mov480 /
   10 pic`. Keep the code; if 720p downloads come back as 256px previews,
   swap `101/102` back to real ladders.
-- Search API: `POST /api/v2/post/search/root` `{ includeTags, Skip, take:30,
-  CountTotal, IncludeLinks, OrderBy, type?, cursor }`. The total-count field
-  name is unconfirmed → the engine reads
-  `totalCount|total|count|totalItems|itemsCount|pagination.total` and falls
-  back to an **open-ended crawl** (stop after 2 empty pages, cap
-  `OPEN_ENDED_CRAWL_MAX_PAGES = 300`, same cap as the SPA's `maxPages`).
-  `/playlists` needs login; `/hot` sometimes returns a UK "Access Restricted"
-  page.
+- Search API: `POST /api/v2/post/search/root` (or `/search/playlist/{id}`) —
+  **confirmed 2026-09-04.** The API reads ONLY the lowercase payload
+  `{ skip, cursor, take:30, countTotal:false, checkHasMore:true, filterAi:false,
+  sortBy, includeTags }` and returns `{ items:[{id,type,duration,files,…}],
+  cursor:"<lastId>", hasMore:bool }` — **no total-count field**; skip/take is a
+  keyset feed that advances via the returned `cursor` and ends on
+  `hasMore:false` (see the top block). The old uppercase `{ Skip, take,
+  CountTotal, IncludeLinks, OrderBy }` casing was silently ignored → page 1
+  every time; that is fixed. `/playlists` needs login; `/hot` sometimes returns
+  a UK "Access Restricted" page.
 
-Tests: `npm test` = check + fixtures (**99** node:test cases: site-routes 15,
-panel-queue 21, folder-naming 35, pdf 12, zip 10, queue-restore 6) + smoke +
+Tests: `npm test` = check + fixtures (**103** node:test cases: site-routes 15,
+panel-queue 25, folder-naming 35, pdf 12, zip 10, queue-restore 6) + smoke +
 e2e (now also A10: `cancelDownload` forwards `mp4-*/hls-*/imageset-*` ids to
-the offscreen `CANCEL_*` handlers — new in this session, they had **no
-sender** before). Sandbox limits this session: no direct network to either
+the offscreen `CANCEL_*` handlers — new in session 10, they had **no
+sender** before; session-11 world fixtures model the real `{items, cursor,
+hasMore}` keyset schema). Sandbox limits this session: no direct network to either
 site (fetch tool only), `npx playwright install` fails (jsdom was used for
 UI smoke), and two earlier commits were lost with a sandbox rebuild — the
 work was re-committed from the working tree, so `git log` shows one big
@@ -312,6 +357,14 @@ first** — do not trust the local checkout to be current.
   `origin/main` @ `c3bb9bd`, version `4.4.2` → **`5.0.0`**).
 - Session branch (session 10): `arena/01a06482-rule34video` (branched from
   `origin/main` @ `d47b69f` = merge of PR #9, version `5.0.0` → **`6.0.0`**).
+- **Session branch (this session, PR #11):** `arena/01a06962-rule34video`
+  (branched from `origin/main` @ `38d62ce`). It carries the whole
+  **world-domain listing pass** (fetch deeper + From/To picker +
+  stop-in-button), the world root-cause/follow-up docs, and the
+  **rule34.world keyset-pagination fix** (top block). **Merged to `main` with a
+  merge commit via PR #11.** rule34video.com behaviour in this session was
+  exercised only by the offline suite — the live browser checks remain open
+  (see WORKLIST).
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
   `git log`; `origin/main` is still the source of truth.
 - GitHub auth is the `arena-ai-coding-agent[bot]` token (`gh` + `git` work).
@@ -597,14 +650,17 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
    `chrome.downloads` history; batch auto-paginate rule34.world — session 3
    pinned down the exact API from the gallery-dl fork: `POST
    {root}/api/v2/post/search/root`, JSON
-   `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
-   OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
+   `{ includeTags, skip, cursor, take:30, countTotal:false, checkHasMore:true,
+   filterAi:false, sortBy, ... }` → `{ items:[{id,type,duration,files,…}],
+   cursor, hasMore }` (30/page; **session 11 superseded the older
+   uppercase/60-page gallery-dl guess** — see the top block);
    `/v2/post/search/playlist/{id}` for playlists.
    **Session 4 implemented** the rule34.world bulk-by-tag/playlist flow on top of
-   this exact API (`searchRule34WorldPosts` + `bulkDownloadTag`); **session 5 wired
-   rule34video.com tag search** (`searchRule34VideoTag`, single-page scrape of
-   `rule34video.com/search/<tag>/`) — still needs a live check of the search URL
-   and pagination.
+   the older API guess (`searchRule34WorldPosts` + `bulkDownloadTag`); the
+   session-11 keyset fix corrects the same endpoint for the panel crawler.
+   **Session 5 wired rule34video.com tag search** (`searchRule34VideoTag`,
+   single-page scrape of `rule34video.com/search/<tag>/`) — still needs a live
+   check of the search URL and pagination.
 8. **(Session 5) Automated checks added:** `.github/workflows/ci.yml` +
    `source/tests/smoke.mjs` load the real `background-enhanced.js` under mocked
    `chrome`/`fetch` and assert `getVideoFormats` + `bulkDownloadTag` behavior. They
@@ -743,9 +799,17 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
 - PR #4–#7 (sessions 4–7): legacy purge, restructure into `extension/` +
   `source/`, CI. PR #8 / #9 (sessions 8–9): output folders + naming engine
   (5.0.0), review pass + queue-restore fix + CI workflow rewrite.
-- PR #10 (session 10, this session): the 6.0.0 UI/UX rework — Side Panel
-  queue, URL-routed page adapters, page-range / all-pages crawling on both
-  sites, popup retired. Merged with a merge commit like the others.
+- PR #10 (session 10): the 6.0.0 UI/UX rework — Side Panel queue, URL-routed
+  page adapters, page-range / all-pages crawling on both sites, popup retired.
+  Merged with a merge commit.
+- **PR #11 (session 11, this session): the world-domain listing pass + the
+  rule34.world keyset-pagination fix** — real lowercase search payload
+  (`skip/cursor/take/…`), cursor-threaded sequential walk that stops on
+  `hasMore:false`, world listings reported open-ended (no total), offline
+  fixtures rewritten to `{items,cursor,hasMore}`, and the From/To picker +
+  stop-in-button UI from the earlier world pass. Merged with a merge commit.
+  **Still needs the real-browser world pass** (sandbox can't reach the site)
+  and the video-domain checks.
 
 ---
 
@@ -787,8 +851,8 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   map them as the 480p/720p ladders, see `WORLD_FORMATS`; unverified against
   real files, see §0a.)
 - **Session 10:** `?full=true` on the post API → 451; a stale id → 500. The
-  search API pages 30 at a time (site page N == `Skip = 30·(N−1)`); the
-  SPA's own config caps listings at 300 pages.
+  search API pages 30 at a time (site page N == `skip = 30·(N−1)`, keyset —
+  see the top block); the SPA's own config caps listings at 300 pages.
 - File URL: `{root}/posts/{floor(id/1000)}/{id}/{id}.{mov.mp4|mov720.mp4|mov480.mp4|pic.jpg}`,
   where `root` = `rule34storage.b-cdn.net` (CDN) or `rule34.world` (origin)
   per the file flag — **session 3: the CDN was 500ing on every post while
@@ -796,11 +860,13 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   on the healthy one** (10-min TTL + `fallbackUrl` retry).
 - Thumbnail: `{...}/{id}.pic256.jpg`.
 - Listing/search pagination (not yet used, confirmed from gallery-dl
-  `rule34xyz.py`): `POST {root}/api/v2/post/search/root` with JSON
-  `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
-  OrderBy:0, cursor }` → `{ items, cursor }`, 60/page;
-  `/v2/post/search/playlist/{id}` for playlists; login =
-  `POST /api/v2/auth/signin` → `Bearer {jwt}`.
+  `rule34xyz.py`): `POST {root}/api/v2/post/search/root` with the lowercase
+  keyset body `{ includeTags, skip, cursor, take:30, countTotal:false,
+  checkHasMore:true, filterAi:false, sortBy }` → `{ items:[{id,type,duration,
+  files,…}], cursor, hasMore }`, 30/page — **session 11 corrected this to the
+  real payload** (keyset, no total, hasMore terminates); the older
+  uppercase/`60/page` gallery-dl guess is superseded. `/v2/post/search/playlist/{id}`
+  for playlists; login = `POST /api/v2/auth/signin` → `Bearer {jwt}`.
 - Sample posts for testing: video `/post/3571567` (720p+480p, no source),
   images `/post/100`, `/post/1280481` (2026). Old ids (100–250000) are
   mostly image-only.

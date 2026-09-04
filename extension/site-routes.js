@@ -382,6 +382,15 @@
   // field is unconfirmed), so `filterAi:false` and the tag list are kept and
   // no `type` key is added. `cursor` is optional: pass the previous response's
   // `cursor` (the last post id) to page past it — the API is a keyset feed.
+  //
+  // skip/take meaning (matches the SPA's own "Show more", which ACCUMULATES):
+  //   page N is posts [(N-1)*30 .. N*30). skip = the offset of already-loaded
+  //   posts, so skip:0 → page 1 (posts 1-30), skip:30 → page 2, …,
+  //   skip:120 → page 5. take:30 loads exactly that page. The panel crawl
+  //   advances page-by-page (skip 0,30,60,…) and threads each response's
+  //   `cursor`, so a fresh crawl on deep page N first walks pages 1→N — the
+  //   only safe way against a keyset feed (a skip-only jump to N is not how
+  //   the site's own UI loads older posts).
   function worldSearchBody(route, page, options) {
     const size = Number(options?.pageSize) > 0 ? Number(options.pageSize) : WORLD_PAGE_SIZE;
     const n = positivePage(page);
