@@ -2,7 +2,7 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-04 (**PR #11** — world-domain listing pass + the
+Last updated: 2026-09-04 (**PR #12** — world-domain listing pass + the
 rule34.world keyset-pagination fix, coded; real-browser world confirm still
 pending; see IMPROVEMENT_LOG.md and SESSION_HANDOFF.md).
 PR #1 merged (rebrand + queue + batch).
@@ -15,7 +15,7 @@ folder + automatic per-site folder + tag/artist collection folder + picture-set
 archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 Session 10 (6.0.0/6.0.1) = Side Panel UI/UX + canonical-page crawler repair
 (PR #10). **Session 11 (this) = rule34.world keyset-pagination fix + world
-fetch-deeper UI (PR #11).**
+fetch-deeper UI (PR #12).**
 
 ## Follow-ups from the world-domain listing pass (next)
 
@@ -542,7 +542,7 @@ pass. Feasibility without extra data is noted per item — anything marked
   review fixes. PR #4–#7 = sessions 4–7 (purge, restructure, CI). PR #8 =
   session 8 (5.0.0 output folders). PR #9 = session 9 (review pass,
   queue-restore fix, CI rewrite). PR #10 = session 10 (6.0.0 UI/UX rework).
-  **PR #11 = session 11 (this session): world-domain listing pass + the
+  **PR #12 = session 11 (this session): world-domain listing pass + the
   rule34.world keyset-pagination fix (real lowercase payload, cursor-threaded
   walk, `hasMore:false` stop, open-ended world listings).** All merged with
   merge commits.

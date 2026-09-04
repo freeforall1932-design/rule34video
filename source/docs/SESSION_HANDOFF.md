@@ -357,12 +357,12 @@ first** — do not trust the local checkout to be current.
   `origin/main` @ `c3bb9bd`, version `4.4.2` → **`5.0.0`**).
 - Session branch (session 10): `arena/01a06482-rule34video` (branched from
   `origin/main` @ `d47b69f` = merge of PR #9, version `5.0.0` → **`6.0.0`**).
-- **Session branch (this session, PR #11):** `arena/01a06962-rule34video`
+- **Session branch (this session, PR #12):** `arena/01a06962-rule34video`
   (branched from `origin/main` @ `38d62ce`). It carries the whole
   **world-domain listing pass** (fetch deeper + From/To picker +
   stop-in-button), the world root-cause/follow-up docs, and the
   **rule34.world keyset-pagination fix** (top block). **Merged to `main` with a
-  merge commit via PR #11.** rule34video.com behaviour in this session was
+  merge commit via PR #12.** rule34video.com behaviour in this session was
   exercised only by the offline suite — the live browser checks remain open
   (see WORKLIST).
 - **The sandbox clone is shallow** (1 commit) — don't be alarmed by a short
@@ -802,7 +802,7 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
 - PR #10 (session 10): the 6.0.0 UI/UX rework — Side Panel queue, URL-routed
   page adapters, page-range / all-pages crawling on both sites, popup retired.
   Merged with a merge commit.
-- **PR #11 (session 11, this session): the world-domain listing pass + the
+- **PR #12 (session 11, this session): the world-domain listing pass + the
   rule34.world keyset-pagination fix** — real lowercase search payload
   (`skip/cursor/take/…`), cursor-threaded sequential walk that stops on
   `hasMore:false`, world listings reported open-ended (no total), offline
