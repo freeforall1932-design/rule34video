@@ -145,6 +145,7 @@ function createChromeMock() {
   const downloads = [];
   const runtimeMessages = [];
   const determiningFilenameListeners = [];
+  const onChangedListeners = [];
   const createdListeners = [];
   const mock = {
     runtimeMessages,
@@ -173,10 +174,24 @@ function createChromeMock() {
       },
       cancel() {},
       onCreated: { addListener(listener) { createdListeners.push(listener); } },
-      onChanged: { addListener() {} },
+      onChanged: {
+        addListener(listener) { onChangedListeners.push(listener); },
+        removeListener(listener) {
+          const index = onChangedListeners.indexOf(listener);
+          if (index >= 0) onChangedListeners.splice(index, 1);
+        },
+      },
       onDeterminingFilename: {
-        addListener(listener) { determiningFilenameListeners.push(listener); },
-        removeListener() {},
+        // Lazy filename guard: the service worker only installs this while it
+        // has pending overrides, and removes it when the map is empty so other
+        // downloaders (nhentai, …) are not blocked outside rule34 work.
+        addListener(listener) {
+          if (!determiningFilenameListeners.includes(listener)) determiningFilenameListeners.push(listener);
+        },
+        removeListener(listener) {
+          const index = determiningFilenameListeners.indexOf(listener);
+          if (index >= 0) determiningFilenameListeners.splice(index, 1);
+        },
       },
     },
     notifications: { create() {} },
@@ -202,6 +217,7 @@ function createChromeMock() {
   };
   mock.downloadCalls = downloads;
   mock.downloadsApi.determiningFilenameListeners = determiningFilenameListeners;
+  mock.downloadsApi.onChangedListeners = onChangedListeners;
   return mock;
 }
 
@@ -401,18 +417,55 @@ check("overwrite is honoured when the user asks for it", chromeMock.downloadCall
 await setSettings({ duplicateBehaviour: "uniquify" });
 
 const listeners = chromeMock.downloadsApi.determiningFilenameListeners;
-check("a permanent filename guard is registered", listeners.length === 1, String(listeners.length));
+// The guard is lazy: it is installed only while a download we started is
+// pending (so nhentai / other downloaders are not blocked when we are idle).
+check("the filename guard is installed while a rule34 download is pending", listeners.length === 1, String(listeners.length));
 let suggested = null;
-listeners[0]({ id: 99, url: chromeMock.downloadCalls[0].url, finalUrl: chromeMock.downloadCalls[0].url }, (value) => { suggested = value; });
+const pendingCall = chromeMock.downloadCalls[0];
+const pendingUrl = pendingCall.url;
+const pendingName = pendingCall.filename;
+// chrome.downloads.download returns 1-based ids matching downloadCalls.length
+// at the time of the call; the most recent call is the last entry.
+const pendingId = chromeMock.downloadCalls.length;
+listeners[0]({ id: pendingId, url: pendingUrl, finalUrl: pendingUrl }, (value) => { suggested = value; });
 check(
   "the guard re-suggests the full folder path (beats Content-Disposition / blob UUIDs / other extensions)",
-  suggested?.filename === chromeMock.downloadCalls[0].filename,
-  JSON.stringify(suggested) + " vs " + chromeMock.downloadCalls[0].filename,
+  suggested?.filename === pendingName,
+  JSON.stringify(suggested) + " vs " + pendingName,
 );
-let untouched = "untouched";
-listeners[0]({ id: 100, url: "https://unrelated.example/file.bin", finalUrl: "https://unrelated.example/file.bin" }, () => { untouched = null; });
-check("unrelated downloads are never renamed", untouched === "untouched");
+// After the name is applied the override is dropped and the listener detaches,
+// so other extensions can name their own downloads without our interference.
+check(
+  "the filename guard detaches once our pending overrides are consumed",
+  chromeMock.downloadsApi.determiningFilenameListeners.length === 0,
+  String(chromeMock.downloadsApi.determiningFilenameListeners.length),
+);
 
+// Start another download so the guard is back, then confirm a foreign URL is
+// left alone (suggest() with no args — never an empty filename "").
+await downloadVideoPost(VIDEO_POST_URL);
+check("the filename guard re-attaches for the next rule34 download", chromeMock.downloadsApi.determiningFilenameListeners.length === 1, String(chromeMock.downloadsApi.determiningFilenameListeners.length));
+let foreignSuggestion = "sentinel";
+chromeMock.downloadsApi.determiningFilenameListeners[0](
+  { id: 99999, url: "https://unrelated.example/file.bin", finalUrl: "https://unrelated.example/file.bin" },
+  (value) => { foreignSuggestion = value === undefined ? "passthrough" : value; },
+);
+check(
+  "unrelated downloads are never renamed (suggest() with no args, never empty \"\")",
+  foreignSuggestion === "passthrough",
+  JSON.stringify(foreignSuggestion),
+);
+// Simulate the chrome download finishing so the guard detaches again — this is
+// the "no rule34 work / switch to another extension" idle state.
+const finishedId = chromeMock.downloadCalls.length;
+for (const listener of [...chromeMock.downloadsApi.onChangedListeners]) {
+  listener({ id: finishedId, state: { current: "complete" } });
+}
+check(
+  "idle (no pending rule34 downloads): the filename guard is fully detached",
+  chromeMock.downloadsApi.determiningFilenameListeners.length === 0,
+  String(chromeMock.downloadsApi.determiningFilenameListeners.length),
+);
 section("A5. metadata for the naming tokens comes from the post page");
 const formats = await bg.call({ action: "getVideoFormats", videoInfo: { url: VIDEO_POST_URL }, tabId: 1 });
 check("rule34video tags are collected for the checkbox list", Array.isArray(formats?.apiTags) && formats.apiTags.includes("touhou"), JSON.stringify(formats?.apiTags));

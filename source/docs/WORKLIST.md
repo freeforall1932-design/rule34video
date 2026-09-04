@@ -2,9 +2,9 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-04 (**PR #12** — world-domain listing pass + the
-rule34.world keyset-pagination fix, coded; real-browser world confirm still
-pending; see IMPROVEMENT_LOG.md and SESSION_HANDOFF.md).
+Last updated: 2026-09-04 (**v6.0.2** lazy filename guard in this extension;
+earlier same day: PR #12 world keyset-pagination, real-browser world confirm
+still pending — see IMPROVEMENT_LOG.md and SESSION_HANDOFF.md).
 PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).

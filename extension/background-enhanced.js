@@ -1161,41 +1161,147 @@ async function resolveOutputTarget(videoInfo = {}, ext = "", options = {}) {
 // Every artifact this extension starts is registered here and re-suggested
 // when Chrome asks, so the requested <Root>/<Site>/<Collection>/<file> path is
 // what actually lands on disk.
+//
+// IMPORTANT (naming leak / cross-extension clash):
+// Chrome treats ANY registered onDeterminingFilename listener as a participant
+// in EVERY download's naming, even when the listener does nothing and returns
+// (crbug 579563). That surfaces as:
+//   "This extension failed to name the download X because another extension
+//    (Downloader for Rule 34) determined a different filename """
+// when the user downloads from nhentai / elsewhere while this extension is
+// loaded. Fix: the listener is LAZY — installed only while we have pending
+// overrides for downloads WE started, and removed the moment the map is empty.
+// Outside rule34 work the extension does not touch download filenames at all.
 // ---------------------------------------------------------------------------
-const downloadFilenameOverrides = new Map(); // url -> { filename, conflictAction, at }
+const downloadFilenameOverrides = new Map(); // url | "id:<n>" -> { filename, conflictAction, at }
 const FILENAME_OVERRIDE_TTL_MS = 10 * 60 * 1000;
+let filenameGuardInstalled = false;
+
+function purgeExpiredFilenameOverrides(now = Date.now()) {
+  for (const [entryKey, entry] of downloadFilenameOverrides) {
+    if (now - (entry?.at || 0) > FILENAME_OVERRIDE_TTL_MS) downloadFilenameOverrides.delete(entryKey);
+  }
+}
+
+function syncFilenameGuardListener() {
+  purgeExpiredFilenameOverrides();
+  const shouldListen = downloadFilenameOverrides.size > 0;
+  if (shouldListen === filenameGuardInstalled) return;
+  try {
+    if (shouldListen) {
+      chrome.downloads.onDeterminingFilename.addListener(onDeterminingFilenameGuard);
+      filenameGuardInstalled = true;
+    } else {
+      chrome.downloads.onDeterminingFilename.removeListener(onDeterminingFilenameGuard);
+      filenameGuardInstalled = false;
+    }
+  } catch (error) {
+    filenameGuardInstalled = false;
+    logger.warn("Could not sync the filename guard listener", error);
+  }
+}
 
 function rememberDownloadFilename(url, filename, conflictAction = "uniquify") {
   const key = String(url || "");
-  if (!key || !filename) return;
-  const now = Date.now();
-  for (const [entryKey, entry] of downloadFilenameOverrides) {
-    if (now - entry.at > FILENAME_OVERRIDE_TTL_MS) downloadFilenameOverrides.delete(entryKey);
-  }
-  downloadFilenameOverrides.set(key, { filename: String(filename), conflictAction, at: now });
+  const name = String(filename || "").trim();
+  // Never register an empty path — Chrome ignores empty suggestions and other
+  // extensions then report us as having "determined" filename "".
+  if (!key || !name) return;
+  purgeExpiredFilenameOverrides();
+  downloadFilenameOverrides.set(key, { filename: name, conflictAction, at: Date.now() });
+  syncFilenameGuardListener();
+}
+
+function rememberDownloadFilenameById(downloadId, filename, conflictAction = "uniquify", url = "") {
+  if (downloadId === undefined || downloadId === null) return;
+  const name = String(filename || "").trim();
+  if (!name) return;
+  purgeExpiredFilenameOverrides();
+  downloadFilenameOverrides.set(`id:${downloadId}`, {
+    filename: name,
+    conflictAction,
+    at: Date.now(),
+    url: String(url || ""),
+  });
+  syncFilenameGuardListener();
 }
 
 function forgetDownloadFilename(url) {
-  downloadFilenameOverrides.delete(String(url || ""));
+  if (url !== undefined && url !== null && String(url) !== "") {
+    downloadFilenameOverrides.delete(String(url));
+  }
+  syncFilenameGuardListener();
+}
+
+function forgetDownloadFilenameById(downloadId) {
+  if (downloadId === undefined || downloadId === null) return;
+  const key = `id:${downloadId}`;
+  const entry = downloadFilenameOverrides.get(key);
+  // Drop the paired URL key too so the lazy guard can detach as soon as the
+  // chrome download finishes (even if onDeterminingFilename never fired).
+  if (entry?.url) downloadFilenameOverrides.delete(String(entry.url));
+  downloadFilenameOverrides.delete(key);
+  syncFilenameGuardListener();
 }
 
 function filenameOverrideFor(item = {}) {
-  return downloadFilenameOverrides.get(String(item?.finalUrl || "")) || downloadFilenameOverrides.get(String(item?.url || "")) || null;
+  if (item?.id !== undefined && item?.id !== null) {
+    const byId = downloadFilenameOverrides.get(`id:${item.id}`);
+    if (byId) return byId;
+  }
+  return downloadFilenameOverrides.get(String(item?.finalUrl || ""))
+    || downloadFilenameOverrides.get(String(item?.url || ""))
+    || null;
 }
 
-try {
-  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
-    const override = filenameOverrideFor(item);
-    if (!override) return; // not ours — never touch other downloads
-    try {
-      suggest({ filename: override.filename, conflictAction: override.conflictAction || "uniquify" });
-    } catch {
-      try { suggest(); } catch {}
+function onDeterminingFilenameGuard(item, suggest) {
+  const override = filenameOverrideFor(item);
+  // Only ever claim downloads we started. Foreign downloads must not be
+  // renamed (and we should not be listening at all when the override map is
+  // empty — see syncFilenameGuardListener). While we ARE listening because of
+  // an in-flight rule34 download, still refuse to touch anything else: call
+  // suggest() with no args so Chrome keeps the other extension's / the
+  // browser's name, and never pass an empty filename.
+  if (!override || !override.filename) {
+    try { suggest(); } catch {}
+    return;
+  }
+  try {
+    suggest({ filename: override.filename, conflictAction: override.conflictAction || "uniquify" });
+  } catch {
+    try { suggest(); } catch {}
+  }
+  // The name has been applied; drop every entry that pointed at this download
+  // (url key and/or id key, and any id entry that recorded the same url) so
+  // the lazy listener can detach once nothing is left.
+  const urlsToDrop = new Set(
+    [item?.finalUrl, item?.url, override.url].map((value) => String(value || "")).filter(Boolean),
+  );
+  if (item?.id !== undefined && item?.id !== null) {
+    downloadFilenameOverrides.delete(`id:${item.id}`);
+  }
+  for (const [entryKey, entry] of downloadFilenameOverrides) {
+    if (urlsToDrop.has(entryKey)) {
+      downloadFilenameOverrides.delete(entryKey);
+      continue;
     }
-  });
-} catch (error) {
-  logger.warn("Could not register the filename guard", error);
+    if (entryKey.startsWith("id:") && entry?.url && urlsToDrop.has(String(entry.url))) {
+      downloadFilenameOverrides.delete(entryKey);
+    }
+  }
+  syncFilenameGuardListener();
 }
+
+// Drop override entries once a chrome-managed download finishes so the guard
+// listener detaches promptly (and other downloaders stop clashing with us).
+try {
+  chrome.downloads.onChanged.addListener((delta) => {
+    if (!delta || !delta.state) return;
+    const state = delta.state.current;
+    if (state !== "complete" && state !== "interrupted") return;
+    forgetDownloadFilenameById(delta.id);
+  });
+} catch {}
 
 // Blob artifacts (ZIP/CBZ/PDF) are built in the offscreen document, which only
 // has chrome.runtime — it relays the blob URL here and this side hands it to
@@ -1203,20 +1309,29 @@ try {
 function saveBlobArtifact({ blobUrl, filename, conflictAction = "uniquify" }) {
   return new Promise((resolve) => {
     const url = String(blobUrl || "");
+    const name = String(filename || "").trim();
     if (!url) {
       resolve({ success: false, error: "No blob URL to save." });
       return;
     }
-    rememberDownloadFilename(url, filename, conflictAction);
+    if (!name) {
+      resolve({ success: false, error: "No filename to save." });
+      return;
+    }
+    rememberDownloadFilename(url, name, conflictAction);
     try {
-      chrome.downloads.download({ url, filename: String(filename), saveAs: false, conflictAction }, (downloadId) => {
+      chrome.downloads.download({ url, filename: name, saveAs: false, conflictAction }, (downloadId) => {
         const lastError = chrome.runtime?.lastError;
         if (lastError || downloadId === undefined) {
           forgetDownloadFilename(url);
           resolve({ success: false, error: lastError?.message || "Chrome download did not start." });
           return;
         }
-        downloadProgress.set(downloadId, { startTime: Date.now(), status: "Saving archive", fileName: filename, filename });
+        // Prefer id-keyed lookup: blob: finalUrl can differ from the url we
+        // registered. Keep the URL entry until the guard fires / the download
+        // completes, and add the id so either key wins the race.
+        rememberDownloadFilenameById(downloadId, name, conflictAction, url);
+        downloadProgress.set(downloadId, { startTime: Date.now(), status: "Saving archive", fileName: name, filename: name });
         resolve({ success: true, downloadId });
       });
     } catch (error) {
@@ -1285,6 +1400,7 @@ async function downloadImageSet(videoInfo = {}, formats = [], options = {}) {
         saveAs: false,
         conflictAction,
       });
+      rememberDownloadFilenameById(downloadId, filename, conflictAction, image.url);
       if (firstDownloadId === null) {
         firstDownloadId = downloadId;
         downloadProgress.set(downloadId, {
@@ -2625,10 +2741,11 @@ function watchForDownloadCreated({ url, filename, timeoutMs = 20000 }) {
   let cleanupTimer = null;
   let createdListener = null;
   let filenameListener = null;
-  const leafName = String(filename || "").split("/").pop() || "";
+  const targetName = String(filename || "").trim();
+  const leafName = targetName.split("/").pop() || "";
   const isMatchingItem = (item = {}) => {
     const itemUrl = item.finalUrl || item.url || "";
-    const itemName = String(item.filename || "").split(/[\/]/).pop();
+    const itemName = String(item.filename || "").split(/[\\/]/).pop();
     return itemUrl === url || (leafName && itemName === leafName);
   };
   const cleanup = () => {
@@ -2645,9 +2762,17 @@ function watchForDownloadCreated({ url, filename, timeoutMs = 20000 }) {
   };
   const promise = new Promise((resolve, reject) => {
     createdListener = (item) => { if (isMatchingItem(item)) finish(null, item.id, resolve, reject); };
+    // Temporary listener used only for tab-initiated downloads of *our*
+    // media. Always call suggest() — Chrome requires it once per listener —
+    // but only pass a filename for the matching item, and never an empty one.
+    // Returning without suggest() on a foreign download is exactly the leak
+    // that made nhentai report us as having determined filename "".
     filenameListener = (item, suggest) => {
-      if (!isMatchingItem(item)) return;
-      try { suggest({ filename, conflictAction: "uniquify" }); } catch {}
+      if (!isMatchingItem(item) || !targetName) {
+        try { suggest(); } catch {}
+        return;
+      }
+      try { suggest({ filename: targetName, conflictAction: "uniquify" }); } catch { try { suggest(); } catch {} }
       finish(null, item.id, resolve, reject);
     };
     try {
@@ -2825,6 +2950,7 @@ async function downloadVideo(videoInfo = {}) {
       saveAs: false,
       conflictAction,
     }));
+    rememberDownloadFilenameById(downloadId, fullFilename, conflictAction, segmentUrl);
     console.log("[download] hls-segment-chrome-id", downloadId);
     downloadProgress.set(downloadId, { videoInfo, format: segmentFormat, startTime: Date.now() });
     Bridge.notifyContentDownloadStarted?.({
@@ -2913,12 +3039,14 @@ async function downloadVideo(videoInfo = {}) {
       });
     }
     rememberDownloadFilename(selectedFormat.url, fullFilename, conflictAction);
-    return await startChromeDownload({
+    const chromeId = await startChromeDownload({
       url: selectedFormat.url,
       filename: fullFilename,
       saveAs: false,
       conflictAction,
     });
+    rememberDownloadFilenameById(chromeId, fullFilename, conflictAction, selectedFormat.url);
+    return chromeId;
   });
   console.log("[download] chrome-id", downloadId);
   downloadProgress.set(downloadId, { videoInfo, format: selectedFormat, startTime: Date.now() });
