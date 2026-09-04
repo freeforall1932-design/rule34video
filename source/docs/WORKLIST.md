@@ -19,25 +19,29 @@ Open tasks carried forward from the fetch-deeper / From-To / stop-in-button
 pass. Feasibility without extra data is noted per item — anything marked
 "needs data" is deliberately **not** being built blind.
 
-- [ ] **(World — ROOT CAUSE of "acts like a single page" found, code fix pending)**
-      Live captures (2026-09-04) prove the world crawler sends the WRONG JSON
-      keys. The extension posts `{ Skip, take, CountTotal, IncludeLinks,
+- [~] **(World — ROOT CAUSE of "acts like a single page" — CODED as a
+      sequential keyset walk; real-browser confirm still pending)**
+      Live captures (2026-09-04) proved the world crawler sent the WRONG JSON
+      keys. The extension posted `{ Skip, take, CountTotal, IncludeLinks,
       OrderBy }`, but `POST rule34.world/api/v2/post/search/root` actually reads
-      a different lowercase payload the site itself sends:
-      `{ skip, cursor, take, countTotal, checkHasMore, filterAi, sortBy,
-      includeTags }`. JSON keys are case-sensitive, so the API ignores the
-      extension's `Skip`/`CountTotal`/`OrderBy` and returns page 1 every time —
-      the world crawl can never advance past the newest page. Response shape is
-      `{ items: [{id,type,duration,files,…}], cursor: "<lastId>", hasMore:
-      bool }` with **no** total-count field. Confirmed values: `skip` advances
-      by 30/page and the returned `cursor` equals the last returned post id;
-      termination is `hasMore:false`. Fix = make `worldSearchBody` +
-      `worldAdapter` send the real lowercase payload, thread the returned
-      `cursor` into the next request, and stop on `hasMore:false`. See the
-      "World crawler" item in the ordered To-do below. **One open decision (ask
-      the owner): sequential keyset walk vs skip-only offset** — affects whether
-      a deep "From page N" can jump straight there or must walk pages 1→N.
-      rule34video.com (canonical page-URL scraper) is unaffected by all of this.
+      the lowercase payload the site itself sends: `{ skip, cursor, take,
+      countTotal:false, checkHasMore:true, filterAi:false, sortBy,
+      includeTags }`. JSON keys are case-sensitive, so the API ignored the old
+      casing and returned page 1 every time — the crawl could never advance
+      past the newest page. Response shape is `{ items:[{id,type,duration,
+      files,…}], cursor:"<lastId>", hasMore:bool }` with **no** total-count
+      field; `cursor` equals the last returned post id and termination is
+      `hasMore:false`. **Owner decision (2026-09-04): sequential keyset walk** —
+      thread the returned `cursor` into the next request and stop on
+      `hasMore:false`; a deep "From page N" silently walks pages 1→N first
+      (skip-only offset was rejected as keyset-unsafe). IMPLEMENTED in
+      `site-routes.js` (`worldSearchBody` → lowercase + optional `cursor`) and
+      `panel-queue.js` (`worldAdapter` now carries a per-crawl cursor/sequence
+      and walks 1→N), with the offline fixtures/tests rewritten to the real
+      `{items,cursor,hasMore}` schema. **Remaining: verify in a real browser**
+      (this sandbox cannot reach rule34.world) that a listing now paginates
+      past the newest page. rule34video.com (canonical page-URL scraper) is
+      unaffected.
 - [ ] **(World — live tag/search capture for the filter payload — PENDING,
       needs live data, carry to a future session)** The root-feed capture above
       (`includeTags:[]`, `sortBy:0`, `filterAi:false`) came from the homepage
@@ -402,15 +406,17 @@ pass. Feasibility without extra data is noted per item — anything marked
       **3 Downloads at once**, start more than three selected rows, and verify
       only three are active. Check the toolbar icon, context-menu item, and
       restore after a `chrome://extensions` reload.
-- [ ] **(World crawler — confirmed API fix)** `panel-queue.js` worldAdapter +
-      `site-routes.js` worldSearchBody must be rewritten to the REAL payload the
-      site sends (`{skip, cursor, take, countTotal:false, checkHasMore:true,
-      filterAi:false, sortBy, includeTags}`, lowercase, with the returned
-      `cursor` threaded into the next request and `hasMore:false` as the stop),
-      because the current `Skip`/`CountTotal`/`OrderBy` casing is ignored by
-      the API and the crawl never leaves page 1. Decide sequential-keyset vs
-      skip-offset first (see Follow-ups). Update the offline fixtures to model
-      `{items, cursor, hasMore}` so it is regression-tested. rule34video.com
+- [~] **(World crawler — confirmed API fix, DONE pending real-browser
+      verification)** `panel-queue.js` worldAdapter + `site-routes.js`
+      worldSearchBody now send the REAL lowercase payload the site sends
+      (`{skip, cursor, take, countTotal:false, checkHasMore:true, filterAi:false,
+      sortBy, includeTags}`), thread the returned `cursor` into the next request
+      and stop on `hasMore:false`. Owner chose the **sequential keyset walk**
+      (2026-09-04): a deep "From page N" silently walks pages 1→N first; no
+      skip-only offset jump (rejected as keyset-unsafe). The offline fixtures
+      now model `{items, cursor, hasMore}` and the suites are green. Only a
+      **real-browser pass on rule34.world** (the sandbox cannot reach it)
+      remains to confirm a listing pages past the newest page. rule34video.com
       unaffected (canonical page-URL scraper).
 - [ ] **(Session 10)** ~~rule34.world total-count field in the search response~~ —
       SUPERSEDED: the live response has **no total-count field** (2026-09-04).

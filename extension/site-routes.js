@@ -374,20 +374,28 @@
   }
 
   // The search body the SPA posts to /api/v2/post/search/root for a listing
-  // route + page. `type` 0 = image, 1 = video (omitted = both).
-  function worldSearchBody(route, page, pageSize) {
-    const size = Number(pageSize) > 0 ? Number(pageSize) : WORLD_PAGE_SIZE;
+  // route + page. Live capture (2026-09-04) shows the API reads ONLY these
+  // (lowercase) keys — the old `{ Skip, CountTotal, IncludeLinks, OrderBy }`
+  // casing was ignored by the server, so every "page" came back as page 1.
+  // `sortBy` maps the SPA's sort query; media filtering is NOT sent here (the
+  // panel filters rows by type after listing, and the SPA's own pics/videos
+  // field is unconfirmed), so `filterAi:false` and the tag list are kept and
+  // no `type` key is added. `cursor` is optional: pass the previous response's
+  // `cursor` (the last post id) to page past it — the API is a keyset feed.
+  function worldSearchBody(route, page, options) {
+    const size = Number(options?.pageSize) > 0 ? Number(options.pageSize) : WORLD_PAGE_SIZE;
     const n = positivePage(page);
     const body = {
-      includeTags: Array.isArray(route?.tags) ? route.tags : [],
-      Skip: (n - 1) * size,
+      skip: (n - 1) * size,
       take: size,
-      CountTotal: true,
-      IncludeLinks: true,
-      OrderBy: worldOrderBy(route?.sort),
+      countTotal: false,
+      checkHasMore: true,
+      filterAi: false,
+      sortBy: worldOrderBy(route?.sort),
+      includeTags: Array.isArray(route?.tags) ? route.tags : [],
     };
-    if (route?.mediaType === "image") body.type = 0;
-    if (route?.mediaType === "video") body.type = 1;
+    const cursor = String(options?.cursor || "").trim();
+    if (cursor) body.cursor = cursor;
     return body;
   }
 

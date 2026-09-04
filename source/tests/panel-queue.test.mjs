@@ -65,12 +65,45 @@ function videoListingPage(base, count, pages) {
   return `<html><body><h1>Videos for: test (${count * pages})</h1>${cards.join("")}${pagination}</body></html>`;
 }
 
-function worldPage(ids, total, videoIds = []) {
-  return {
-    items: ids.map((id) => ({ id, type: videoIds.includes(id) ? 1 : 0, duration: videoIds.includes(id) ? 12 : 0, tags: [{ type: 8, value: "Artist" }] })),
-    totalCount: total,
-    cursor: null,
+// A rule34.world keyset API feed. `pageIds` maps 1-based page index -> ids on
+// that page (a missing page is past the end of the feed). Mirrors the real
+// contract: response `{ items, cursor:<last id or null>, hasMore }`, no total.
+// Videos are the even ids (odd = image) so client-side media filtering can be
+// exercised without the mock itself needing a `type` field (the panel filters
+// by post type after listing; it is not sent to the API).
+function worldFeedFetch(pageIds) {
+  const pages = {};
+  for (const [k, v] of Object.entries(pageIds || {})) pages[Number(k)] = v;
+  const maxPage = Object.keys(pages).length ? Math.max(...Object.keys(pages).map(Number)) : 0;
+  return async (url, init) => {
+    if (!/rule34\.world\/api/.test(String(url))) return null;
+    const body = JSON.parse(init.body);
+    const take = Number(body.take) || 30;
+    // The adapter walks 1→N sending skip=(page-1)*take plus the prior cursor;
+    // the page index is recoverable from skip for this offline model.
+    const pageIndex = Math.floor((Number(body.skip) || 0) / take) + 1;
+    const ids = pages[pageIndex] || [];
+    const hasMore = pageIndex < maxPage && ids.length > 0;
+    const lastId = ids.length ? ids[ids.length - 1] : null;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        items: ids.map((id) => ({ id, type: id % 2 === 0 ? 1 : 0, duration: id % 2 === 0 ? 12 : 0, tags: [{ type: 8, value: "Artist" }] })),
+        cursor: lastId === null ? null : String(lastId),
+        hasMore,
+      }),
+    };
   };
+}
+
+// Contiguous pages of `pageSize` ids each starting at `base`, `count` pages total.
+function worldPageIds(base, count, pageSize = 30) {
+  const pages = {};
+  for (let p = 1; p <= count; p += 1) {
+    pages[p] = Array.from({ length: pageSize }, (_, i) => base + (p - 1) * pageSize + i);
+  }
+  return pages;
 }
 
 function createEngine(overrides = {}) {
@@ -99,17 +132,10 @@ function createEngine(overrides = {}) {
         if (page > 3) return { ok: true, status: 200, text: async () => "<html><body></body></html>" };
         return { ok: true, status: 200, text: async () => videoListingPage(100 + page * 10, 3, 3) };
       }
-      // rule34.world: 2 pages of 30 (total 45).
-      if (/rule34\.world\/api/.test(url)) {
-        const body = JSON.parse(init.body);
-        const page = body.Skip / body.take + 1;
-        const ids = [];
-        const start = 5000 + (page - 1) * 30;
-        const count = page === 1 ? 30 : page === 2 ? 15 : 0;
-        for (let i = 0; i < count; i += 1) ids.push(start + i);
-        const filtered = body.type === 1 ? ids.filter((id) => id % 2 === 0) : body.type === 0 ? ids.filter((id) => id % 2 === 1) : ids;
-        return { ok: true, status: 200, json: async () => worldPage(filtered, 45, ids.filter((id) => id % 2 === 0)) };
-      }
+      // rule34.world: a keyset feed of 45 posts (page 1: ids 5000..5029,
+      // page 2: ids 5030..5044). No total field; hasMore stops after page 2.
+      const worldResp = await worldFeedFetch({ 1: Array.from({ length: 30 }, (_, i) => 5000 + i), 2: Array.from({ length: 15 }, (_, i) => 5030 + i) })(url, init);
+      if (worldResp) return worldResp;
       return { ok: false, status: 404, text: async () => "", json: async () => ({}) };
     },
     resolvePost: overrides.resolvePost || (async (url) => {
@@ -214,8 +240,8 @@ describe("page crawls", () => {
     assert.equal(info.success, true);
     assert.equal(info.totalPages, 3);
     const world = await engine.handleMessage({ action: "panel.describe", url: "https://rule34.world/touhou" });
-    assert.equal(world.totalPages, 2);
-    assert.equal(world.totalItems, 45);
+    assert.equal(world.totalPages, 0, "rule34.world has no total-count field; listings are open-ended");
+    assert.equal(world.totalItems, 0);
   });
 
   it("crawls an explicit range of rule34video.com pages and dedupes", async () => {
@@ -264,8 +290,9 @@ describe("page crawls", () => {
     await waitFor(() => !engine.snapshot().crawl.running);
     // 15 even ids on page 1 + 8 on page 2 are videos.
     let snap = engine.snapshot();
-    assert.equal(snap.crawl.pageCount, 2);
     assert.equal(snap.crawl.autoDownload, false);
+    assert.equal(snap.crawl.openEnded, true, "world has no total, so 'all' walks to the last page");
+    assert.ok(snap.crawl.pageIndex <= 5, "stopped right after the 2 real pages ran dry");
     assert.ok(snap.items.every((item) => item.type === "video"), "only videos were listed");
     assert.equal(snap.items.length, 23);
     assert.equal(snap.counts.selected, 23, "found posts are ready for an explicit user start");
@@ -283,13 +310,7 @@ describe("page crawls", () => {
 
   it("crawls 'all' pages of a listing whose total is unknown until the pages run dry", async () => {
     const { engine } = createEngine({
-      fetch: async (url, init) => {
-        if (!/rule34\.world\/api/.test(url)) return null;
-        const body = JSON.parse(init.body);
-        const page = body.Skip / body.take + 1;
-        const ids = page <= 2 ? Array.from({ length: 30 }, (_, i) => 7000 + (page - 1) * 30 + i) : [];
-        return { ok: true, status: 200, json: async () => ({ items: ids.map((id) => ({ id, type: 0 })), cursor: null }) };
-      },
+      fetch: worldFeedFetch(worldPageIds(7000, 2)),
     });
     const info = await engine.handleMessage({ action: "panel.describe", url: "https://rule34.world/hot" });
     assert.equal(info.totalPages, 0, "the API reported no total");
@@ -303,13 +324,7 @@ describe("page crawls", () => {
 
   it("a widened re-fetch (1-2 then 1-5) still lists the new pages when the total is unknown", async () => {
     const { engine } = createEngine({
-      fetch: async (url, init) => {
-        if (!/rule34\.world\/api/.test(url)) return null;
-        const body = JSON.parse(init.body);
-        const page = body.Skip / body.take + 1;
-        const ids = page <= 4 ? Array.from({ length: 30 }, (_, i) => 9000 + (page - 1) * 30 + i) : [];
-        return { ok: true, status: 200, json: async () => ({ items: ids.map((id) => ({ id, type: 0 })) }) };
-      },
+      fetch: worldFeedFetch(worldPageIds(9000, 4)),
     });
     // First fetch 1-2 (listing has no reported total, but pages 1-4 exist).
     await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34.world/touhou", pages: "1-2" });
@@ -328,13 +343,7 @@ describe("page crawls", () => {
 
   it("an open range from a page ('2-') with an unknown total starts there and stops when dry", async () => {
     const { engine } = createEngine({
-      fetch: async (url, init) => {
-        if (!/rule34\.world\/api/.test(url)) return null;
-        const body = JSON.parse(init.body);
-        const page = body.Skip / body.take + 1;
-        const ids = page <= 3 ? Array.from({ length: 30 }, (_, i) => 12000 + (page - 1) * 30 + i) : [];
-        return { ok: true, status: 200, json: async () => ({ items: ids.map((id) => ({ id, type: 0 })) }) };
-      },
+      fetch: worldFeedFetch(worldPageIds(12000, 3)),
     });
     await engine.handleMessage({ action: "panel.crawl.start", url: "https://rule34.world/touhou", pages: "2-" });
     await waitFor(() => !engine.snapshot().crawl.running);

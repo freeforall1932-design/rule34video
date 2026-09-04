@@ -948,47 +948,94 @@
       },
     };
 
+    // --- rule34.world: sequential keyset walk --------------------------------
+    // Live capture (2026-09-04): POST /api/v2/post/search/root (or
+    // /search/playlist/{id}) is a keyset feed. Request `{ skip, cursor, take,
+    // countTotal:false, checkHasMore:true, filterAi:false, sortBy, includeTags }`;
+    // response `{ items:[{id,type,duration,files,…}], cursor:"<lastId>",
+    // hasMore:bool }`, NO total. To get page N you must walk pages 1→N sending
+    // the previous page's `cursor` (the last id it returned); there is no way
+    // to jump straight to a deep page, and `hasMore:false` is the only end.
+    // The adapter therefore carries a per-crawl cursor/sequence on
+    // `context.info.seq` and, when asked for a page, advances through any
+    // earlier pages that were not fetched yet (returning only the requested
+    // page's items). rule34video.com (offset HTML crawler) is untouched.
     const worldAdapter = {
       delayMs: WORLD_PAGE_DELAY_MS,
       endpoint(route) {
         if (route.kind === "playlist") return `https://rule34.world/api/v2/post/search/playlist/${encodeURIComponent(route.id)}`;
         return "https://rule34.world/api/v2/post/search/root";
       },
-      async request(route, page, mediaType, context = {}) {
-        const body = routes.worldSearchBody({ ...route, mediaType: mediaType || route.mediaType }, page);
+      newSeq() {
+        return { advancedTo: 0, cursor: "", hasMore: true, byPage: {} };
+      },
+      // One request for the page right after `seq.advancedTo`, threaded with the
+      // cursor carried on the sequence. Updates the sequence in place.
+      async advanceSeq(route, mediaType, seq, context) {
+        const target = seq.advancedTo + 1;
+        const body = routes.worldSearchBody({ ...route, mediaType }, target, { cursor: seq.cursor });
         if (route.kind === "playlist") delete body.includeTags;
         const response = await fetchImpl(this.endpoint(route), {
           method: "POST",
           credentials: "include",
           headers: { Accept: "application/json", "Content-Type": "application/json" },
           body: JSON.stringify(body),
-          ...(context.signal ? { signal: context.signal } : {}),
+          ...(context?.signal ? { signal: context.signal } : {}),
         });
         if (!response.ok) throw new Error(`rule34.world API ${response.status}`);
         const data = await response.json();
         const list = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-        // The SPA's response shape has drifted between versions; read the total
-        // from any of the names it has used so a listing is not mistaken for a
-        // single page (which used to leave the panel pre-filled with just "1").
-        const total = Number(
-          data?.totalCount ?? data?.total ?? data?.count ?? data?.totalItems ?? data?.itemsCount ?? data?.totalElements
-          ?? data?.found ?? data?.result?.total ?? data?.data?.total
-          ?? data?.pagination?.total ?? data?.pagination?.totalCount ?? data?.pagination?.totalItems
-          ?? data?.meta?.total ?? 0
-        ) || 0;
-        return { items: list.map(worldItem).filter(Boolean), total, pageSize: body.take };
+        const items = list.map(worldItem).filter(Boolean);
+        const take = Number(body.take) > 0 ? Number(body.take) : 30;
+        // hasMore only when the API says so (or, if it omits the field, when a
+        // full page came back — a short/empty page means the feed is exhausted).
+        const hasMore = data?.hasMore === true ? true : data?.hasMore === false ? false : items.length >= take;
+        const cursor = data?.cursor === undefined || data?.cursor === null
+          ? (items.length ? items[items.length - 1].id : seq.cursor)
+          : String(data.cursor);
+        seq.advancedTo = target;
+        seq.byPage[target] = items;
+        seq.cursor = cursor;
+        seq.hasMore = hasMore;
+        return { items, hasMore, cursor };
+      },
+      // Return the items for `page`, walking the keyset from the furthest
+      // already-fetched page if needed. Empty when the feed ends first.
+      async ensurePage(route, mediaType, seq, page, context) {
+        const target = Math.max(1, Number(page) || 1);
+        while (seq.advancedTo < target && seq.hasMore) {
+          const before = seq.advancedTo;
+          await this.advanceSeq(route, mediaType, seq, context);
+          if (seq.advancedTo === before) break; // no progress → stop walking
+          if (seq.advancedTo < target) await sleep(this.delayMs);
+        }
+        return seq.byPage[target] || [];
       },
       async describe(route, context = {}) {
-        const first = await this.request(route, 1, settings.mediaType, context);
-        // The range parser makes the user split much larger listings into
-        // reviewable batches; retain the API's real count for the UI.
-        const totalPages = first.total ? Math.ceil(first.total / first.pageSize) : 0;
-        return { totalPages, totalItems: first.total, perPage: first.pageSize, firstPage: first.items };
+        const seq = this.newSeq();
+        // Seed page 1 (no cursor yet). There is no total-count field, so the
+        // panel treats this listing as open-ended ("to the last page").
+        await this.advanceSeq(route, settings.mediaType, seq, context);
+        return {
+          totalPages: 0,
+          totalItems: 0,
+          perPage: (seq.byPage[1] || []).length || 30,
+          firstPage: seq.byPage[1] || [],
+          seq,
+        };
       },
       async fetchPage(route, page, context = {}) {
-        if (page === 1 && context.info?.firstPage && (context.mediaType || "all") === (settings.mediaType || "all")) return context.info.firstPage;
-        const result = await this.request(route, page, context.mediaType, context);
-        return result.items;
+        // Normal crawl: reuse the sequence started by describe so pages 2..N
+        // thread the cursor instead of re-walking from page 1 each time.
+        if (context?.info && context.info.seq) {
+          return this.ensurePage(route, context.mediaType || settings.mediaType, context.info.seq, page, context);
+        }
+        // Standalone (e.g. "list this page" with no prior describe): walk from
+        // page 1 to the requested page.
+        const seq = this.newSeq();
+        await this.advanceSeq(route, settings.mediaType, seq, context);
+        if ((Number(page) || 1) <= 1) return seq.byPage[1] || [];
+        return this.ensurePage(route, settings.mediaType, seq, page, context);
       },
     };
 
