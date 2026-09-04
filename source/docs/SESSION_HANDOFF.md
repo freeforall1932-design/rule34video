@@ -12,11 +12,36 @@
 > Updated: 2026-09-01 (session 8 — source-separated, tag-named output folders, v5.0.0).
 > Updated: 2026-09-03 (session 10 — UI/UX rework: Side Panel queue + URL-routed page adapters, v6.0.0).
 > Updated: 2026-09-03 (v6.0.1 — canonical-page crawler repair + bounded review-first fetches).
-> Updated: 2026-09-04 (world listing pass + **rule34.world keyset-pagination fix** — see the top block).
+> Updated: 2026-09-04 (world listing pass + **rule34.world keyset-pagination fix**).
+> Updated: 2026-09-04 (**v6.0.2** — lazy filename guard; this-repo only).
 
 ---
 
-## 0z. rule34.world keyset-pagination fix (2026-09-04) — READ FIRST
+## 0y. v6.0.2 — filename guard no longer clashes with other downloaders (2026-09-04)
+
+**This repository only.** User saw chrome://extensions blame *Downloader for
+Rule 34* while NHentai named PDFs off-domain:
+
+```text
+… another extension (Downloader for Rule 34) determined a different filename "".
+```
+
+Cause: session 8 registered a permanent `onDeterminingFilename` listener
+(crbug 579563 — any registered listener joins *every* download’s naming).
+“If not ours, return” does not opt out of the chain.
+
+**Fix in this tree (6.0.2):** lazy guard in the service worker — attach only
+while pending overrides exist for downloads we started; detach when empty;
+never suggest `""`; foreign items get bare `suggest()`; same rules for the
+temporary tab-download watcher. Own `R34V/<site>/…` paths still win for our
+artifacts. Log: `IMPROVEMENT_LOG.md` § v6.0.2. Symbols:
+`onDeterminingFilenameGuard`, `syncFilenameGuardListener`,
+`rememberDownloadFilename` / `rememberDownloadFilenameById`. E2E A4 asserts
+attach → rename → detach → foreign passthrough → idle detach.
+
+---
+
+## 0z. rule34.world keyset-pagination fix (2026-09-04)
 
 Confirmed root cause + implemented fix for "**rule34.world acts like a single
 page**" (the world listing never advanced past the newest page). Details in
