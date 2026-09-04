@@ -1,6 +1,6 @@
 {
   "name": "rule34video-downloader",
-  "version": "6.0.1",
+  "version": "6.0.2",
   "private": true,
   "description": "Development scripts for the Downloader for Rule 34 MV3 extension. The shipped extension in extension/ has no build step and no runtime dependencies; everything here runs offline on the Node that CI already installs.",
   "scripts": {

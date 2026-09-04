@@ -5,6 +5,42 @@ Date: 2026-08-29 (Asia/Jakarta)
 This log records changes made while rebranding the extension into a free,
 community **Rule34 Downloader** for both `rule34.world` and `rule34video.com`.
 
+## v6.0.2 — Filename-guard naming leak fixed (2026-09-04)
+
+Chrome treats **any** registered `chrome.downloads.onDeterminingFilename`
+listener as a participant in **every** download's naming (crbug 579563), even
+when the listener does nothing and returns. That was the cause of the
+extension-page errors the user saw while downloading from nhentai:
+
+> This extension failed to name the download "Kodomo_Idol.pdf" because another
+> extension (Downloader for Rule 34) determined a different filename "".
+
+The permanent filename guard (added in session 8 to beat Content-Disposition /
+blob-UUID naming) was installed at service-worker startup and never removed, so
+it sat in the naming chain for every other downloader on the browser.
+
+Fix in `extension/background-enhanced.js`:
+
+- The `onDeterminingFilename` listener is now **lazy**: installed only while
+  the override map holds a pending path for a download **this** extension
+  started, and removed the moment the map is empty (after the name is applied
+  or the chrome download completes / is interrupted).
+- Outside rule34 work the extension does not touch download filenames at all —
+  switching to nhentai (or any other site/extension) no longer clashes.
+- While a rule34 download *is* in flight the guard still refuses to rename
+  foreign URLs (`suggest()` with no args) and never registers / suggests an
+  empty filename `""`.
+- Overrides are keyed by both URL and chrome download id so blob: finalUrls
+  still resolve, and both keys are dropped together on completion.
+- The temporary tab-initiated-download listener was the same class of leak
+  (returned without `suggest()` on foreign items); it now always calls
+  `suggest()` and only passes a filename for the matching item.
+
+E2E A4 now asserts: guard attaches on a rule34 download, re-suggests the full
+path, detaches after consumption, re-attaches for the next one, leaves foreign
+URLs alone, and is fully detached once the chrome download completes. Version
+bumped to **6.0.2**.
+
 ## rule34.world keyset-pagination fix — real payload + cursor walk (2026-09-04)
 
 Implemented the confirmed fix for "rule34.world acts like a single page".
