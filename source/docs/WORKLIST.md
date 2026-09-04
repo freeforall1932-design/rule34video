@@ -2,8 +2,9 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-03 (v6.0.1 — canonical listing pagination, bounded
-review-first fetches, and a three-download default; see IMPROVEMENT_LOG.md).
+Last updated: 2026-09-04 (**PR #12** — world-domain listing pass + the
+rule34.world keyset-pagination fix, coded; real-browser world confirm still
+pending; see IMPROVEMENT_LOG.md and SESSION_HANDOFF.md).
 PR #1 merged (rebrand + queue + batch).
 PR #2 = session-2 bug fixes (popup fallback + image routing).
 PR #3 = session-3 review fixes (CDN outage handling + persistent queue).
@@ -12,9 +13,127 @@ Session 6 = dead-code purge + scrapyard retention + hardening pass
 Session 8 = source-separated, tag-named output folders (v5.0.0): master
 folder + automatic per-site folder + tag/artist collection folder + picture-set
 archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
+Session 10 (6.0.0/6.0.1) = Side Panel UI/UX + canonical-page crawler repair
+(PR #10). **Session 11 (this) = rule34.world keyset-pagination fix + world
+fetch-deeper UI (PR #12).**
+
+## Follow-ups from the world-domain listing pass (next)
+
+Open tasks carried forward from the fetch-deeper / From-To / stop-in-button
+pass. Feasibility without extra data is noted per item — anything marked
+"needs data" is deliberately **not** being built blind.
+
+- [~] **(World — ROOT CAUSE of "acts like a single page" — CODED as a
+      sequential keyset walk; real-browser confirm still pending)**
+      Live captures (2026-09-04) proved the world crawler sent the WRONG JSON
+      keys. The extension posted `{ Skip, take, CountTotal, IncludeLinks,
+      OrderBy }`, but `POST rule34.world/api/v2/post/search/root` actually reads
+      the lowercase payload the site itself sends: `{ skip, cursor, take,
+      countTotal:false, checkHasMore:true, filterAi:false, sortBy,
+      includeTags }`. JSON keys are case-sensitive, so the API ignored the old
+      casing and returned page 1 every time — the crawl could never advance
+      past the newest page. Response shape is `{ items:[{id,type,duration,
+      files,…}], cursor:"<lastId>", hasMore:bool }` with **no** total-count
+      field; `cursor` equals the last returned post id and termination is
+      `hasMore:false`. **Owner decision (2026-09-04): sequential keyset walk** —
+      thread the returned `cursor` into the next request and stop on
+      `hasMore:false`; a deep "From page N" silently walks pages 1→N first
+      (skip-only offset was rejected as keyset-unsafe). IMPLEMENTED in
+      `site-routes.js` (`worldSearchBody` → lowercase + optional `cursor`) and
+      `panel-queue.js` (`worldAdapter` now carries a per-crawl cursor/sequence
+      and walks 1→N), with the offline fixtures/tests rewritten to the real
+      `{items,cursor,hasMore}` schema. **Remaining: verify in a real browser**
+      (this sandbox cannot reach rule34.world) that a listing now paginates
+      past the newest page. rule34video.com (canonical page-URL scraper) is
+      unaffected.
+- [ ] **(World — live tag/search capture for the filter payload — PENDING,
+      needs live data, carry to a future session)** The root-feed capture above
+      (`includeTags:[]`, `sortBy:0`, `filterAi:false`) came from the homepage
+      feed. A **tag / search / pics-only / videos-only** listing almost
+      certainly adds fields to the payload (how `includeTags` carries the tag,
+      how the media-type filter is expressed, how sorting is requested). We will
+      NOT over-tune the adapter against the root feed alone. **Data needed:**
+      one request body + one response JSON for (a) a tag page like `/touhou`,
+      (b) a pics-only or videos-only filtered listing, and (c) a playlist, if
+      you want those to paginate correctly from the start. Until then the world
+      adapter can be built to the root schema and verified against a real
+      tag/search afterward.
+- [ ] **(Video domain — verify the new fetch UI on rule34video.com)** The
+      From/To picker, batch button, stop-morph and the engine fixes
+      (widened re-fetch walks every page; empty page ends a bounded walk) are
+      all in **shared** code, so rule34video.com already gets them. What is
+      left is **live verification** that a real video listing pre-fills
+      correctly (known total → To = last page / batch), that re-fetching a
+      widened range lists the new pages, and that nothing video-specific
+      regressed (playlists, member/artist, homepage crawl). **Data that helps
+      (optional but recommended):** one real saved listing page each for a
+      rule34video.com **search**, **tag**, **playlist** and **member** page
+      (they all share card markup but the main-block id differs), captured
+      like `source/page-source/rule34video-listing.html`. Without those, the
+      offline suites + the existing saved listing still pass, but real-browser
+      confirmation needs a manual check.
+- [ ] **(World "Show More"/deep DOM driver — Twitter-style in-page crawl)**
+      Porting the Twitter-repo style "drive the page to load older posts"
+      against rule34.world. The site is an Angular SPA that appends older
+      posts (a Show-More / infinite-scroll behaviour). **This is NOT being
+      built blind** — the API crawl already fetches the same older posts and
+      now stops correctly. **Data needed before coding:** one captured DOM
+      (`document.body.innerHTML`, or DevTools copy of the grid root) of a
+      rule34.world listing **before** and **after** clicking "Show more" /
+      scrolling to the bottom (to see whether it is a button vs pure scroll and
+      what class/id the appended-card container + button use), plus a note of
+      any "we're out of posts / you've reached the end" element. Only then can
+      the content-script driver (`content-rule34world.js`) be written against
+      real selectors.
+- [ ] **(World — pin the API total-count field live)** We broadened total
+      detection across response shapes, but the single live field name has not
+      been confirmed. **Data needed:** one raw JSON body returned by
+      `POST https://rule34.world/api/v2/post/search/root` (paste the response,
+      ids can be stripped) so we can pin the exact field and simplify.
+- [ ] **(Video domain — optional "single page" quick action)** A dedicated
+      one-click **List this page** already exists; if video wants a distinct
+      *single-page fetch* vs the *From/To* multi-page flow, that is a small UI
+      nicety and needs no data.
+- [ ] **(Video domain — NOT tested/fixed this session; fetch-order accuracy is a
+      preference to decide later)** rule34video.com was untouched by the world
+      keyset fix and was **not** live-tested here (sandbox can't reach it), so
+      the earlier fetch-behaviour notes below still stand as open items:
+      - **Fetch order ≠ visual card order.** In the live capture the first item
+        fetched was **not** the first card on screen (e.g. "Frieren" was the 3rd
+        card in row 1 yet fetched first). This is a **preference**, not a bug to
+        fix blind — later choose between a **"slow but accurate"** fetch (fetch
+        strictly in the website's visual card order) and a **"fast"** fetch
+        (parallel, order-agnostic).
+      - **Video pagination is a SPA with no full reloads**, and there is **no
+        Show More** on rule34video.com; browser Back/Forward is constrained
+        (Back from a video to the list restores the list state; Forward resumes
+        the video). The user proposed adapting a SPA **page-marking** approach
+        to video fetching — or listing it as an alternative to world's Show More
+        — but this needs more testing and is deferred. No live video listing
+        data has been captured for this; don't build it blind.
 
 ## Done
 
+- [x] **(World-domain listing pass) Fetch deeper + From/To picker + stop-in-button** —
+      rule34.world listings no longer act like a single page. Engine: a bounded
+      explicit range (`1-5`) now always walks every requested page — widening a
+      fetch `1-2` → `1-5` really lists pages 3-5 instead of stopping on the
+      already-listed 1-2 (duplicate-based early-stop only applies to open-ended
+      "to the last page" crawls now); open-ended-from-page (`2-`) works even
+      when the API reports no total (walks a bounded batch, stops when dry);
+      rule34.world total-count detection broadened across response shapes
+      (**superseded 2026-09-04**: the live API has NO total — see the "World
+      crawler — confirmed API fix" entry below; the crawler is now a keyset
+      walk that stops on `hasMore:false`).
+      Panel: the one `Pages` box became **From / To** whole-page fields with a
+      live hint, an **advanced** free-text mode (`2,4,6-10 · all · 50-`), a
+      **batch** pre-fill, and a warning/confirm for an uncapped "to the last
+      page" fetch. The listing fetch button **morphs into "Stop fetch"** while a
+      crawl runs and its Download hides (nothing pushed off-screen); `.action-row`
+      also flex-wraps as a fallback. Regression tests in `panel-queue.test.mjs`.
+      **(Follow-ups: apply the same fetch/UI pass to rule34video.com; drive the
+      live page's Show-More DOM on world as an optional deep-crawl once its
+      selectors are captured — not shipped blind.)**
 - [x] **(Session 10, 6.0.0–6.0.1) UI/UX rework and safety follow-up** — popup
       → Side Panel queue (Twitter-style rows/counters/dock), generic toolbar →
       per-site URL-routed content scripts, and an inspect-first nh-dw page
@@ -311,11 +430,23 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       **3 Downloads at once**, start more than three selected rows, and verify
       only three are active. Check the toolbar icon, context-menu item, and
       restore after a `chrome://extensions` reload.
-- [ ] **(Session 10)** rule34.world total-count field in the search response
-      is inferred (`totalCount` / `total` / `count` / `totalItems` /
-      `itemsCount` / `pagination.total`); if the live API uses another name
-      the page count reads "unknown" and `all` walks pages until two come back
-      empty (cap 300) — verify live and pin the field.
+- [~] **(World crawler — confirmed API fix, DONE pending real-browser
+      verification)** `panel-queue.js` worldAdapter + `site-routes.js`
+      worldSearchBody now send the REAL lowercase payload the site sends
+      (`{skip, cursor, take, countTotal:false, checkHasMore:true, filterAi:false,
+      sortBy, includeTags}`), thread the returned `cursor` into the next request
+      and stop on `hasMore:false`. Owner chose the **sequential keyset walk**
+      (2026-09-04): a deep "From page N" silently walks pages 1→N first; no
+      skip-only offset jump (rejected as keyset-unsafe). The offline fixtures
+      now model `{items, cursor, hasMore}` and the suites are green. Only a
+      **real-browser pass on rule34.world** (the sandbox cannot reach it)
+      remains to confirm a listing pages past the newest page. rule34video.com
+      unaffected (canonical page-URL scraper).
+- [ ] **(Session 10)** ~~rule34.world total-count field in the search response~~ —
+      SUPERSEDED: the live response has **no total-count field** (2026-09-04).
+      Termination is `hasMore:false` and page size is `take:30`; the crawler
+      walks a bounded range and stops on `hasMore:false` rather than reading a
+      page total.
 - [ ] **(Session 10)** `background-bridge.js` still carries the v5 content
       progress forwarders (`notifyContentDownloadStarted`, `forwardMP4Progress`,
       …). They are harmless (no receiver) but could be trimmed together with
@@ -365,12 +496,13 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
       channel open with `return true`; `const batchPending = []` hoisted above
       the queue helpers it references (was verified not a bug — this removes
       the fragility).
-- [ ] Optional: batch pagination / auto-scroll for rule34.world. Session 3
-      confirmed the exact API from gallery-dl's extractor: `POST
-      {root}/api/v2/post/search/root` with JSON
-      `{ includeTags, Skip, take, CountTotal:false, IncludeLinks:true,
-      OrderBy:0, cursor }` → `{ items, cursor }` (60/page);
-      `/v2/post/search/playlist/{id}` for playlists.
+- [ ] Optional: batch pagination / auto-scroll for rule34.world. Live capture
+      (2026-09-04) supersedes the old gallery-dl-derived guess: `POST
+      {root}/api/v2/post/search/root` with the real payload
+      `{ skip, cursor, take:30, countTotal:false, checkHasMore:true,
+      filterAi:false, sortBy, includeTags }` → `{ items:[{id,type,duration,
+      files,…}], cursor:"<lastId>", hasMore:bool }` (30/page, cursor = last id,
+      no total). `/v2/post/search/playlist/{id}` is the playlist variant.
 - [x] **(Session 9) Simplified CI workflow applied by the owner.** GitHub
       rejected the agent's push (the bot token has no `workflows` scope), so
       the file shipped as `source/docs/ci-workflow.pending.yml` and the owner
@@ -409,8 +541,11 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 - PR #1 = merged (`42cc212`). PR #2 = session-2 fixes. PR #3 = session-3
   review fixes. PR #4–#7 = sessions 4–7 (purge, restructure, CI). PR #8 =
   session 8 (5.0.0 output folders). PR #9 = session 9 (review pass,
-  queue-restore fix, CI rewrite). PR #10 = session 10 (6.0.0 UI/UX rework,
-  this session). All merged with merge commits.
+  queue-restore fix, CI rewrite). PR #10 = session 10 (6.0.0 UI/UX rework).
+  **PR #12 = session 11 (this session): world-domain listing pass + the
+  rule34.world keyset-pagination fix (real lowercase payload, cursor-threaded
+  walk, `hasMore:false` stop, open-ended world listings).** All merged with
+  merge commits.
 - Always merge with a **merge commit** (`gh pr merge <n> --merge`), not squash.
 - `git fetch origin` and work from `origin/main` at the start of every session;
   the local checkout may be behind.

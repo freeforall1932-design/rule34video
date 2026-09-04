@@ -5,6 +5,83 @@ Date: 2026-08-29 (Asia/Jakarta)
 This log records changes made while rebranding the extension into a free,
 community **Rule34 Downloader** for both `rule34.world` and `rule34video.com`.
 
+## rule34.world keyset-pagination fix — real payload + cursor walk (2026-09-04)
+
+Implemented the confirmed fix for "rule34.world acts like a single page".
+Root cause and chosen approach are detailed in the "World crawler root cause
+confirmed" section below. Net change: `worldSearchBody` in `site-routes.js`
+now emits the real lowercase payload the site's SPA posts (`{skip, cursor,
+take, countTotal:false, checkHasMore:true, filterAi:false, sortBy,
+includeTags}`; no media `type` — the panel filters image/video client-side
+after listing); `worldAdapter` in `panel-queue.js` carries a per-crawl
+cursor/sequence (`context.info.seq`) and walks the keyset 1→N, threading each
+response's `cursor` and stopping on `hasMore:false`. A listing is now reported
+open-ended (no total field exists), and a deep "From page N" silently advances
+through pages 1→N first. Offline fixtures/tests (`site-routes.test.mjs`,
+`panel-queue.test.mjs`) model the real `{items, cursor, hasMore}` schema;
+fixtures + smoke + e2e are green. **Still requires a real-browser pass on
+rule34.world** (this sandbox cannot reach the site) to confirm a listing pages
+past the newest page. rule34video.com is untouched (canonical page-URL
+scraper).
+
+## World-domain listing pass — fetch deeper, From/To picker, stop-in-button (2026-09-04)
+
+Follow-up to the session-10 rework, focused on the side-panel listing fetch for
+rule34.world (the shared code also covers rule34video.com; see the WORKLIST
+follow-ups for the video-domain verification).
+
+- **Bounded re-fetch bug fixed.** A widened fetch (`1-2` then `1-5`) used to
+  stop after the already-listed pages 1-2 and never list 3-5. Now a bounded
+  explicit range always walks every requested page; only an **open-ended**
+  "to the last page" crawl treats duplicate-only pages as the end. A page that
+  comes back truly **empty** still ends the walk (past the last page), so a big
+  range on a short listing does not fire a stream of empty requests.
+- **Open-ended-from-page.** `5-` (or `all` from page 1) now works even when the
+  listing's total is unknown: the engine walks a bounded batch and stops when
+  the pages run dry.
+- **rule34.world total detection broadened.** The SPA's response shape has
+  drifted between versions, so a missing/renamed count field used to leave the
+  panel pre-filled with a single page ("1"). The reader now accepts many total
+  field names (`totalCount`/`total`/`count`/`totalItems`/`itemsCount`/
+  `totalElements`/`found`/`result.total`/`data.total`/`pagination.*`/`meta.total`).
+- **From → To picker.** The single `Pages` box became two whole-page fields
+  with a live hint ("Pages 1–5 · 5 pages"); leaving To empty warns about (and
+  confirms) a fetch to the last page. **batch** pre-fills a reviewable run;
+  **advanced** restores the free-text syntax `2,4,6-10 / all / 50-`.
+- **Stop lives in the button.** While a fetch runs, "Fetch selected pages"
+  morphs into "Stop fetch" (danger) and its row's Download hides, so there is
+  no separate Stop pushed partly off-screen. `.action-row` also flex-wraps as a
+  fallback on narrow panels.
+- Offline regression tests added in `source/tests/panel-queue.test.mjs`
+  (widened re-fetch; open-range-from-page); full suite (fixtures + smoke + e2e)
+  green.
+
+## World crawler root cause confirmed (2026-09-04)
+
+Live network captures of `POST rule34.world/api/v2/post/search/root` exposed
+why the rule34.world listing "only ever acted like a single page": the world
+crawler (`worldSearchBody` in `site-routes.js`, `worldAdapter` in
+`panel-queue.js`) posts a payload that does not match what the API reads.
+JSON keys are case-sensitive; the extension sends `{ Skip, take, CountTotal,
+IncludeLinks, OrderBy }` while the site's own app posts `{ skip, cursor, take,
+countTotal:false, checkHasMore:true, filterAi:false, sortBy, includeTags }`.
+The API ignores the mismatched keys and returns page 1 on every request, so
+the crawl could never advance past the newest page. The real response is
+`{ items:[{id,type,duration,files,…}], cursor:"<lastId>", hasMore:bool }` with
+no total-count field; progression is the returned `cursor` (the last post id)
+and termination is `hasMore:false`. The owner chose the **sequential keyset
+walk** (2026-09-04) — thread the returned `cursor`, stop on `hasMore:false`; a
+deep "From page N" silently walks pages 1→N first (skip-only offset was
+rejected as keyset-unsafe). **Implemented now:** `worldSearchBody` sends the
+lowercase payload (`{skip, take:30, countTotal:false, checkHasMore:true,
+filterAi:false, sortBy, includeTags}` + optional `cursor` continuation, no
+media `type` — the panel filters by post type client-side); `worldAdapter`
+carries a per-crawl cursor/sequence and walks 1→N; describe reports an
+open-ended listing (no total); the offline fixtures model `{items, cursor,
+hasMore}` and all suites are green. **Still needs a real-browser pass on
+rule34.world** (this sandbox cannot reach the site) to confirm a listing pages
+past the newest page.
+
 ## v6.0.1 — Safe, inspect-first listing fetches (2026-09-03)
 
 - Fixed rule34video.com multi-page fetching. The crawler now fetches the

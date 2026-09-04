@@ -122,14 +122,29 @@ describe("rule34.world routes", () => {
     assert.equal(R.match("https://rule34.world/upgrade-to-premium"), null);
   });
 
-  it("maps a listing page to the search API body", () => {
+  it("maps a listing page to the search API body (real lowercase keyset payload)", () => {
     const route = R.match("https://rule34.world/touhou?page=3&type=image");
-    const body = R.worldSearchBody(route, route.page);
+    // No cursor yet: plain first request for page 3 (skip=(3-1)*30). The server
+    // ignores the `Skip`-cased keys the old code sent, so every "page" returned
+    // page 1 — this is the casing fix.
+    const body = R.worldSearchBody(route, 3);
     assert.deepEqual(body.includeTags, ["touhou"]);
-    assert.equal(body.Skip, 60);
+    assert.equal(body.skip, 60);
     assert.equal(body.take, 30);
-    assert.equal(body.type, 0);
-    assert.equal(body.OrderBy, 0);
+    assert.equal(body.countTotal, false);
+    assert.equal(body.checkHasMore, true);
+    assert.equal(body.filterAi, false);
+    assert.equal(body.sortBy, 0);
+    assert.equal("cursor" in body, false, "no cursor on the first request");
+    assert.equal("Skip" in body, false);
+    assert.equal("CountTotal" in body, false);
+    assert.equal("IncludeLinks" in body, false);
+    assert.equal("OrderBy" in body, false);
+    assert.equal("type" in body, false, "media filtering is done client-side, not sent to the API");
+    // Continuing a keyset walk threads the previous page's cursor.
+    const continued = R.worldSearchBody(route, 4, { cursor: "7777" });
+    assert.equal(continued.skip, 90);
+    assert.equal(continued.cursor, "7777");
     assert.equal(R.worldThumbnail(1391429), "https://rule34storage.b-cdn.net/posts/1391/1391429/1391429.pic256.jpg");
     const href = new URL(R.worldListingPageHref(route, 5));
     assert.equal(href.pathname, "/touhou");

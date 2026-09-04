@@ -1,0 +1,1854 @@
+<!doctype html>
+<html lang="en" data-beasties-container="">
+  <head>
+    <meta charset="utf-8">
+    <title>Sanitized Site</title>
+    <base href="/">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Тема — до первой отрисовки, иначе юзер со светлой темой видит тёмную вспышку
+         (SSR-HTML всегда с CSS-дефолтом dark). Дублирует ThemeService.apply().
+         Второй getItem — legacy-имя ключа: до миграции (её делает ThemeService.init)
+         значение может лежать под ним. -->
+    <script>
+      try {
+        var t = localStorage.getItem('app:appearance:theme') || localStorage.getItem('appTheme');
+        if (t === 'light' || t === 'dark') document.documentElement.style.colorScheme = t;
+        else if (t === 'system') document.documentElement.style.colorScheme = 'light dark';
+      } catch (e) {
+        /* localStorage недоступен — остаёмся на дефолте */
+      }
+    </script>
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&amp;display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#721199">
+  <style>*,*:before,*:after{box-sizing:border-box}html{-webkit-tap-highlight-color:transparent;scrollbar-gutter:stable}:root{--mat-text-button-horizontal-padding:16px;--mat-dialog-container-shape:8px;--mat-dialog-container-max-width:80vw;--mat-toolbar-standard-height:64px}:root{--mat-card-elevated-container-color:var(--mat-sys-surface-container-high);--mat-card-elevated-container-elevation:var(--mat-sys-level1);--mat-expansion-container-background-color:var(--r-card-background);--mat-expansion-container-elevation-shadow:var(--mat-sys-level1);--mat-dialog-container-color:var(--mat-sys-surface-container);--r-app-background:var(--mat-sys-surface);--r-toolbar-background:var(--mat-sys-primary-container);--r-blur-background:rgba(18, 20, 20, .72);--r-sheet-background:var(--r-app-background);--r-box-background:var(--mat-sys-surface-container-high);--r-box-background--strong:var(--mat-sys-surface-container-highest);--r-box-details-background:rgba(30, 32, 32, .72);--r-box-details-background--hover:rgb(84.88, 86.32, 86.32);--r-box-details-background--active:rgb(104.48, 105.72, 105.72);--r-box-details-label-color:var(--mat-sys-on-surface);--r-card-background:var(--mat-sys-surface-container-high);--r-card-background--hover:var(--mat-sys-surface-container);--r-card-background--image:var(--mat-sys-surface-container-highest);--r-card-shadow:var(--mat-sys-level1);--r-drawer-shadow:var(--mat-sys-level3);--r-scrim:rgba(0, 0, 0, .4);--r-avatar-background:var(--mat-sys-surface-container-highest);--r-input-border:var(--r-divider);--r-input-border--focus:var(--mat-sys-primary);--r-input-placeholder:rgba(226, 226, 226, .4);--r-code-background:var(--mat-sys-surface-container);--r-color-primary:var(--mat-sys-primary);--r-swiper-tabs-background:var(--r-card-background);--r-swiper-tabs_indicator-background:var(--mat-sys-primary);--r-chip-background:var(--mat-sys-surface-container-highest);--r-chip-background--tag-copyright:#a30650;--r-chip-background--tag-character:#285e14;--r-chip-background--tag-artist:#a80616;--r-chip-background--tag-general:#3649ac;--r-chip-background--tag-system:#455367;--r-chip-background--tag-meta:#005d52;--r-chip-background-accent:var(--mat-sys-secondary);--r-chip_comment-background:var(--mat-sys-surface-container);--r-chip-label:var(--mat-sys-on-surface);--r-chip-label-on-accent:var(--mat-sys-on-secondary);--r-divider:rgba(226, 226, 226, .12);--r-divider--active:rgba(18, 20, 20, .12);--r-button-post-nav-backgroud:rgba(30, 32, 32, .35);--r-theme--accent:var(--mat-sys-secondary);--r-theme--accent-weak:rgba(87, 222, 158, .05);--r-theme--accent-glow:rgba(87, 222, 158, .3);--r-color-bl-liked:#e91e63;--r-color-bl-bookmarked:#fbc02d;--r-color-bl-premium:#00bf72;--r-color-bl-reports:#f44336;--r-text-primary:var(--mat-sys-on-surface);--r-text-secondary:rgba(226, 226, 226, .75)}@supports (color: light-dark(#000,#fff)){:root{--r-blur-background:light-dark( rgba(249, 249, 249, .72), rgba(18, 20, 20, .72) );--r-box-details-background:light-dark( rgba(238, 238, 238, .72), rgba(30, 32, 32, .72) );--r-box-details-background--hover:light-dark( rgb(178.64, 179.2, 179.2), rgb(84.88, 86.32, 86.32) );--r-box-details-background--active:light-dark( rgb(157.44, 158.2, 158.2), rgb(104.48, 105.72, 105.72) );--r-divider:light-dark( rgba(26, 28, 28, .12), rgba(226, 226, 226, .12) );--r-divider--active:light-dark( rgba(249, 249, 249, .12), rgba(18, 20, 20, .12) );--r-button-post-nav-backgroud:light-dark( rgba(238, 238, 238, .35), rgba(30, 32, 32, .35) );--r-text-secondary:light-dark( rgba(26, 28, 28, .75), rgba(226, 226, 226, .75) );--r-theme--accent-weak:light-dark( rgba(0, 108, 70, .05), rgba(87, 222, 158, .05) );--r-theme--accent-glow:light-dark( rgba(0, 108, 70, .3), rgba(87, 222, 158, .3) );--r-input-placeholder:light-dark( rgba(26, 28, 28, .4), rgba(226, 226, 226, .4) );--r-chip-background--tag-copyright:light-dark( #ffd9e1, #a30650 );--r-chip-background--tag-character:light-dark( #b5f397, #285e14 );--r-chip-background--tag-artist:light-dark( #ffdad6, #a80616 );--r-chip-background--tag-general:light-dark( #dee0ff, #3649ac );--r-chip-background--tag-system:light-dark( #d5e3fc, #455367 );--r-chip-background--tag-meta:light-dark(#a0f2e1, #005d52)}}:root{--box-details_height:28px}@media all and (max-width:359px){:root{--box-details_height:20px}}html{height:100%;--mat-sys-background:#121414;--mat-sys-error:#ffb4a8;--mat-sys-error-container:#930100;--mat-sys-inverse-on-surface:#2f3131;--mat-sys-inverse-primary:#8c33b3;--mat-sys-inverse-surface:#e2e2e2;--mat-sys-on-background:#e2e2e2;--mat-sys-on-error:#690100;--mat-sys-on-error-container:#ffdad4;--mat-sys-on-primary:#520071;--mat-sys-on-primary-container:#f8d8ff;--mat-sys-on-primary-fixed:#320047;--mat-sys-on-primary-fixed-variant:#721199;--mat-sys-on-secondary:#003822;--mat-sys-on-secondary-container:#76fbb9;--mat-sys-on-secondary-fixed:#002112;--mat-sys-on-secondary-fixed-variant:#005233;--mat-sys-on-surface:#e2e2e2;--mat-sys-on-surface-variant:#e4e2e2;--mat-sys-on-tertiary:#640039;--mat-sys-on-tertiary-container:#ffd9e4;--mat-sys-on-tertiary-fixed:#3e0021;--mat-sys-on-tertiary-fixed-variant:#8b0752;--mat-sys-outline:#919090;--mat-sys-outline-variant:#474747;--mat-sys-primary:#ebb2ff;--mat-sys-primary-container:#721199;--mat-sys-primary-fixed:#f8d8ff;--mat-sys-primary-fixed-dim:#ebb2ff;--mat-sys-scrim:#000000;--mat-sys-secondary:#57de9e;--mat-sys-secondary-container:#005233;--mat-sys-secondary-fixed:#76fbb9;--mat-sys-secondary-fixed-dim:#57de9e;--mat-sys-shadow:#000000;--mat-sys-surface:#121414;--mat-sys-surface-bright:#38393a;--mat-sys-surface-container:#1e2020;--mat-sys-surface-container-high:#282a2b;--mat-sys-surface-container-highest:#333535;--mat-sys-surface-container-low:#1a1c1c;--mat-sys-surface-container-lowest:#0d0e0f;--mat-sys-surface-dim:#121414;--mat-sys-surface-tint:#ebb2ff;--mat-sys-surface-variant:#474747;--mat-sys-tertiary:#ffb0cd;--mat-sys-tertiary-container:#8b0752;--mat-sys-tertiary-fixed:#ffd9e4;--mat-sys-tertiary-fixed-dim:#ffb0cd;--mat-sys-neutral-variant20:#303030;--mat-sys-neutral10:#1a1c1c;--mat-sys-level0:0px 0px 0px 0px rgba(0, 0, 0, .2), 0px 0px 0px 0px rgba(0, 0, 0, .14), 0px 0px 0px 0px rgba(0, 0, 0, .12);--mat-sys-level1:0px 2px 1px -1px rgba(0, 0, 0, .2), 0px 1px 1px 0px rgba(0, 0, 0, .14), 0px 1px 3px 0px rgba(0, 0, 0, .12);--mat-sys-level2:0px 3px 3px -2px rgba(0, 0, 0, .2), 0px 3px 4px 0px rgba(0, 0, 0, .14), 0px 1px 8px 0px rgba(0, 0, 0, .12);--mat-sys-level3:0px 3px 5px -1px rgba(0, 0, 0, .2), 0px 6px 10px 0px rgba(0, 0, 0, .14), 0px 1px 18px 0px rgba(0, 0, 0, .12);--mat-sys-level4:0px 5px 5px -3px rgba(0, 0, 0, .2), 0px 8px 10px 1px rgba(0, 0, 0, .14), 0px 3px 14px 2px rgba(0, 0, 0, .12);--mat-sys-level5:0px 7px 8px -4px rgba(0, 0, 0, .2), 0px 12px 17px 2px rgba(0, 0, 0, .14), 0px 5px 22px 4px rgba(0, 0, 0, .12);--mat-sys-body-large:400 1rem / 1.5rem Roboto;--mat-sys-body-large-font:Roboto;--mat-sys-body-large-line-height:1.5rem;--mat-sys-body-large-size:1rem;--mat-sys-body-large-tracking:.031rem;--mat-sys-body-large-weight:400;--mat-sys-body-medium:400 .875rem / 1.25rem Roboto;--mat-sys-body-medium-font:Roboto;--mat-sys-body-medium-line-height:1.25rem;--mat-sys-body-medium-size:.875rem;--mat-sys-body-medium-tracking:.016rem;--mat-sys-body-medium-weight:400;--mat-sys-body-small:400 .75rem / 1rem Roboto;--mat-sys-body-small-font:Roboto;--mat-sys-body-small-line-height:1rem;--mat-sys-body-small-size:.75rem;--mat-sys-body-small-tracking:.025rem;--mat-sys-body-small-weight:400;--mat-sys-display-large:400 3.562rem / 4rem Roboto;--mat-sys-display-large-font:Roboto;--mat-sys-display-large-line-height:4rem;--mat-sys-display-large-size:3.562rem;--mat-sys-display-large-tracking:-.016rem;--mat-sys-display-large-weight:400;--mat-sys-display-medium:400 2.812rem / 3.25rem Roboto;--mat-sys-display-medium-font:Roboto;--mat-sys-display-medium-line-height:3.25rem;--mat-sys-display-medium-size:2.812rem;--mat-sys-display-medium-tracking:0;--mat-sys-display-medium-weight:400;--mat-sys-display-small:400 2.25rem / 2.75rem Roboto;--mat-sys-display-small-font:Roboto;--mat-sys-display-small-line-height:2.75rem;--mat-sys-display-small-size:2.25rem;--mat-sys-display-small-tracking:0;--mat-sys-display-small-weight:400;--mat-sys-headline-large:400 2rem / 2.5rem Roboto;--mat-sys-headline-large-font:Roboto;--mat-sys-headline-large-line-height:2.5rem;--mat-sys-headline-large-size:2rem;--mat-sys-headline-large-tracking:0;--mat-sys-headline-large-weight:400;--mat-sys-headline-medium:400 1.75rem / 2.25rem Roboto;--mat-sys-headline-medium-font:Roboto;--mat-sys-headline-medium-line-height:2.25rem;--mat-sys-headline-medium-size:1.75rem;--mat-sys-headline-medium-tracking:0;--mat-sys-headline-medium-weight:400;--mat-sys-headline-small:400 1.5rem / 2rem Roboto;--mat-sys-headline-small-font:Roboto;--mat-sys-headline-small-line-height:2rem;--mat-sys-headline-small-size:1.5rem;--mat-sys-headline-small-tracking:0;--mat-sys-headline-small-weight:400;--mat-sys-label-large:500 .875rem / 1.25rem Roboto;--mat-sys-label-large-font:Roboto;--mat-sys-label-large-line-height:1.25rem;--mat-sys-label-large-size:.875rem;--mat-sys-label-large-tracking:.006rem;--mat-sys-label-large-weight:500;--mat-sys-label-large-weight-prominent:700;--mat-sys-label-medium:500 .75rem / 1rem Roboto;--mat-sys-label-medium-font:Roboto;--mat-sys-label-medium-line-height:1rem;--mat-sys-label-medium-size:.75rem;--mat-sys-label-medium-tracking:.031rem;--mat-sys-label-medium-weight:500;--mat-sys-label-medium-weight-prominent:700;--mat-sys-label-small:500 .688rem / 1rem Roboto;--mat-sys-label-small-font:Roboto;--mat-sys-label-small-line-height:1rem;--mat-sys-label-small-size:.688rem;--mat-sys-label-small-tracking:.031rem;--mat-sys-label-small-weight:500;--mat-sys-title-large:400 1.375rem / 1.75rem Roboto;--mat-sys-title-large-font:Roboto;--mat-sys-title-large-line-height:1.75rem;--mat-sys-title-large-size:1.375rem;--mat-sys-title-large-tracking:0;--mat-sys-title-large-weight:400;--mat-sys-title-medium:500 1rem / 1.5rem Roboto;--mat-sys-title-medium-font:Roboto;--mat-sys-title-medium-line-height:1.5rem;--mat-sys-title-medium-size:1rem;--mat-sys-title-medium-tracking:.009rem;--mat-sys-title-medium-weight:500;--mat-sys-title-small:500 .875rem / 1.25rem Roboto;--mat-sys-title-small-font:Roboto;--mat-sys-title-small-line-height:1.25rem;--mat-sys-title-small-size:.875rem;--mat-sys-title-small-tracking:.006rem;--mat-sys-title-small-weight:500;--mat-sys-corner-extra-large:28px;--mat-sys-corner-extra-large-top:28px 28px 0 0;--mat-sys-corner-extra-small:4px;--mat-sys-corner-extra-small-top:4px 4px 0 0;--mat-sys-corner-full:9999px;--mat-sys-corner-large:16px;--mat-sys-corner-large-end:0 16px 16px 0;--mat-sys-corner-large-start:16px 0 0 16px;--mat-sys-corner-large-top:16px 16px 0 0;--mat-sys-corner-medium:12px;--mat-sys-corner-none:0;--mat-sys-corner-small:8px;--mat-sys-dragged-state-layer-opacity:.16;--mat-sys-focus-state-layer-opacity:.12;--mat-sys-hover-state-layer-opacity:.08;--mat-sys-pressed-state-layer-opacity:.12;color-scheme:dark}@supports (color: light-dark(#000,#fff)){html{--mat-sys-background:light-dark(#f9f9f9, #121414);--mat-sys-error:light-dark(#c00100, #ffb4a8);--mat-sys-error-container:light-dark(#ffdad4, #930100);--mat-sys-inverse-on-surface:light-dark(#f1f1f0, #2f3131);--mat-sys-inverse-primary:light-dark(#ebb2ff, #8c33b3);--mat-sys-inverse-surface:light-dark(#2f3131, #e2e2e2);--mat-sys-on-background:light-dark(#1a1c1c, #e2e2e2);--mat-sys-on-error:light-dark(#ffffff, #690100);--mat-sys-on-error-container:light-dark(#930100, #ffdad4);--mat-sys-on-primary:light-dark(#ffffff, #520071);--mat-sys-on-primary-container:light-dark(#721199, #f8d8ff);--mat-sys-on-primary-fixed:light-dark(#320047, #320047);--mat-sys-on-primary-fixed-variant:light-dark(#721199, #721199);--mat-sys-on-secondary:light-dark(#ffffff, #003822);--mat-sys-on-secondary-container:light-dark(#005233, #76fbb9);--mat-sys-on-secondary-fixed:light-dark(#002112, #002112);--mat-sys-on-secondary-fixed-variant:light-dark(#005233, #005233);--mat-sys-on-surface:light-dark(#1a1c1c, #e2e2e2);--mat-sys-on-surface-variant:light-dark(#474747, #e4e2e2);--mat-sys-on-tertiary:light-dark(#ffffff, #640039);--mat-sys-on-tertiary-container:light-dark(#8b0752, #ffd9e4);--mat-sys-on-tertiary-fixed:light-dark(#3e0021, #3e0021);--mat-sys-on-tertiary-fixed-variant:light-dark(#8b0752, #8b0752);--mat-sys-outline:light-dark(#777777, #919090);--mat-sys-outline-variant:light-dark(#c8c6c6, #474747);--mat-sys-primary:light-dark(#8c33b3, #ebb2ff);--mat-sys-primary-container:light-dark(#f8d8ff, #721199);--mat-sys-primary-fixed:light-dark(#f8d8ff, #f8d8ff);--mat-sys-primary-fixed-dim:light-dark(#ebb2ff, #ebb2ff);--mat-sys-scrim:light-dark(#000000, #000000);--mat-sys-secondary:light-dark(#006c46, #57de9e);--mat-sys-secondary-container:light-dark(#76fbb9, #005233);--mat-sys-secondary-fixed:light-dark(#76fbb9, #76fbb9);--mat-sys-secondary-fixed-dim:light-dark(#57de9e, #57de9e);--mat-sys-shadow:light-dark(#000000, #000000);--mat-sys-surface:light-dark(#f9f9f9, #121414);--mat-sys-surface-bright:light-dark(#f9f9f9, #38393a);--mat-sys-surface-container:light-dark(#eeeeee, #1e2020);--mat-sys-surface-container-high:light-dark(#e8e8e8, #282a2b);--mat-sys-surface-container-highest:light-dark(#e2e2e2, #333535);--mat-sys-surface-container-low:light-dark(#f4f3f3, #1a1c1c);--mat-sys-surface-container-lowest:light-dark(#ffffff, #0d0e0f);--mat-sys-surface-dim:light-dark(#dadada, #121414);--mat-sys-surface-tint:light-dark(#8c33b3, #ebb2ff);--mat-sys-surface-variant:light-dark(#e4e2e2, #474747);--mat-sys-tertiary:light-dark(#aa296b, #ffb0cd);--mat-sys-tertiary-container:light-dark(#ffd9e4, #8b0752);--mat-sys-tertiary-fixed:light-dark(#ffd9e4, #ffd9e4);--mat-sys-tertiary-fixed-dim:light-dark(#ffb0cd, #ffb0cd);--mat-sys-neutral-variant20:#303030;--mat-sys-neutral10:#1a1c1c;--mat-sys-level0:0px 0px 0px 0px rgba(0, 0, 0, .2), 0px 0px 0px 0px rgba(0, 0, 0, .14), 0px 0px 0px 0px rgba(0, 0, 0, .12);--mat-sys-level1:0px 2px 1px -1px rgba(0, 0, 0, .2), 0px 1px 1px 0px rgba(0, 0, 0, .14), 0px 1px 3px 0px rgba(0, 0, 0, .12);--mat-sys-level2:0px 3px 3px -2px rgba(0, 0, 0, .2), 0px 3px 4px 0px rgba(0, 0, 0, .14), 0px 1px 8px 0px rgba(0, 0, 0, .12);--mat-sys-level3:0px 3px 5px -1px rgba(0, 0, 0, .2), 0px 6px 10px 0px rgba(0, 0, 0, .14), 0px 1px 18px 0px rgba(0, 0, 0, .12);--mat-sys-level4:0px 5px 5px -3px rgba(0, 0, 0, .2), 0px 8px 10px 1px rgba(0, 0, 0, .14), 0px 3px 14px 2px rgba(0, 0, 0, .12);--mat-sys-level5:0px 7px 8px -4px rgba(0, 0, 0, .2), 0px 12px 17px 2px rgba(0, 0, 0, .14), 0px 5px 22px 4px rgba(0, 0, 0, .12);--mat-sys-corner-extra-large:28px;--mat-sys-corner-extra-large-top:28px 28px 0 0;--mat-sys-corner-extra-small:4px;--mat-sys-corner-extra-small-top:4px 4px 0 0;--mat-sys-corner-full:9999px;--mat-sys-corner-large:16px;--mat-sys-corner-large-end:0 16px 16px 0;--mat-sys-corner-large-start:16px 0 0 16px;--mat-sys-corner-large-top:16px 16px 0 0;--mat-sys-corner-medium:12px;--mat-sys-corner-none:0;--mat-sys-corner-small:8px;--mat-sys-dragged-state-layer-opacity:.16;--mat-sys-focus-state-layer-opacity:.12;--mat-sys-hover-state-layer-opacity:.08;--mat-sys-pressed-state-layer-opacity:.12}}body{background-color:var(--r-app-background);color:var(--mat-sys-on-surface);font:var(--mat-sys-body-medium)}html,body{margin:0;padding:0;height:100%}</style><link rel="stylesheet" href="styles-5UGKHKJD.css" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="styles-5UGKHKJD.css"></noscript></head>
+  <body ngcm="">
+    <app-root></app-root>
+    <noscript>Please enable JavaScript to continue using this application.</noscript>
+  <link rel="modulepreload" href="chunk-I7C2ZCUG.js"><link rel="modulepreload" href="chunk-QMQGRILT.js"><link rel="modulepreload" href="chunk-UNOGQ6JN.js"><link rel="modulepreload" href="chunk-G4UN4PU7.js"><link rel="modulepreload" href="chunk-SWDIAN66.js"><link rel="modulepreload" href="chunk-ECCLLF7R.js"><link rel="modulepreload" href="chunk-PBVRITJA.js"><link rel="modulepreload" href="chunk-Y2FZVRRR.js"><link rel="modulepreload" href="chunk-63NEP73T.js"><link rel="modulepreload" href="chunk-2S6BAGU2.js"><script src="main-MMMZPNLE.js" type="module"></script></body>
+</html>
+
+https://example.com/ngsw-worker.js 
+
+<!doctype html>
+<html lang="en" data-beasties-container="">
+    <head>
+        <meta charset="utf-8">
+        <title>Sanitized Site</title>
+        <base href="/">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <!-- Тема — до первой отрисовки, иначе юзер со светлой темой видит тёмную вспышку
+         (SSR-HTML всегда с CSS-дефолтом dark). Дублирует ThemeService.apply().
+         Второй getItem — legacy-имя ключа: до миграции (её делает ThemeService.init)
+         значение может лежать под ним. -->
+        <script>
+            try {
+                var t = localStorage.getItem('app:appearance:theme') || localStorage.getItem('appTheme');
+                if (t === 'light' || t === 'dark')
+                    document.documentElement.style.colorScheme = t;
+                else if (t === 'system')
+                    document.documentElement.style.colorScheme = 'light dark';
+            } catch (e) {/* localStorage недоступен — остаёмся на дефолте */
+            }
+        </script>
+        <link rel="icon" type="image/x-icon" href="favicon.ico">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&amp;display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+        <link rel="manifest" href="manifest.webmanifest">
+        <meta name="theme-color" content="#721199">
+        <style>
+            *,*:before,*:after {
+                box-sizing: border-box
+            }
+
+            html {
+                -webkit-tap-highlight-color: transparent;
+                scrollbar-gutter: stable
+            }
+
+            :root {
+                --mat-text-button-horizontal-padding: 16px;
+                --mat-dialog-container-shape: 8px;
+                --mat-dialog-container-max-width: 80vw;
+                --mat-toolbar-standard-height: 64px
+            }
+
+            :root {
+                --mat-card-elevated-container-color: var(--mat-sys-surface-container-high);
+                --mat-card-elevated-container-elevation: var(--mat-sys-level1);
+                --mat-expansion-container-background-color: var(--r-card-background);
+                --mat-expansion-container-elevation-shadow: var(--mat-sys-level1);
+                --mat-dialog-container-color: var(--mat-sys-surface-container);
+                --r-app-background: var(--mat-sys-surface);
+                --r-toolbar-background: var(--mat-sys-primary-container);
+                --r-blur-background: rgba(18, 20, 20, .72);
+                --r-sheet-background: var(--r-app-background);
+                --r-box-background: var(--mat-sys-surface-container-high);
+                --r-box-background--strong: var(--mat-sys-surface-container-highest);
+                --r-box-details-background: rgba(30, 32, 32, .72);
+                --r-box-details-background--hover: rgb(84.88, 86.32, 86.32);
+                --r-box-details-background--active: rgb(104.48, 105.72, 105.72);
+                --r-box-details-label-color: var(--mat-sys-on-surface);
+                --r-card-background: var(--mat-sys-surface-container-high);
+                --r-card-background--hover: var(--mat-sys-surface-container);
+                --r-card-background--image: var(--mat-sys-surface-container-highest);
+                --r-card-shadow: var(--mat-sys-level1);
+                --r-drawer-shadow: var(--mat-sys-level3);
+                --r-scrim: rgba(0, 0, 0, .4);
+                --r-avatar-background: var(--mat-sys-surface-container-highest);
+                --r-input-border: var(--r-divider);
+                --r-input-border--focus: var(--mat-sys-primary);
+                --r-input-placeholder: rgba(226, 226, 226, .4);
+                --r-code-background: var(--mat-sys-surface-container);
+                --r-color-primary: var(--mat-sys-primary);
+                --r-swiper-tabs-background: var(--r-card-background);
+                --r-swiper-tabs_indicator-background: var(--mat-sys-primary);
+                --r-chip-background: var(--mat-sys-surface-container-highest);
+                --r-chip-background--tag-copyright: #a30650;
+                --r-chip-background--tag-character: #285e14;
+                --r-chip-background--tag-artist: #a80616;
+                --r-chip-background--tag-general: #3649ac;
+                --r-chip-background--tag-system: #455367;
+                --r-chip-background--tag-meta: #005d52;
+                --r-chip-background-accent: var(--mat-sys-secondary);
+                --r-chip_comment-background: var(--mat-sys-surface-container);
+                --r-chip-label: var(--mat-sys-on-surface);
+                --r-chip-label-on-accent: var(--mat-sys-on-secondary);
+                --r-divider: rgba(226, 226, 226, .12);
+                --r-divider--active: rgba(18, 20, 20, .12);
+                --r-button-post-nav-backgroud: rgba(30, 32, 32, .35);
+                --r-theme--accent: var(--mat-sys-secondary);
+                --r-theme--accent-weak: rgba(87, 222, 158, .05);
+                --r-theme--accent-glow: rgba(87, 222, 158, .3);
+                --r-color-bl-liked: #e91e63;
+                --r-color-bl-bookmarked: #fbc02d;
+                --r-color-bl-premium: #00bf72;
+                --r-color-bl-reports: #f44336;
+                --r-text-primary: var(--mat-sys-on-surface);
+                --r-text-secondary: rgba(226, 226, 226, .75)
+            }
+
+            @supports (color: light-dark(#000,#fff)) {
+                :root {
+                    --r-blur-background:light-dark( rgba(249, 249, 249, .72), rgba(18, 20, 20, .72) );
+                    --r-box-details-background: light-dark( rgba(238, 238, 238, .72), rgba(30, 32, 32, .72) );
+                    --r-box-details-background--hover: light-dark( rgb(178.64, 179.2, 179.2), rgb(84.88, 86.32, 86.32) );
+                    --r-box-details-background--active: light-dark( rgb(157.44, 158.2, 158.2), rgb(104.48, 105.72, 105.72) );
+                    --r-divider: light-dark( rgba(26, 28, 28, .12), rgba(226, 226, 226, .12) );
+                    --r-divider--active: light-dark( rgba(249, 249, 249, .12), rgba(18, 20, 20, .12) );
+                    --r-button-post-nav-backgroud: light-dark( rgba(238, 238, 238, .35), rgba(30, 32, 32, .35) );
+                    --r-text-secondary: light-dark( rgba(26, 28, 28, .75), rgba(226, 226, 226, .75) );
+                    --r-theme--accent-weak: light-dark( rgba(0, 108, 70, .05), rgba(87, 222, 158, .05) );
+                    --r-theme--accent-glow: light-dark( rgba(0, 108, 70, .3), rgba(87, 222, 158, .3) );
+                    --r-input-placeholder: light-dark( rgba(26, 28, 28, .4), rgba(226, 226, 226, .4) );
+                    --r-chip-background--tag-copyright: light-dark( #ffd9e1, #a30650 );
+                    --r-chip-background--tag-character: light-dark( #b5f397, #285e14 );
+                    --r-chip-background--tag-artist: light-dark( #ffdad6, #a80616 );
+                    --r-chip-background--tag-general: light-dark( #dee0ff, #3649ac );
+                    --r-chip-background--tag-system: light-dark( #d5e3fc, #455367 );
+                    --r-chip-background--tag-meta: light-dark(#a0f2e1, #005d52)
+                }
+            }
+
+            :root {
+                --box-details_height: 28px
+            }
+
+            @media all and (max-width: 359px) {
+                :root {
+                    --box-details_height:20px
+                }
+            }
+
+            html {
+                height: 100%;
+                --mat-sys-background: #121414;
+                --mat-sys-error: #ffb4a8;
+                --mat-sys-error-container: #930100;
+                --mat-sys-inverse-on-surface: #2f3131;
+                --mat-sys-inverse-primary: #8c33b3;
+                --mat-sys-inverse-surface: #e2e2e2;
+                --mat-sys-on-background: #e2e2e2;
+                --mat-sys-on-error: #690100;
+                --mat-sys-on-error-container: #ffdad4;
+                --mat-sys-on-primary: #520071;
+                --mat-sys-on-primary-container: #f8d8ff;
+                --mat-sys-on-primary-fixed: #320047;
+                --mat-sys-on-primary-fixed-variant: #721199;
+                --mat-sys-on-secondary: #003822;
+                --mat-sys-on-secondary-container: #76fbb9;
+                --mat-sys-on-secondary-fixed: #002112;
+                --mat-sys-on-secondary-fixed-variant: #005233;
+                --mat-sys-on-surface: #e2e2e2;
+                --mat-sys-on-surface-variant: #e4e2e2;
+                --mat-sys-on-tertiary: #640039;
+                --mat-sys-on-tertiary-container: #ffd9e4;
+                --mat-sys-on-tertiary-fixed: #3e0021;
+                --mat-sys-on-tertiary-fixed-variant: #8b0752;
+                --mat-sys-outline: #919090;
+                --mat-sys-outline-variant: #474747;
+                --mat-sys-primary: #ebb2ff;
+                --mat-sys-primary-container: #721199;
+                --mat-sys-primary-fixed: #f8d8ff;
+                --mat-sys-primary-fixed-dim: #ebb2ff;
+                --mat-sys-scrim: #000000;
+                --mat-sys-secondary: #57de9e;
+                --mat-sys-secondary-container: #005233;
+                --mat-sys-secondary-fixed: #76fbb9;
+                --mat-sys-secondary-fixed-dim: #57de9e;
+                --mat-sys-shadow: #000000;
+                --mat-sys-surface: #121414;
+                --mat-sys-surface-bright: #38393a;
+                --mat-sys-surface-container: #1e2020;
+                --mat-sys-surface-container-high: #282a2b;
+                --mat-sys-surface-container-highest: #333535;
+                --mat-sys-surface-container-low: #1a1c1c;
+                --mat-sys-surface-container-lowest: #0d0e0f;
+                --mat-sys-surface-dim: #121414;
+                --mat-sys-surface-tint: #ebb2ff;
+                --mat-sys-surface-variant: #474747;
+                --mat-sys-tertiary: #ffb0cd;
+                --mat-sys-tertiary-container: #8b0752;
+                --mat-sys-tertiary-fixed: #ffd9e4;
+                --mat-sys-tertiary-fixed-dim: #ffb0cd;
+                --mat-sys-neutral-variant20: #303030;
+                --mat-sys-neutral10: #1a1c1c;
+                --mat-sys-level0: 0px 0px 0px 0px rgba(0, 0, 0, .2), 0px 0px 0px 0px rgba(0, 0, 0, .14), 0px 0px 0px 0px rgba(0, 0, 0, .12);
+                --mat-sys-level1: 0px 2px 1px -1px rgba(0, 0, 0, .2), 0px 1px 1px 0px rgba(0, 0, 0, .14), 0px 1px 3px 0px rgba(0, 0, 0, .12);
+                --mat-sys-level2: 0px 3px 3px -2px rgba(0, 0, 0, .2), 0px 3px 4px 0px rgba(0, 0, 0, .14), 0px 1px 8px 0px rgba(0, 0, 0, .12);
+                --mat-sys-level3: 0px 3px 5px -1px rgba(0, 0, 0, .2), 0px 6px 10px 0px rgba(0, 0, 0, .14), 0px 1px 18px 0px rgba(0, 0, 0, .12);
+                --mat-sys-level4: 0px 5px 5px -3px rgba(0, 0, 0, .2), 0px 8px 10px 1px rgba(0, 0, 0, .14), 0px 3px 14px 2px rgba(0, 0, 0, .12);
+                --mat-sys-level5: 0px 7px 8px -4px rgba(0, 0, 0, .2), 0px 12px 17px 2px rgba(0, 0, 0, .14), 0px 5px 22px 4px rgba(0, 0, 0, .12);
+                --mat-sys-body-large: 400 1rem / 1.5rem Roboto;
+                --mat-sys-body-large-font: Roboto;
+                --mat-sys-body-large-line-height: 1.5rem;
+                --mat-sys-body-large-size: 1rem;
+                --mat-sys-body-large-tracking: .031rem;
+                --mat-sys-body-large-weight: 400;
+                --mat-sys-body-medium: 400 .875rem / 1.25rem Roboto;
+                --mat-sys-body-medium-font: Roboto;
+                --mat-sys-body-medium-line-height: 1.25rem;
+                --mat-sys-body-medium-size: .875rem;
+                --mat-sys-body-medium-tracking: .016rem;
+                --mat-sys-body-medium-weight: 400;
+                --mat-sys-body-small: 400 .75rem / 1rem Roboto;
+                --mat-sys-body-small-font: Roboto;
+                --mat-sys-body-small-line-height: 1rem;
+                --mat-sys-body-small-size: .75rem;
+                --mat-sys-body-small-tracking: .025rem;
+                --mat-sys-body-small-weight: 400;
+                --mat-sys-display-large: 400 3.562rem / 4rem Roboto;
+                --mat-sys-display-large-font: Roboto;
+                --mat-sys-display-large-line-height: 4rem;
+                --mat-sys-display-large-size: 3.562rem;
+                --mat-sys-display-large-tracking: -.016rem;
+                --mat-sys-display-large-weight: 400;
+                --mat-sys-display-medium: 400 2.812rem / 3.25rem Roboto;
+                --mat-sys-display-medium-font: Roboto;
+                --mat-sys-display-medium-line-height: 3.25rem;
+                --mat-sys-display-medium-size: 2.812rem;
+                --mat-sys-display-medium-tracking: 0;
+                --mat-sys-display-medium-weight: 400;
+                --mat-sys-display-small: 400 2.25rem / 2.75rem Roboto;
+                --mat-sys-display-small-font: Roboto;
+                --mat-sys-display-small-line-height: 2.75rem;
+                --mat-sys-display-small-size: 2.25rem;
+                --mat-sys-display-small-tracking: 0;
+                --mat-sys-display-small-weight: 400;
+                --mat-sys-headline-large: 400 2rem / 2.5rem Roboto;
+                --mat-sys-headline-large-font: Roboto;
+                --mat-sys-headline-large-line-height: 2.5rem;
+                --mat-sys-headline-large-size: 2rem;
+                --mat-sys-headline-large-tracking: 0;
+                --mat-sys-headline-large-weight: 400;
+                --mat-sys-headline-medium: 400 1.75rem / 2.25rem Roboto;
+                --mat-sys-headline-medium-font: Roboto;
+                --mat-sys-headline-medium-line-height: 2.25rem;
+                --mat-sys-headline-medium-size: 1.75rem;
+                --mat-sys-headline-medium-tracking: 0;
+                --mat-sys-headline-medium-weight: 400;
+                --mat-sys-headline-small: 400 1.5rem / 2rem Roboto;
+                --mat-sys-headline-small-font: Roboto;
+                --mat-sys-headline-small-line-height: 2rem;
+                --mat-sys-headline-small-size: 1.5rem;
+                --mat-sys-headline-small-tracking: 0;
+                --mat-sys-headline-small-weight: 400;
+                --mat-sys-label-large: 500 .875rem / 1.25rem Roboto;
+                --mat-sys-label-large-font: Roboto;
+                --mat-sys-label-large-line-height: 1.25rem;
+                --mat-sys-label-large-size: .875rem;
+                --mat-sys-label-large-tracking: .006rem;
+                --mat-sys-label-large-weight: 500;
+                --mat-sys-label-large-weight-prominent: 700;
+                --mat-sys-label-medium: 500 .75rem / 1rem Roboto;
+                --mat-sys-label-medium-font: Roboto;
+                --mat-sys-label-medium-line-height: 1rem;
+                --mat-sys-label-medium-size: .75rem;
+                --mat-sys-label-medium-tracking: .031rem;
+                --mat-sys-label-medium-weight: 500;
+                --mat-sys-label-medium-weight-prominent: 700;
+                --mat-sys-label-small: 500 .688rem / 1rem Roboto;
+                --mat-sys-label-small-font: Roboto;
+                --mat-sys-label-small-line-height: 1rem;
+                --mat-sys-label-small-size: .688rem;
+                --mat-sys-label-small-tracking: .031rem;
+                --mat-sys-label-small-weight: 500;
+                --mat-sys-title-large: 400 1.375rem / 1.75rem Roboto;
+                --mat-sys-title-large-font: Roboto;
+                --mat-sys-title-large-line-height: 1.75rem;
+                --mat-sys-title-large-size: 1.375rem;
+                --mat-sys-title-large-tracking: 0;
+                --mat-sys-title-large-weight: 400;
+                --mat-sys-title-medium: 500 1rem / 1.5rem Roboto;
+                --mat-sys-title-medium-font: Roboto;
+                --mat-sys-title-medium-line-height: 1.5rem;
+                --mat-sys-title-medium-size: 1rem;
+                --mat-sys-title-medium-tracking: .009rem;
+                --mat-sys-title-medium-weight: 500;
+                --mat-sys-title-small: 500 .875rem / 1.25rem Roboto;
+                --mat-sys-title-small-font: Roboto;
+                --mat-sys-title-small-line-height: 1.25rem;
+                --mat-sys-title-small-size: .875rem;
+                --mat-sys-title-small-tracking: .006rem;
+                --mat-sys-title-small-weight: 500;
+                --mat-sys-corner-extra-large: 28px;
+                --mat-sys-corner-extra-large-top: 28px 28px 0 0;
+                --mat-sys-corner-extra-small: 4px;
+                --mat-sys-corner-extra-small-top: 4px 4px 0 0;
+                --mat-sys-corner-full: 9999px;
+                --mat-sys-corner-large: 16px;
+                --mat-sys-corner-large-end: 0 16px 16px 0;
+                --mat-sys-corner-large-start: 16px 0 0 16px;
+                --mat-sys-corner-large-top: 16px 16px 0 0;
+                --mat-sys-corner-medium: 12px;
+                --mat-sys-corner-none: 0;
+                --mat-sys-corner-small: 8px;
+                --mat-sys-dragged-state-layer-opacity: .16;
+                --mat-sys-focus-state-layer-opacity: .12;
+                --mat-sys-hover-state-layer-opacity: .08;
+                --mat-sys-pressed-state-layer-opacity: .12;
+                color-scheme: dark
+            }
+
+            @supports (color: light-dark(#000,#fff)) {
+                html {
+                    --mat-sys-background:light-dark(#f9f9f9, #121414);
+                    --mat-sys-error: light-dark(#c00100, #ffb4a8);
+                    --mat-sys-error-container: light-dark(#ffdad4, #930100);
+                    --mat-sys-inverse-on-surface: light-dark(#f1f1f0, #2f3131);
+                    --mat-sys-inverse-primary: light-dark(#ebb2ff, #8c33b3);
+                    --mat-sys-inverse-surface: light-dark(#2f3131, #e2e2e2);
+                    --mat-sys-on-background: light-dark(#1a1c1c, #e2e2e2);
+                    --mat-sys-on-error: light-dark(#ffffff, #690100);
+                    --mat-sys-on-error-container: light-dark(#930100, #ffdad4);
+                    --mat-sys-on-primary: light-dark(#ffffff, #520071);
+                    --mat-sys-on-primary-container: light-dark(#721199, #f8d8ff);
+                    --mat-sys-on-primary-fixed: light-dark(#320047, #320047);
+                    --mat-sys-on-primary-fixed-variant: light-dark(#721199, #721199);
+                    --mat-sys-on-secondary: light-dark(#ffffff, #003822);
+                    --mat-sys-on-secondary-container: light-dark(#005233, #76fbb9);
+                    --mat-sys-on-secondary-fixed: light-dark(#002112, #002112);
+                    --mat-sys-on-secondary-fixed-variant: light-dark(#005233, #005233);
+                    --mat-sys-on-surface: light-dark(#1a1c1c, #e2e2e2);
+                    --mat-sys-on-surface-variant: light-dark(#474747, #e4e2e2);
+                    --mat-sys-on-tertiary: light-dark(#ffffff, #640039);
+                    --mat-sys-on-tertiary-container: light-dark(#8b0752, #ffd9e4);
+                    --mat-sys-on-tertiary-fixed: light-dark(#3e0021, #3e0021);
+                    --mat-sys-on-tertiary-fixed-variant: light-dark(#8b0752, #8b0752);
+                    --mat-sys-outline: light-dark(#777777, #919090);
+                    --mat-sys-outline-variant: light-dark(#c8c6c6, #474747);
+                    --mat-sys-primary: light-dark(#8c33b3, #ebb2ff);
+                    --mat-sys-primary-container: light-dark(#f8d8ff, #721199);
+                    --mat-sys-primary-fixed: light-dark(#f8d8ff, #f8d8ff);
+                    --mat-sys-primary-fixed-dim: light-dark(#ebb2ff, #ebb2ff);
+                    --mat-sys-scrim: light-dark(#000000, #000000);
+                    --mat-sys-secondary: light-dark(#006c46, #57de9e);
+                    --mat-sys-secondary-container: light-dark(#76fbb9, #005233);
+                    --mat-sys-secondary-fixed: light-dark(#76fbb9, #76fbb9);
+                    --mat-sys-secondary-fixed-dim: light-dark(#57de9e, #57de9e);
+                    --mat-sys-shadow: light-dark(#000000, #000000);
+                    --mat-sys-surface: light-dark(#f9f9f9, #121414);
+                    --mat-sys-surface-bright: light-dark(#f9f9f9, #38393a);
+                    --mat-sys-surface-container: light-dark(#eeeeee, #1e2020);
+                    --mat-sys-surface-container-high: light-dark(#e8e8e8, #282a2b);
+                    --mat-sys-surface-container-highest: light-dark(#e2e2e2, #333535);
+                    --mat-sys-surface-container-low: light-dark(#f4f3f3, #1a1c1c);
+                    --mat-sys-surface-container-lowest: light-dark(#ffffff, #0d0e0f);
+                    --mat-sys-surface-dim: light-dark(#dadada, #121414);
+                    --mat-sys-surface-tint: light-dark(#8c33b3, #ebb2ff);
+                    --mat-sys-surface-variant: light-dark(#e4e2e2, #474747);
+                    --mat-sys-tertiary: light-dark(#aa296b, #ffb0cd);
+                    --mat-sys-tertiary-container: light-dark(#ffd9e4, #8b0752);
+                    --mat-sys-tertiary-fixed: light-dark(#ffd9e4, #ffd9e4);
+                    --mat-sys-tertiary-fixed-dim: light-dark(#ffb0cd, #ffb0cd);
+                    --mat-sys-neutral-variant20: #303030;
+                    --mat-sys-neutral10: #1a1c1c;
+                    --mat-sys-level0: 0px 0px 0px 0px rgba(0, 0, 0, .2), 0px 0px 0px 0px rgba(0, 0, 0, .14), 0px 0px 0px 0px rgba(0, 0, 0, .12);
+                    --mat-sys-level1: 0px 2px 1px -1px rgba(0, 0, 0, .2), 0px 1px 1px 0px rgba(0, 0, 0, .14), 0px 1px 3px 0px rgba(0, 0, 0, .12);
+                    --mat-sys-level2: 0px 3px 3px -2px rgba(0, 0, 0, .2), 0px 3px 4px 0px rgba(0, 0, 0, .14), 0px 1px 8px 0px rgba(0, 0, 0, .12);
+                    --mat-sys-level3: 0px 3px 5px -1px rgba(0, 0, 0, .2), 0px 6px 10px 0px rgba(0, 0, 0, .14), 0px 1px 18px 0px rgba(0, 0, 0, .12);
+                    --mat-sys-level4: 0px 5px 5px -3px rgba(0, 0, 0, .2), 0px 8px 10px 1px rgba(0, 0, 0, .14), 0px 3px 14px 2px rgba(0, 0, 0, .12);
+                    --mat-sys-level5: 0px 7px 8px -4px rgba(0, 0, 0, .2), 0px 12px 17px 2px rgba(0, 0, 0, .14), 0px 5px 22px 4px rgba(0, 0, 0, .12);
+                    --mat-sys-corner-extra-large: 28px;
+                    --mat-sys-corner-extra-large-top: 28px 28px 0 0;
+                    --mat-sys-corner-extra-small: 4px;
+                    --mat-sys-corner-extra-small-top: 4px 4px 0 0;
+                    --mat-sys-corner-full: 9999px;
+                    --mat-sys-corner-large: 16px;
+                    --mat-sys-corner-large-end: 0 16px 16px 0;
+                    --mat-sys-corner-large-start: 16px 0 0 16px;
+                    --mat-sys-corner-large-top: 16px 16px 0 0;
+                    --mat-sys-corner-medium: 12px;
+                    --mat-sys-corner-none: 0;
+                    --mat-sys-corner-small: 8px;
+                    --mat-sys-dragged-state-layer-opacity: .16;
+                    --mat-sys-focus-state-layer-opacity: .12;
+                    --mat-sys-hover-state-layer-opacity: .08;
+                    --mat-sys-pressed-state-layer-opacity: .12
+                }
+            }
+
+            body {
+                background-color: var(--r-app-background);
+                color: var(--mat-sys-on-surface);
+                font: var(--mat-sys-body-medium)
+            }
+
+            html,body {
+                margin: 0;
+                padding: 0;
+                height: 100%
+            }
+        </style>
+        <link rel="stylesheet" href="styles-5UGKHKJD.css" media="print" onload="this.media='all'">
+        <noscript>
+            <link rel="stylesheet" href="styles-5UGKHKJD.css">
+        </noscript>
+    </head>
+    <body ngcm="">
+        <app-root></app-root>
+        <noscript>Please enable JavaScript to continue using this application.</noscript>
+        <link rel="modulepreload" href="chunk-I7C2ZCUG.js">
+        <link rel="modulepreload" href="chunk-QMQGRILT.js">
+        <link rel="modulepreload" href="chunk-UNOGQ6JN.js">
+        <link rel="modulepreload" href="chunk-G4UN4PU7.js">
+        <link rel="modulepreload" href="chunk-SWDIAN66.js">
+        <link rel="modulepreload" href="chunk-ECCLLF7R.js">
+        <link rel="modulepreload" href="chunk-PBVRITJA.js">
+        <link rel="modulepreload" href="chunk-Y2FZVRRR.js">
+        <link rel="modulepreload" href="chunk-63NEP73T.js">
+        <link rel="modulepreload" href="chunk-2S6BAGU2.js">
+        <script src="main-MMMZPNLE.js" type="module"></script>
+    </body>
+</html>
+
+
+
+
+
+
+        (function () {
+            try {
+                (function scriptlets_setConstant(source, args) {
+  var flag = "done";
+  var uniqueIdentifier = source.uniqueId + source.name + "_" + (Array.isArray(args) ? args.join("_") : "");
+  if (source.uniqueId) {
+    if (Window.prototype.toString[uniqueIdentifier] === flag) {
+      return;
+    }
+  }
+  function setConstant(source, property, value) {
+    var stack = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : "";
+    var valueWrapper = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : "";
+    var setProxyTrap = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
+    var uboAliases = [ "set-constant.js", "ubo-set-constant.js", "set.js", "ubo-set.js", "ubo-set-constant", "ubo-set" ];
+    if (uboAliases.includes(source.name)) {
+      if (stack.length !== 1 && !getNumberFromString(stack)) {
+        valueWrapper = stack;
+      }
+      stack = undefined;
+    }
+    if (!property) {
+      return;
+    }
+    var isProxyTrapSet = false;
+    var emptyArr = noopArray();
+    var emptyObj = noopObject();
+    var constantValue;
+    if (value === "undefined") {
+      constantValue = undefined;
+    } else if (value === "false") {
+      constantValue = false;
+    } else if (value === "true") {
+      constantValue = true;
+    } else if (value === "null") {
+      constantValue = null;
+    } else if (value === "emptyArr") {
+      constantValue = emptyArr;
+    } else if (value === "emptyObj") {
+      constantValue = emptyObj;
+    } else if (value === "noopFunc") {
+      constantValue = noopFunc;
+    } else if (value === "noopCallbackFunc") {
+      constantValue = noopCallbackFunc;
+    } else if (value === "trueFunc") {
+      constantValue = trueFunc;
+    } else if (value === "falseFunc") {
+      constantValue = falseFunc;
+    } else if (value === "throwFunc") {
+      constantValue = throwFunc;
+    } else if (value === "noopPromiseResolve") {
+      constantValue = noopPromiseResolve;
+    } else if (value === "noopPromiseReject") {
+      constantValue = noopPromiseReject;
+    } else if (/^\d+$/.test(value)) {
+      constantValue = parseFloat(value);
+      if (nativeIsNaN(constantValue)) {
+        return;
+      }
+      if (Math.abs(constantValue) > 32767) {
+        return;
+      }
+    } else if (value === "-1") {
+      constantValue = -1;
+    } else if (value === "") {
+      constantValue = "";
+    } else if (value === "yes") {
+      constantValue = "yes";
+    } else if (value === "no") {
+      constantValue = "no";
+    } else {
+      return;
+    }
+    var valueWrapperNames = [ "asFunction", "asCallback", "asResolved", "asRejected" ];
+    if (valueWrapperNames.includes(valueWrapper)) {
+      var valueWrappersMap = {
+        asFunction(v) {
+          return function() {
+            return v;
+          };
+        },
+        asCallback(v) {
+          return function() {
+            return function() {
+              return v;
+            };
+          };
+        },
+        asResolved(v) {
+          return Promise.resolve(v);
+        },
+        asRejected(v) {
+          return Promise.reject(v);
+        }
+      };
+      constantValue = valueWrappersMap[valueWrapper](constantValue);
+    }
+    var canceled = false;
+    var mustCancel = function mustCancel(value) {
+      if (canceled) {
+        return canceled;
+      }
+      canceled = value !== undefined && constantValue !== undefined && typeof value !== typeof constantValue && value !== null;
+      return canceled;
+    };
+    var trapProp = function trapProp(base, prop, configurable, handler) {
+      if (!handler.init(base[prop])) {
+        return false;
+      }
+      var origDescriptor = Object.getOwnPropertyDescriptor(base, prop);
+      var prevSetter;
+      if (origDescriptor instanceof Object) {
+        if (!origDescriptor.configurable) {
+          var message = `Property '${prop}' is not configurable`;
+          logMessage(source, message);
+          return false;
+        }
+        if (base[prop]) {
+          base[prop] = constantValue;
+        }
+        if (origDescriptor.set instanceof Function) {
+          prevSetter = origDescriptor.set;
+        }
+      }
+      Object.defineProperty(base, prop, {
+        configurable: configurable,
+        get() {
+          return handler.get();
+        },
+        set(a) {
+          if (prevSetter !== undefined) {
+            prevSetter(a);
+          }
+          if (a instanceof Object) {
+            var propertiesToCheck = property.split(".").slice(1);
+            if (setProxyTrap && !isProxyTrapSet) {
+              isProxyTrapSet = true;
+              a = new Proxy(a, {
+                get: function get(target, propertyKey, val) {
+                  propertiesToCheck.reduce((function(object, currentProp, index, array) {
+                    var currentObj = object === null || object === void 0 ? void 0 : object[currentProp];
+                    if (index === array.length - 1 && currentObj !== constantValue) {
+                      object[currentProp] = constantValue;
+                    }
+                    return currentObj || object;
+                  }), target);
+                  return Reflect.get(target, propertyKey, val);
+                }
+              });
+            }
+          }
+          handler.set(a);
+        }
+      });
+      return true;
+    };
+    var setChainPropAccess = createSetChainPropAccessor({
+      source: source,
+      stack: stack,
+      mustCancel: mustCancel,
+      trapProp: trapProp,
+      getConstantValue: function getConstantValue() {
+        return constantValue;
+      },
+      setConstantValue: function setConstantValue(v) {
+        constantValue = v;
+      }
+    });
+    setChainPropAccess(window, property);
+  }
+  function hit(e) {
+    if (e.verbose) {
+      try {
+        var n = console.trace.bind(console), i = "[AdGuard] ";
+        "corelibs" === e.engine ? i += e.ruleText : (e.domainName && (i += `${e.domainName}`), 
+        e.args ? i += `#%#//scriptlet('${e.name}', '${e.args.join("', '")}')` : i += `#%#//scriptlet('${e.name}')`), 
+        n && n(i);
+      } catch (e) {}
+      "function" == typeof window.__debug && window.__debug(e);
+    }
+  }
+  function logMessage(e, o) {
+    var r = arguments.length > 2 && void 0 !== arguments[2] && arguments[2], a = !(arguments.length > 3 && void 0 !== arguments[3]) || arguments[3], {name: n, verbose: g} = e;
+    if (r || g) {
+      var i = console.log;
+      a ? i(`${n}: ${o}`) : Array.isArray(o) ? i(`${n}:`, ...o) : i(`${n}:`, o);
+    }
+  }
+  function createSetChainPropAccessor(t) {
+    var {source: e, stack: r, mustCancel: i, trapProp: n, getConstantValue: a, setConstantValue: s} = t, _setChainPropAccess2 = function _setChainPropAccess(t, c) {
+      var o = getPropertyInChain(t, c), {base: u, prop: d, chain: f} = o, h = {
+        factValue: void 0,
+        init(t) {
+          return this.factValue = t, true;
+        },
+        get() {
+          return this.factValue;
+        },
+        set(t) {
+          this.factValue !== t && (this.factValue = t, t instanceof Object && _setChainPropAccess2(t, f));
+        }
+      }, l = {
+        factValue: void 0,
+        descriptorAddon: getDescriptorAddon(),
+        init(t) {
+          return !i(t) && (this.factValue = t, true);
+        },
+        get() {
+          if (!r) return hit(e), a();
+          if (!this.descriptorAddon.isAbortingSuspended) {
+            this.descriptorAddon.isAbortingSuspended = true;
+            var t = false;
+            try {
+              t = matchStackTrace(r, (new Error).stack || "");
+            } catch (t) {
+              return this.descriptorAddon.isAbortingSuspended = false, this.factValue;
+            }
+            if (this.descriptorAddon.isAbortingSuspended = false, t) return hit(e), a();
+          }
+          return this.factValue;
+        },
+        set(t) {
+          i(t) ? s(t) : this.factValue = t;
+        }
+      };
+      if (f) {
+        if (void 0 === u || null !== u[d]) {
+          (u instanceof Object || "object" == typeof u) && isEmptyObject(u) && n(u, d, true, h);
+          var p = t[d];
+          (p instanceof Object || "object" == typeof p && null !== p) && _setChainPropAccess2(p, f), 
+          n(u, d, true, h);
+        } else n(u, d, true, h);
+      } else n(u, d, false, l);
+    };
+    return _setChainPropAccess2;
+  }
+  function getNumberFromString(n) {
+    var r = parseInt(n, 10);
+    return nativeIsNaN(r) ? null : r;
+  }
+  function noopArray() {
+    return [];
+  }
+  function noopObject() {
+    return {};
+  }
+  function noopFunc() {}
+  function noopCallbackFunc() {
+    return noopFunc;
+  }
+  function trueFunc() {
+    return true;
+  }
+  function falseFunc() {
+    return false;
+  }
+  function throwFunc() {
+    throw new Error;
+  }
+  function noopPromiseReject() {
+    return Promise.reject();
+  }
+  function noopPromiseResolve() {
+    var e = arguments.length > 0 && void 0 !== arguments[0] ? arguments[0] : "{}", t = arguments.length > 1 && void 0 !== arguments[1] ? arguments[1] : "", s = arguments.length > 2 && void 0 !== arguments[2] ? arguments[2] : "basic";
+    if ("undefined" != typeof Response) {
+      var n = new Response(e, {
+        headers: {
+          "Content-Length": `${e.length}`
+        },
+        status: 200,
+        statusText: "OK"
+      });
+      return "opaque" === s ? Object.defineProperties(n, {
+        body: {
+          value: null
+        },
+        status: {
+          value: 0
+        },
+        ok: {
+          value: false
+        },
+        statusText: {
+          value: ""
+        },
+        url: {
+          value: ""
+        },
+        type: {
+          value: s
+        }
+      }) : Object.defineProperties(n, {
+        url: {
+          value: t
+        },
+        type: {
+          value: s
+        }
+      }), Promise.resolve(n);
+    }
+  }
+  function nativeIsNaN(N) {
+    return (Number.isNaN || window.isNaN)(N);
+  }
+  function shouldAbortInlineOrInjectedScript(t, i) {
+    var r = "inlineScript", n = "injectedScript", isInlineScript = function isInlineScript(t) {
+      return t.includes(r);
+    }, isInjectedScript = function isInjectedScript(t) {
+      return t.includes(n);
+    };
+    if (!isInlineScript(t) && !isInjectedScript(t)) return false;
+    var e = window.location.href, s = e.indexOf("#");
+    -1 !== s && (e = e.slice(0, s));
+    var c = i.split("\n").slice(2).map((function(t) {
+      return t.trim();
+    })).map((function(t) {
+      var i, s = /(.*?@)?(\S+)(:\d+)(:\d+)\)?$/.exec(t);
+      if (s) {
+        var c, l, a = s[2], u = s[3], o = s[4];
+        if (null !== (c = a) && void 0 !== c && c.startsWith("(") && (a = a.slice(1)), null !== (l = a) && void 0 !== l && l.startsWith("<anonymous>")) {
+          var d;
+          a = n;
+          var f = void 0 !== s[1] ? s[1].slice(0, -1) : t.slice(0, s.index).trim();
+          null !== (d = f) && void 0 !== d && d.startsWith("at") && (f = f.slice(2).trim()), 
+          i = `${f} ${a}${u}${o}`.trim();
+        } else i = a === e ? `${r}${u}${o}`.trim() : `${a}${u}${o}`.trim();
+      } else i = t;
+      return i;
+    }));
+    if (c) for (var l = 0; l < c.length; l += 1) {
+      if (isInlineScript(t) && c[l].startsWith(r) && c[l].match(toRegExp(t))) return true;
+      if (isInjectedScript(t) && c[l].startsWith(n) && c[l].match(toRegExp(t))) return true;
+    }
+    return false;
+  }
+  function getNativeRegexpTest() {
+    var t = Object.getOwnPropertyDescriptor(RegExp.prototype, "test"), e = null == t ? void 0 : t.value;
+    if (t && "function" == typeof t.value) return e;
+    throw new Error("RegExp.prototype.test is not a function");
+  }
+  function toRegExp(e) {
+    var r = e || "", t = "/";
+    if ("" === r) return new RegExp(".?");
+    var n, i, s = r.lastIndexOf(t), a = r.substring(s + 1), g = r.substring(0, s + 1), u = (i = a, 
+    (n = g).startsWith(t) && n.endsWith(t) && !n.endsWith("\\/") && function(e) {
+      if (!e) return false;
+      try {
+        return new RegExp("", e), !0;
+      } catch (e) {
+        return false;
+      }
+    }(i) ? i : "");
+    if (r.startsWith(t) && r.endsWith(t) || u) return new RegExp((u ? g : r).slice(1, -1), u);
+    var c = r.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(c);
+  }
+  function backupRegExpValues() {
+    try {
+      for (var r = [], e = 1; e < 10; e += 1) {
+        var a = `$${e}`;
+        if (!RegExp[a]) break;
+        r.push(RegExp[a]);
+      }
+      return r;
+    } catch (r) {
+      return [];
+    }
+  }
+  function restoreRegExpValues(e) {
+    if (e.length) try {
+      var r = "";
+      r = 1 === e.length ? `(${e[0]})` : e.reduce((function(e, r, t) {
+        return 1 === t ? `(${e}),(${r})` : `${e},(${r})`;
+      }));
+      var t = new RegExp(r);
+      e.toString().replace(t, "");
+    } catch (e) {
+      var n = `Failed to restore RegExp values: ${e}`;
+      console.log(n);
+    }
+  }
+  function getPropertyInChain(e, r) {
+    var n = r.indexOf(".");
+    if (-1 === n) return {
+      base: e,
+      prop: r
+    };
+    var i = r.slice(0, n);
+    if (null === e) return {
+      base: e,
+      prop: i,
+      chain: r
+    };
+    var t = e[i];
+    return r = r.slice(n + 1), (e instanceof Object || "object" == typeof e) && isEmptyObject(e) || null === t ? {
+      base: e,
+      prop: i,
+      chain: r
+    } : void 0 !== t ? getPropertyInChain(t, r) : (Object.defineProperty(e, i, {
+      configurable: true
+    }), {
+      base: e,
+      prop: i,
+      chain: r
+    });
+  }
+  function matchStackTrace(e, t) {
+    if (!e || "" === e) return true;
+    var r = backupRegExpValues();
+    if (shouldAbortInlineOrInjectedScript(e, t)) return r.length && r[0] !== RegExp.$1 && restoreRegExpValues(r), 
+    true;
+    var n = toRegExp(e), a = t.split("\n").slice(2).map((function(e) {
+      return e.trim();
+    })).join("\n");
+    return r.length && r[0] !== RegExp.$1 && restoreRegExpValues(r), getNativeRegexpTest().call(n, a);
+  }
+  function isEmptyObject(t) {
+    return 0 === Object.keys(t).length && !t.prototype;
+  }
+  function getDescriptorAddon() {
+    return {
+      isAbortingSuspended: false,
+      isolateCallback(r) {
+        this.isAbortingSuspended = true;
+        try {
+          for (var e = arguments.length, n = new Array(e > 1 ? e - 1 : 0), t = 1; t < e; t++) n[t - 1] = arguments[t];
+          var i = r(...n);
+          return this.isAbortingSuspended = !1, i;
+        } catch (r) {
+          var s = randomId();
+          throw this.isAbortingSuspended = false, new ReferenceError(s);
+        }
+      }
+    };
+  }
+  var updatedArgs = args ? [].concat(source).concat(args) : [ source ];
+  try {
+    setConstant.apply(this, updatedArgs);
+    if (source.uniqueId) {
+      Object.defineProperty(Window.prototype.toString, uniqueIdentifier, {
+        value: flag,
+        enumerable: false,
+        writable: false,
+        configurable: false
+      });
+    }
+  } catch (e) {
+    console.log(e);
+  }
+})({"args":["navigator.getBattery","noopPromiseResolve"],"engine":"extension","name":"set-constant","verbose":false,"domainName":"https://example.com/","version":"5.5.2.3"}, ["navigator.getBattery","noopPromiseResolve"]);
+(function scriptlets_noTopics(source, args) {
+  var flag = "done";
+  var uniqueIdentifier = source.uniqueId + source.name + "_" + (Array.isArray(args) ? args.join("_") : "");
+  if (source.uniqueId) {
+    if (Window.prototype.toString[uniqueIdentifier] === flag) {
+      return;
+    }
+  }
+  function noTopics(source) {
+    var TOPICS_PROPERTY_NAME = "browsingTopics";
+    if (Document instanceof Object === false) {
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(Document.prototype, TOPICS_PROPERTY_NAME) || Document.prototype[TOPICS_PROPERTY_NAME] instanceof Function === false) {
+      return;
+    }
+    Document.prototype[TOPICS_PROPERTY_NAME] = function() {
+      return noopPromiseResolve("[]");
+    };
+    hit(source);
+  }
+  function hit(e) {
+    if (e.verbose) {
+      try {
+        var n = console.trace.bind(console), i = "[AdGuard] ";
+        "corelibs" === e.engine ? i += e.ruleText : (e.domainName && (i += `${e.domainName}`), 
+        e.args ? i += `#%#//scriptlet('${e.name}', '${e.args.join("', '")}')` : i += `#%#//scriptlet('${e.name}')`), 
+        n && n(i);
+      } catch (e) {}
+      "function" == typeof window.__debug && window.__debug(e);
+    }
+  }
+  function noopPromiseResolve() {
+    var e = arguments.length > 0 && void 0 !== arguments[0] ? arguments[0] : "{}", t = arguments.length > 1 && void 0 !== arguments[1] ? arguments[1] : "", s = arguments.length > 2 && void 0 !== arguments[2] ? arguments[2] : "basic";
+    if ("undefined" != typeof Response) {
+      var n = new Response(e, {
+        headers: {
+          "Content-Length": `${e.length}`
+        },
+        status: 200,
+        statusText: "OK"
+      });
+      return "opaque" === s ? Object.defineProperties(n, {
+        body: {
+          value: null
+        },
+        status: {
+          value: 0
+        },
+        ok: {
+          value: false
+        },
+        statusText: {
+          value: ""
+        },
+        url: {
+          value: ""
+        },
+        type: {
+          value: s
+        }
+      }) : Object.defineProperties(n, {
+        url: {
+          value: t
+        },
+        type: {
+          value: s
+        }
+      }), Promise.resolve(n);
+    }
+  }
+  var updatedArgs = args ? [].concat(source).concat(args) : [ source ];
+  try {
+    noTopics.apply(this, updatedArgs);
+    if (source.uniqueId) {
+      Object.defineProperty(Window.prototype.toString, uniqueIdentifier, {
+        value: flag,
+        enumerable: false,
+        writable: false,
+        configurable: false
+      });
+    }
+  } catch (e) {
+    console.log(e);
+  }
+})({"args":[],"engine":"extension","name":"no-topics","verbose":false,"domainName":"https://example.com/","version":"5.5.2.3"}, []);
+(function scriptlets_setConstant(source, args) {
+  var flag = "done";
+  var uniqueIdentifier = source.uniqueId + source.name + "_" + (Array.isArray(args) ? args.join("_") : "");
+  if (source.uniqueId) {
+    if (Window.prototype.toString[uniqueIdentifier] === flag) {
+      return;
+    }
+  }
+  function setConstant(source, property, value) {
+    var stack = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : "";
+    var valueWrapper = arguments.length > 4 && arguments[4] !== undefined ? arguments[4] : "";
+    var setProxyTrap = arguments.length > 5 && arguments[5] !== undefined ? arguments[5] : false;
+    var uboAliases = [ "set-constant.js", "ubo-set-constant.js", "set.js", "ubo-set.js", "ubo-set-constant", "ubo-set" ];
+    if (uboAliases.includes(source.name)) {
+      if (stack.length !== 1 && !getNumberFromString(stack)) {
+        valueWrapper = stack;
+      }
+      stack = undefined;
+    }
+    if (!property) {
+      return;
+    }
+    var isProxyTrapSet = false;
+    var emptyArr = noopArray();
+    var emptyObj = noopObject();
+    var constantValue;
+    if (value === "undefined") {
+      constantValue = undefined;
+    } else if (value === "false") {
+      constantValue = false;
+    } else if (value === "true") {
+      constantValue = true;
+    } else if (value === "null") {
+      constantValue = null;
+    } else if (value === "emptyArr") {
+      constantValue = emptyArr;
+    } else if (value === "emptyObj") {
+      constantValue = emptyObj;
+    } else if (value === "noopFunc") {
+      constantValue = noopFunc;
+    } else if (value === "noopCallbackFunc") {
+      constantValue = noopCallbackFunc;
+    } else if (value === "trueFunc") {
+      constantValue = trueFunc;
+    } else if (value === "falseFunc") {
+      constantValue = falseFunc;
+    } else if (value === "throwFunc") {
+      constantValue = throwFunc;
+    } else if (value === "noopPromiseResolve") {
+      constantValue = noopPromiseResolve;
+    } else if (value === "noopPromiseReject") {
+      constantValue = noopPromiseReject;
+    } else if (/^\d+$/.test(value)) {
+      constantValue = parseFloat(value);
+      if (nativeIsNaN(constantValue)) {
+        return;
+      }
+      if (Math.abs(constantValue) > 32767) {
+        return;
+      }
+    } else if (value === "-1") {
+      constantValue = -1;
+    } else if (value === "") {
+      constantValue = "";
+    } else if (value === "yes") {
+      constantValue = "yes";
+    } else if (value === "no") {
+      constantValue = "no";
+    } else {
+      return;
+    }
+    var valueWrapperNames = [ "asFunction", "asCallback", "asResolved", "asRejected" ];
+    if (valueWrapperNames.includes(valueWrapper)) {
+      var valueWrappersMap = {
+        asFunction(v) {
+          return function() {
+            return v;
+          };
+        },
+        asCallback(v) {
+          return function() {
+            return function() {
+              return v;
+            };
+          };
+        },
+        asResolved(v) {
+          return Promise.resolve(v);
+        },
+        asRejected(v) {
+          return Promise.reject(v);
+        }
+      };
+      constantValue = valueWrappersMap[valueWrapper](constantValue);
+    }
+    var canceled = false;
+    var mustCancel = function mustCancel(value) {
+      if (canceled) {
+        return canceled;
+      }
+      canceled = value !== undefined && constantValue !== undefined && typeof value !== typeof constantValue && value !== null;
+      return canceled;
+    };
+    var trapProp = function trapProp(base, prop, configurable, handler) {
+      if (!handler.init(base[prop])) {
+        return false;
+      }
+      var origDescriptor = Object.getOwnPropertyDescriptor(base, prop);
+      var prevSetter;
+      if (origDescriptor instanceof Object) {
+        if (!origDescriptor.configurable) {
+          var message = `Property '${prop}' is not configurable`;
+          logMessage(source, message);
+          return false;
+        }
+        if (base[prop]) {
+          base[prop] = constantValue;
+        }
+        if (origDescriptor.set instanceof Function) {
+          prevSetter = origDescriptor.set;
+        }
+      }
+      Object.defineProperty(base, prop, {
+        configurable: configurable,
+        get() {
+          return handler.get();
+        },
+        set(a) {
+          if (prevSetter !== undefined) {
+            prevSetter(a);
+          }
+          if (a instanceof Object) {
+            var propertiesToCheck = property.split(".").slice(1);
+            if (setProxyTrap && !isProxyTrapSet) {
+              isProxyTrapSet = true;
+              a = new Proxy(a, {
+                get: function get(target, propertyKey, val) {
+                  propertiesToCheck.reduce((function(object, currentProp, index, array) {
+                    var currentObj = object === null || object === void 0 ? void 0 : object[currentProp];
+                    if (index === array.length - 1 && currentObj !== constantValue) {
+                      object[currentProp] = constantValue;
+                    }
+                    return currentObj || object;
+                  }), target);
+                  return Reflect.get(target, propertyKey, val);
+                }
+              });
+            }
+          }
+          handler.set(a);
+        }
+      });
+      return true;
+    };
+    var setChainPropAccess = createSetChainPropAccessor({
+      source: source,
+      stack: stack,
+      mustCancel: mustCancel,
+      trapProp: trapProp,
+      getConstantValue: function getConstantValue() {
+        return constantValue;
+      },
+      setConstantValue: function setConstantValue(v) {
+        constantValue = v;
+      }
+    });
+    setChainPropAccess(window, property);
+  }
+  function hit(e) {
+    if (e.verbose) {
+      try {
+        var n = console.trace.bind(console), i = "[AdGuard] ";
+        "corelibs" === e.engine ? i += e.ruleText : (e.domainName && (i += `${e.domainName}`), 
+        e.args ? i += `#%#//scriptlet('${e.name}', '${e.args.join("', '")}')` : i += `#%#//scriptlet('${e.name}')`), 
+        n && n(i);
+      } catch (e) {}
+      "function" == typeof window.__debug && window.__debug(e);
+    }
+  }
+  function logMessage(e, o) {
+    var r = arguments.length > 2 && void 0 !== arguments[2] && arguments[2], a = !(arguments.length > 3 && void 0 !== arguments[3]) || arguments[3], {name: n, verbose: g} = e;
+    if (r || g) {
+      var i = console.log;
+      a ? i(`${n}: ${o}`) : Array.isArray(o) ? i(`${n}:`, ...o) : i(`${n}:`, o);
+    }
+  }
+  function createSetChainPropAccessor(t) {
+    var {source: e, stack: r, mustCancel: i, trapProp: n, getConstantValue: a, setConstantValue: s} = t, _setChainPropAccess2 = function _setChainPropAccess(t, c) {
+      var o = getPropertyInChain(t, c), {base: u, prop: d, chain: f} = o, h = {
+        factValue: void 0,
+        init(t) {
+          return this.factValue = t, true;
+        },
+        get() {
+          return this.factValue;
+        },
+        set(t) {
+          this.factValue !== t && (this.factValue = t, t instanceof Object && _setChainPropAccess2(t, f));
+        }
+      }, l = {
+        factValue: void 0,
+        descriptorAddon: getDescriptorAddon(),
+        init(t) {
+          return !i(t) && (this.factValue = t, true);
+        },
+        get() {
+          if (!r) return hit(e), a();
+          if (!this.descriptorAddon.isAbortingSuspended) {
+            this.descriptorAddon.isAbortingSuspended = true;
+            var t = false;
+            try {
+              t = matchStackTrace(r, (new Error).stack || "");
+            } catch (t) {
+              return this.descriptorAddon.isAbortingSuspended = false, this.factValue;
+            }
+            if (this.descriptorAddon.isAbortingSuspended = false, t) return hit(e), a();
+          }
+          return this.factValue;
+        },
+        set(t) {
+          i(t) ? s(t) : this.factValue = t;
+        }
+      };
+      if (f) {
+        if (void 0 === u || null !== u[d]) {
+          (u instanceof Object || "object" == typeof u) && isEmptyObject(u) && n(u, d, true, h);
+          var p = t[d];
+          (p instanceof Object || "object" == typeof p && null !== p) && _setChainPropAccess2(p, f), 
+          n(u, d, true, h);
+        } else n(u, d, true, h);
+      } else n(u, d, false, l);
+    };
+    return _setChainPropAccess2;
+  }
+  function getNumberFromString(n) {
+    var r = parseInt(n, 10);
+    return nativeIsNaN(r) ? null : r;
+  }
+  function noopArray() {
+    return [];
+  }
+  function noopObject() {
+    return {};
+  }
+  function noopFunc() {}
+  function noopCallbackFunc() {
+    return noopFunc;
+  }
+  function trueFunc() {
+    return true;
+  }
+  function falseFunc() {
+    return false;
+  }
+  function throwFunc() {
+    throw new Error;
+  }
+  function noopPromiseReject() {
+    return Promise.reject();
+  }
+  function noopPromiseResolve() {
+    var e = arguments.length > 0 && void 0 !== arguments[0] ? arguments[0] : "{}", t = arguments.length > 1 && void 0 !== arguments[1] ? arguments[1] : "", s = arguments.length > 2 && void 0 !== arguments[2] ? arguments[2] : "basic";
+    if ("undefined" != typeof Response) {
+      var n = new Response(e, {
+        headers: {
+          "Content-Length": `${e.length}`
+        },
+        status: 200,
+        statusText: "OK"
+      });
+      return "opaque" === s ? Object.defineProperties(n, {
+        body: {
+          value: null
+        },
+        status: {
+          value: 0
+        },
+        ok: {
+          value: false
+        },
+        statusText: {
+          value: ""
+        },
+        url: {
+          value: ""
+        },
+        type: {
+          value: s
+        }
+      }) : Object.defineProperties(n, {
+        url: {
+          value: t
+        },
+        type: {
+          value: s
+        }
+      }), Promise.resolve(n);
+    }
+  }
+  function nativeIsNaN(N) {
+    return (Number.isNaN || window.isNaN)(N);
+  }
+  function shouldAbortInlineOrInjectedScript(t, i) {
+    var r = "inlineScript", n = "injectedScript", isInlineScript = function isInlineScript(t) {
+      return t.includes(r);
+    }, isInjectedScript = function isInjectedScript(t) {
+      return t.includes(n);
+    };
+    if (!isInlineScript(t) && !isInjectedScript(t)) return false;
+    var e = window.location.href, s = e.indexOf("#");
+    -1 !== s && (e = e.slice(0, s));
+    var c = i.split("\n").slice(2).map((function(t) {
+      return t.trim();
+    })).map((function(t) {
+      var i, s = /(.*?@)?(\S+)(:\d+)(:\d+)\)?$/.exec(t);
+      if (s) {
+        var c, l, a = s[2], u = s[3], o = s[4];
+        if (null !== (c = a) && void 0 !== c && c.startsWith("(") && (a = a.slice(1)), null !== (l = a) && void 0 !== l && l.startsWith("<anonymous>")) {
+          var d;
+          a = n;
+          var f = void 0 !== s[1] ? s[1].slice(0, -1) : t.slice(0, s.index).trim();
+          null !== (d = f) && void 0 !== d && d.startsWith("at") && (f = f.slice(2).trim()), 
+          i = `${f} ${a}${u}${o}`.trim();
+        } else i = a === e ? `${r}${u}${o}`.trim() : `${a}${u}${o}`.trim();
+      } else i = t;
+      return i;
+    }));
+    if (c) for (var l = 0; l < c.length; l += 1) {
+      if (isInlineScript(t) && c[l].startsWith(r) && c[l].match(toRegExp(t))) return true;
+      if (isInjectedScript(t) && c[l].startsWith(n) && c[l].match(toRegExp(t))) return true;
+    }
+    return false;
+  }
+  function getNativeRegexpTest() {
+    var t = Object.getOwnPropertyDescriptor(RegExp.prototype, "test"), e = null == t ? void 0 : t.value;
+    if (t && "function" == typeof t.value) return e;
+    throw new Error("RegExp.prototype.test is not a function");
+  }
+  function toRegExp(e) {
+    var r = e || "", t = "/";
+    if ("" === r) return new RegExp(".?");
+    var n, i, s = r.lastIndexOf(t), a = r.substring(s + 1), g = r.substring(0, s + 1), u = (i = a, 
+    (n = g).startsWith(t) && n.endsWith(t) && !n.endsWith("\\/") && function(e) {
+      if (!e) return false;
+      try {
+        return new RegExp("", e), !0;
+      } catch (e) {
+        return false;
+      }
+    }(i) ? i : "");
+    if (r.startsWith(t) && r.endsWith(t) || u) return new RegExp((u ? g : r).slice(1, -1), u);
+    var c = r.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(c);
+  }
+  function backupRegExpValues() {
+    try {
+      for (var r = [], e = 1; e < 10; e += 1) {
+        var a = `$${e}`;
+        if (!RegExp[a]) break;
+        r.push(RegExp[a]);
+      }
+      return r;
+    } catch (r) {
+      return [];
+    }
+  }
+  function restoreRegExpValues(e) {
+    if (e.length) try {
+      var r = "";
+      r = 1 === e.length ? `(${e[0]})` : e.reduce((function(e, r, t) {
+        return 1 === t ? `(${e}),(${r})` : `${e},(${r})`;
+      }));
+      var t = new RegExp(r);
+      e.toString().replace(t, "");
+    } catch (e) {
+      var n = `Failed to restore RegExp values: ${e}`;
+      console.log(n);
+    }
+  }
+  function getPropertyInChain(e, r) {
+    var n = r.indexOf(".");
+    if (-1 === n) return {
+      base: e,
+      prop: r
+    };
+    var i = r.slice(0, n);
+    if (null === e) return {
+      base: e,
+      prop: i,
+      chain: r
+    };
+    var t = e[i];
+    return r = r.slice(n + 1), (e instanceof Object || "object" == typeof e) && isEmptyObject(e) || null === t ? {
+      base: e,
+      prop: i,
+      chain: r
+    } : void 0 !== t ? getPropertyInChain(t, r) : (Object.defineProperty(e, i, {
+      configurable: true
+    }), {
+      base: e,
+      prop: i,
+      chain: r
+    });
+  }
+  function matchStackTrace(e, t) {
+    if (!e || "" === e) return true;
+    var r = backupRegExpValues();
+    if (shouldAbortInlineOrInjectedScript(e, t)) return r.length && r[0] !== RegExp.$1 && restoreRegExpValues(r), 
+    true;
+    var n = toRegExp(e), a = t.split("\n").slice(2).map((function(e) {
+      return e.trim();
+    })).join("\n");
+    return r.length && r[0] !== RegExp.$1 && restoreRegExpValues(r), getNativeRegexpTest().call(n, a);
+  }
+  function isEmptyObject(t) {
+    return 0 === Object.keys(t).length && !t.prototype;
+  }
+  function getDescriptorAddon() {
+    return {
+      isAbortingSuspended: false,
+      isolateCallback(r) {
+        this.isAbortingSuspended = true;
+        try {
+          for (var e = arguments.length, n = new Array(e > 1 ? e - 1 : 0), t = 1; t < e; t++) n[t - 1] = arguments[t];
+          var i = r(...n);
+          return this.isAbortingSuspended = !1, i;
+        } catch (r) {
+          var s = randomId();
+          throw this.isAbortingSuspended = false, new ReferenceError(s);
+        }
+      }
+    };
+  }
+  var updatedArgs = args ? [].concat(source).concat(args) : [ source ];
+  try {
+    setConstant.apply(this, updatedArgs);
+    if (source.uniqueId) {
+      Object.defineProperty(Window.prototype.toString, uniqueIdentifier, {
+        value: flag,
+        enumerable: false,
+        writable: false,
+        configurable: false
+      });
+    }
+  } catch (e) {
+    console.log(e);
+  }
+})({"args":["navigator.privateAttribution","undefined"],"engine":"extension","name":"set-constant","verbose":false,"domainName":"https://example.com/","version":"5.5.2.3"}, ["navigator.privateAttribution","undefined"]);
+(function scriptlets_noProtectedAudience(source, args) {
+  var flag = "done";
+  var uniqueIdentifier = source.uniqueId + source.name + "_" + (Array.isArray(args) ? args.join("_") : "");
+  if (source.uniqueId) {
+    if (Window.prototype.toString[uniqueIdentifier] === flag) {
+      return;
+    }
+  }
+  function noProtectedAudience(source) {
+    if (Document instanceof Object === false) {
+      return;
+    }
+    var protectedAudienceMethods = {
+      joinAdInterestGroup: noopResolveVoid,
+      runAdAuction: noopResolveNull,
+      leaveAdInterestGroup: noopResolveVoid,
+      clearOriginJoinedAdInterestGroups: noopResolveVoid,
+      createAuctionNonce: noopStr,
+      updateAdInterestGroups: noopFunc
+    };
+    for (var _i = 0, _Object$keys = Object.keys(protectedAudienceMethods); _i < _Object$keys.length; _i++) {
+      var key = _Object$keys[_i];
+      var methodName = key;
+      var prototype = Navigator.prototype;
+      if (!Object.prototype.hasOwnProperty.call(prototype, methodName) || prototype[methodName] instanceof Function === false) {
+        continue;
+      }
+      prototype[methodName] = protectedAudienceMethods[methodName];
+    }
+    hit(source);
+  }
+  function hit(e) {
+    if (e.verbose) {
+      try {
+        var n = console.trace.bind(console), i = "[AdGuard] ";
+        "corelibs" === e.engine ? i += e.ruleText : (e.domainName && (i += `${e.domainName}`), 
+        e.args ? i += `#%#//scriptlet('${e.name}', '${e.args.join("', '")}')` : i += `#%#//scriptlet('${e.name}')`), 
+        n && n(i);
+      } catch (e) {}
+      "function" == typeof window.__debug && window.__debug(e);
+    }
+  }
+  function noopStr() {
+    return "";
+  }
+  function noopFunc() {}
+  function noopResolveVoid() {
+    return Promise.resolve(void 0);
+  }
+  function noopResolveNull() {
+    return Promise.resolve(null);
+  }
+  var updatedArgs = args ? [].concat(source).concat(args) : [ source ];
+  try {
+    noProtectedAudience.apply(this, updatedArgs);
+    if (source.uniqueId) {
+      Object.defineProperty(Window.prototype.toString, uniqueIdentifier, {
+        value: flag,
+        enumerable: false,
+        writable: false,
+        configurable: false
+      });
+    }
+  } catch (e) {
+    console.log(e);
+  }
+})({"args":[],"engine":"extension","name":"no-protected-audience","verbose":false,"domainName":"https://example.com/","version":"5.5.2.3"}, []);
+(function scriptlets_abortOnPropertyRead(source, args) {
+  var flag = "done";
+  var uniqueIdentifier = source.uniqueId + source.name + "_" + (Array.isArray(args) ? args.join("_") : "");
+  if (source.uniqueId) {
+    if (Window.prototype.toString[uniqueIdentifier] === flag) {
+      return;
+    }
+  }
+  function abortOnPropertyRead(source, property) {
+    if (!property) {
+      return;
+    }
+    var rid = randomId();
+    var abort = function abort() {
+      hit(source);
+      throw new ReferenceError(rid);
+    };
+    var _setChainPropAccess = function setChainPropAccess(owner, property) {
+      var chainInfo = getPropertyInChain(owner, property);
+      var {base: base, prop: prop, chain: chain} = chainInfo;
+      if (chain) {
+        interceptChainProp(owner, prop, chain, _setChainPropAccess);
+        return;
+      }
+      setPropertyAccess(base, prop, {
+        get: abort,
+        set: function set() {}
+      });
+    };
+    _setChainPropAccess(window, property);
+    window.onerror = createOnErrorHandler(rid).bind();
+  }
+  function randomId() {
+    return Math.random().toString(36).slice(2, 9);
+  }
+  function setPropertyAccess(e, r, t) {
+    var c = Object.getOwnPropertyDescriptor(e, r);
+    return !(c && !c.configurable) && (Object.defineProperty(e, r, t), true);
+  }
+  function getPropertyInChain(e, r) {
+    var n = r.indexOf(".");
+    if (-1 === n) return {
+      base: e,
+      prop: r
+    };
+    var i = r.slice(0, n);
+    if (null === e) return {
+      base: e,
+      prop: i,
+      chain: r
+    };
+    var t = e[i];
+    return r = r.slice(n + 1), (e instanceof Object || "object" == typeof e) && isEmptyObject(e) || null === t ? {
+      base: e,
+      prop: i,
+      chain: r
+    } : void 0 !== t ? getPropertyInChain(t, r) : (Object.defineProperty(e, i, {
+      configurable: true
+    }), {
+      base: e,
+      prop: i,
+      chain: r
+    });
+  }
+  function createOnErrorHandler(r) {
+    var n = window.onerror;
+    return function(e) {
+      if ("string" == typeof e && e.includes(r)) return true;
+      if (n instanceof Function) {
+        for (var t = arguments.length, o = new Array(t > 1 ? t - 1 : 0), i = 1; i < t; i++) o[i - 1] = arguments[i];
+        return n.apply(window, [ e, ...o ]);
+      }
+      return false;
+    };
+  }
+  function hit(e) {
+    if (e.verbose) {
+      try {
+        var n = console.trace.bind(console), i = "[AdGuard] ";
+        "corelibs" === e.engine ? i += e.ruleText : (e.domainName && (i += `${e.domainName}`), 
+        e.args ? i += `#%#//scriptlet('${e.name}', '${e.args.join("', '")}')` : i += `#%#//scriptlet('${e.name}')`), 
+        n && n(i);
+      } catch (e) {}
+      "function" == typeof window.__debug && window.__debug(e);
+    }
+  }
+  function isEmptyObject(t) {
+    return 0 === Object.keys(t).length && !t.prototype;
+  }
+  function interceptChainProp(t, n, e, c) {
+    var i;
+    try {
+      i = t[n];
+    } catch (t) {
+      i = void 0;
+    }
+    Object.defineProperty(t, n, {
+      get: function get() {
+        return i;
+      },
+      set: function set(t) {
+        i = t, t instanceof Object && c(t, e);
+      }
+    });
+  }
+  var updatedArgs = args ? [].concat(source).concat(args) : [ source ];
+  try {
+    abortOnPropertyRead.apply(this, updatedArgs);
+    if (source.uniqueId) {
+      Object.defineProperty(Window.prototype.toString, uniqueIdentifier, {
+        value: flag,
+        enumerable: false,
+        writable: false,
+        configurable: false
+      });
+    }
+  } catch (e) {
+    console.log(e);
+  }
+})({"args":["zfgloadedpopup"],"engine":"extension","name":"abort-on-property-read","verbose":false,"domainName":"https://example.com/","version":"5.5.2.3"}, ["zfgloadedpopup"]);
+(function scriptlets_abortCurrentInlineScript(source, args) {
+  var flag = "done";
+  var uniqueIdentifier = source.uniqueId + source.name + "_" + (Array.isArray(args) ? args.join("_") : "");
+  if (source.uniqueId) {
+    if (Window.prototype.toString[uniqueIdentifier] === flag) {
+      return;
+    }
+  }
+  function abortCurrentInlineScript(source, property, search) {
+    var searchRegexp = toRegExp(search);
+    var rid = randomId();
+    var SRC_DATA_MARKER = "data:text/javascript;base64,";
+    var getCurrentScript = function getCurrentScript() {
+      if ("currentScript" in document) {
+        return document.currentScript;
+      }
+      var scripts = document.getElementsByTagName("script");
+      return scripts[scripts.length - 1];
+    };
+    var ourScript = getCurrentScript();
+    var abort = function abort() {
+      var _scriptEl$src;
+      var scriptEl = getCurrentScript();
+      if (!scriptEl) {
+        return;
+      }
+      var content = scriptEl.textContent;
+      try {
+        var textContentGetter = Object.getOwnPropertyDescriptor(Node.prototype, "textContent").get;
+        content = textContentGetter.call(scriptEl);
+      } catch (e) {}
+      if (content.length === 0 && typeof scriptEl.src !== "undefined" && (_scriptEl$src = scriptEl.src) !== null && _scriptEl$src !== void 0 && _scriptEl$src.startsWith(SRC_DATA_MARKER)) {
+        var encodedContent = scriptEl.src.slice(SRC_DATA_MARKER.length);
+        content = window.atob(encodedContent);
+      }
+      if (scriptEl instanceof HTMLScriptElement && content.length > 0 && scriptEl !== ourScript && searchRegexp.test(content)) {
+        hit(source);
+        throw new ReferenceError(rid);
+      }
+    };
+    var _setChainPropAccess = function setChainPropAccess(owner, property) {
+      var chainInfo = getPropertyInChain(owner, property);
+      var {base: base, prop: prop, chain: chain} = chainInfo;
+      if (base instanceof Object === false && base === null) {
+        var props = property.split(".");
+        var propIndex = props.indexOf(prop);
+        var baseName = props[propIndex - 1];
+        var message = `The scriptlet had been executed before the ${baseName} was loaded.`;
+        logMessage(source, message);
+        return;
+      }
+      if (chain) {
+        interceptChainProp(owner, prop, chain, _setChainPropAccess);
+        return;
+      }
+      var currentValue = base[prop];
+      var origDescriptor = Object.getOwnPropertyDescriptor(base, prop);
+      if (origDescriptor instanceof Object === false || origDescriptor.get instanceof Function === false) {
+        currentValue = base[prop];
+        origDescriptor = undefined;
+      }
+      var descriptorWrapper = Object.assign(getDescriptorAddon(), {
+        currentValue: currentValue,
+        get() {
+          if (!this.isAbortingSuspended) {
+            this.isolateCallback(abort);
+          }
+          if (origDescriptor instanceof Object) {
+            return origDescriptor.get.call(base);
+          }
+          return this.currentValue;
+        },
+        set(newValue) {
+          if (!this.isAbortingSuspended) {
+            this.isolateCallback(abort);
+          }
+          if (origDescriptor instanceof Object) {
+            origDescriptor.set.call(base, newValue);
+          } else {
+            this.currentValue = newValue;
+          }
+        }
+      });
+      setPropertyAccess(base, prop, {
+        get() {
+          return descriptorWrapper.get.call(descriptorWrapper);
+        },
+        set(newValue) {
+          descriptorWrapper.set.call(descriptorWrapper, newValue);
+        }
+      });
+    };
+    _setChainPropAccess(window, property);
+    window.onerror = createOnErrorHandler(rid).bind();
+  }
+  function randomId() {
+    return Math.random().toString(36).slice(2, 9);
+  }
+  function setPropertyAccess(e, r, t) {
+    var c = Object.getOwnPropertyDescriptor(e, r);
+    return !(c && !c.configurable) && (Object.defineProperty(e, r, t), true);
+  }
+  function getPropertyInChain(e, r) {
+    var n = r.indexOf(".");
+    if (-1 === n) return {
+      base: e,
+      prop: r
+    };
+    var i = r.slice(0, n);
+    if (null === e) return {
+      base: e,
+      prop: i,
+      chain: r
+    };
+    var t = e[i];
+    return r = r.slice(n + 1), (e instanceof Object || "object" == typeof e) && isEmptyObject(e) || null === t ? {
+      base: e,
+      prop: i,
+      chain: r
+    } : void 0 !== t ? getPropertyInChain(t, r) : (Object.defineProperty(e, i, {
+      configurable: true
+    }), {
+      base: e,
+      prop: i,
+      chain: r
+    });
+  }
+  function toRegExp(e) {
+    var r = e || "", t = "/";
+    if ("" === r) return new RegExp(".?");
+    var n, i, s = r.lastIndexOf(t), a = r.substring(s + 1), g = r.substring(0, s + 1), u = (i = a, 
+    (n = g).startsWith(t) && n.endsWith(t) && !n.endsWith("\\/") && function(e) {
+      if (!e) return false;
+      try {
+        return new RegExp("", e), !0;
+      } catch (e) {
+        return false;
+      }
+    }(i) ? i : "");
+    if (r.startsWith(t) && r.endsWith(t) || u) return new RegExp((u ? g : r).slice(1, -1), u);
+    var c = r.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(c);
+  }
+  function createOnErrorHandler(r) {
+    var n = window.onerror;
+    return function(e) {
+      if ("string" == typeof e && e.includes(r)) return true;
+      if (n instanceof Function) {
+        for (var t = arguments.length, o = new Array(t > 1 ? t - 1 : 0), i = 1; i < t; i++) o[i - 1] = arguments[i];
+        return n.apply(window, [ e, ...o ]);
+      }
+      return false;
+    };
+  }
+  function hit(e) {
+    if (e.verbose) {
+      try {
+        var n = console.trace.bind(console), i = "[AdGuard] ";
+        "corelibs" === e.engine ? i += e.ruleText : (e.domainName && (i += `${e.domainName}`), 
+        e.args ? i += `#%#//scriptlet('${e.name}', '${e.args.join("', '")}')` : i += `#%#//scriptlet('${e.name}')`), 
+        n && n(i);
+      } catch (e) {}
+      "function" == typeof window.__debug && window.__debug(e);
+    }
+  }
+  function logMessage(e, o) {
+    var r = arguments.length > 2 && void 0 !== arguments[2] && arguments[2], a = !(arguments.length > 3 && void 0 !== arguments[3]) || arguments[3], {name: n, verbose: g} = e;
+    if (r || g) {
+      var i = console.log;
+      a ? i(`${n}: ${o}`) : Array.isArray(o) ? i(`${n}:`, ...o) : i(`${n}:`, o);
+    }
+  }
+  function isEmptyObject(t) {
+    return 0 === Object.keys(t).length && !t.prototype;
+  }
+  function getDescriptorAddon() {
+    return {
+      isAbortingSuspended: false,
+      isolateCallback(r) {
+        this.isAbortingSuspended = true;
+        try {
+          for (var e = arguments.length, n = new Array(e > 1 ? e - 1 : 0), t = 1; t < e; t++) n[t - 1] = arguments[t];
+          var i = r(...n);
+          return this.isAbortingSuspended = !1, i;
+        } catch (r) {
+          var s = randomId();
+          throw this.isAbortingSuspended = false, new ReferenceError(s);
+        }
+      }
+    };
+  }
+  function interceptChainProp(t, n, e, c) {
+    var i;
+    try {
+      i = t[n];
+    } catch (t) {
+      i = void 0;
+    }
+    Object.defineProperty(t, n, {
+      get: function get() {
+        return i;
+      },
+      set: function set(t) {
+        i = t, t instanceof Object && c(t, e);
+      }
+    });
+  }
+  var updatedArgs = args ? [].concat(source).concat(args) : [ source ];
+  try {
+    abortCurrentInlineScript.apply(this, updatedArgs);
+    if (source.uniqueId) {
+      Object.defineProperty(Window.prototype.toString, uniqueIdentifier, {
+        value: flag,
+        enumerable: false,
+        writable: false,
+        configurable: false
+      });
+    }
+  } catch (e) {
+    console.log(e);
+  }
+})({"args":["WebAssembly","atob"],"engine":"extension","name":"abort-current-inline-script","verbose":false,"domainName":"https://example.com/","version":"5.5.2.3"}, ["WebAssembly","atob"]);
+
+            } catch (ex) {
+                console.error('Error executing AG js: ' + ex);
+            }
+        })();
+        //# sourceURL=ag-scripts.js
