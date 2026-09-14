@@ -81,7 +81,7 @@ Downloads/
 #    chrome://extensions → Developer mode → Load unpacked → "extension"
 
 # 2. Run the offline test suites (from the repo root — no browser, no network)
-node --test "source/tests/*.test.mjs"      # fixtures: routes, panel queue + crawler, folder naming, ZIP, PDF, queue restore
+node --test "source/tests/*.test.mjs"      # fixtures: routes, panel queue + crawler, folder naming, ZIP, PDF, queue restore, hoster reachability
 node source/tests/smoke.mjs                # real service worker under mocked chrome
 node source/tests/e2e-download-paths.mjs   # real worker + offscreen doc: the saved paths
 npm test                                   # all of the above

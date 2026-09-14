@@ -170,27 +170,17 @@ const SUPPORTED_HOSTS = new Set([
 ]);
 // Kept deliberately: inert for the two supported sites, but load-bearing if a
 // specific hoster is ever enabled. See source/retired/generic-hoster/README.md.
-// Known limitation: a host written as a TLD alternation (`streamtape\.(?:com|to|xyz)`)
-// is invisible to this inventory, so all three forms are listed even though only the
-// bare prefix appears in the source. This list may only ever SHRINK.
+// This list may only ever SHRINK: an entry with nothing behind it lets the next
+// person re-add that host without thinking. Entries deleted 2026-09-14 once the
+// observed-media predicates were retired: streamtape.*, dood.*, phncdn.com,
+// playhubconnect.com, mmcdn.com, psmcdn.net, adtng.com, itsup.com, mydaddy.cc,
+// cloudflarestream.com, videodelivery.net, sa.com.
 const ALLOWED_HOSTER_HOSTS = new Set([
   "xiaoshenke.net",
   "xtremestream.xyz",
   "aki-h.stream",
-  "videodelivery.net",
-  "cloudflarestream.com",
   "erome.com",
-  "streamtape.com",
-  "streamtape.to",
-  "streamtape.xyz",
-  "phncdn.com",
-  "playhubconnect.com",
-  "mmcdn.com",
-  "psmcdn.net",
-  "adtng.com",
-  "itsup.com",
   "workers.dev",
-  "mydaddy.cc",
 ]);
 // Only our own first-party files are inventoried: extension/modules/** is vendored
 // third-party code (its comments carry the upstream author's URLs) and CSS cannot

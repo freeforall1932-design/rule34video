@@ -30,25 +30,48 @@ retired adapter, and no shipped file assigns it:
 | `downloadMediaUrlRewriteRules` / `removeMediaUrlQueryParams` loops in `rewriteDownloadUrl()` | both arrays declared `[]`; nothing ever pushes to them |
 | `case "getActiveDownloads"`, `case "getOutputSettings"` | no shipped **and** no retired file emits them (superseded by `panel.get` / `panel.*`) |
 
-## Kept live on purpose (looks dead, is not)
+## Retired in pass 2 (2026-09-14) — proof, not guesswork
 
-Do **not** delete these without a live-page check — they are guarded by a hostname,
-but they sit inside functions the two sites use, and rule34video.com is
-demonstrably embedding third-party iframes (a `<iframe src="https://engine.sadbaguette.com/…">`
-ad frame is present in `source/page-source/rule34video-listing.html`). `chrome.downloads`
-needs no host permission for a foreign media URL, so a foreign host *can* reach
-these predicates. Verify on a real post page first.
+The observed-media predicates turned out to be **provably** unreachable after all,
+for a reason no grep gives you: `rememberObservedRequest` is the only writer into
+`observedMediaByOrigin` / `observedMediaByTab`, and Chrome only ever invokes a
+`webRequest` listener for URLs matching its `urls` filter — which lists nothing but
+`rule34.world`, `*.rule34.world`, `www.rule34.world`, `rule34video.com`,
+`*.rule34video.com`, `rule34storage.b-cdn.net`.
 
-| Guard | Live location | Lift it for |
-|---|---|---|
-| `looksObservedPlayable()` host patterns | `:1538` | any direct-file host |
-| `streamtape` e/v/d path rule | `:1551` | streamtape mirrors |
-| `cloudflareStreamIframeInfo` / `SegmentInfo` / `ManifestFormats` | `:1598`, `:1648`, `:1678` | Cloudflare-Stream-backed players |
-| `aki-h.stream` HLS shape | `:1524`, `:1625` | aki-h embeds |
-| `xtremestream.xyz` + `/player/xs1.php` | `:1630` | xtremestream |
-| `xiaoshenkePlayerFormats()` / signed-URL resolver | `:1719`, `:2118-2229` | xiaoshenke (`*.xiaoshenke.net/s1/…`) |
-| erome referer + header-rule patterns | `:1960`, `:1970`, `:1992`, `:2097` | erome |
-| `Adapter.getVideoFormats` / `Adapter.prepareDownload` hooks | `:12`, `:1884`, `:2838` | **the plugin seam — keep, see below** |
+So any predicate inside that chain anchored to a *foreign hostname* can never be
+true. Deleted on that basis (~141 lines):
+
+| Retired | Anchor it was fenced by |
+|---|---|
+| `looksKnownHosterDocumentMediaUrl()` | streamtape + dood, both host-anchored |
+| `looksImageDerivativeMediaUrl()` | `pix-cdn77/pix-fl.phncdn.com`, host-anchored |
+| `looksObservedAdMedia()`'s host branch | adtng / mmcdn / playhubconnect / mydaddy / itsup / psmcdn |
+| `cloudflareStreamIframeInfo`, `rememberCloudflareStreamRequest`, `decodeJwtPayload`, `observedCloudflareStreamTokens`, `cloudflareStreamSegmentInfo`, `isCloudflareStreamSegmentUrl`, `cloudflareStreamManifestFormats` | all four are host-anchored (`iframe.cloudflarestream.com`, `iframe.videodelivery.net`, `*.cloudflarestream.com`) and the cluster only fed itself |
+| the two host terms in `looksObservedPlayable()` | `xiaoshenke.net/(vid|s1)/`, `aki-h.stream/(file|file2|quality2)/` |
+| the `xtremestream.xyz` height probe in `observedFormat()` | host-anchored |
+
+The reasoning is now executable: **`source/tests/hoster-reachability.test.mjs`**
+asserts the filter admits only supported hosts *and* that no foreign hostname test
+survives inside the chain. Widen the filter, or re-add `evilhost.net` to
+`looksObservedPlayable`, and CI fails with a message explaining that the retired
+code may be live again.
+
+## Kept live on purpose
+
+These are *not* fenced by any URL filter — they read `videoInfo`, which the content
+scripts build from the page's own DOM, so a foreign media URL can legitimately
+arrive with it. Removing them would change behaviour on inputs I cannot enumerate
+offline, so they stay until a live page says otherwise.
+
+| Guard | Live location | Function | Lift it for |
+|---|---|---|---|
+| `aki-h.stream` HLS alias | `:1523` | `normalizeFormat` | aki-h embeds |
+| `xiaoshenkePlayerFormats()` | `:1589`, called `:1744` | `getVideoFormats` | xiaoshenke players |
+| referer choices for xiaoshenke / xtremestream | `:1790`, `:1793` | `getFormatReferer` | referer-locked hosts |
+| erome referer + header-rule + offscreen rules | `:1819`, `:1829`, `:1851`, `:1956` | `shouldForceChromeDownload`, `shouldUseTabInitiatedDownload`, `dnrRegexFilterForDownload`, `shouldUseOffscreenMp4` | erome |
+| `resolveXiaoshenkeSignedUrl()` (+ its own scoped `webRequest` listener) | `:2083-2101`, listener `:2027` | signed-URL recovery | xiaoshenke |
+| path-shaped terms in `looksObservedPlayable`: `/player/xs1.php?data=`, `/cf-master.<x>.txt`, `/sora/<a>/<b>`, sprite/thumb/`.vtt` rejection | `:1537-1539` | — | **not host-anchored** — a `rule34video.com` URL can match these, so they are live by definition |
 
 ## The `Adapter` seam is the cheap multi-host API
 

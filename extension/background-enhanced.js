@@ -22,7 +22,6 @@ const logger = (globalThis.Logger && globalThis.Logger.createLogger("[Rule 34 BG
 const downloadProgress = new Map();
 const observedMediaByTab = new Map();
 const observedMediaByOrigin = new Map();
-const observedCloudflareStreamTokens = new Map();
 const observedMediaGlobalKey = "__global__";
 const rangeRequestUrlPatterns = [];
 let currentDownloadTabId = null;
@@ -1535,41 +1534,22 @@ function normalizeFormat(format) {
 
 function looksObservedPlayable(url) {
   if (!/^https?:\/\//i.test(url || "")) return false;
-  if (!/\.(mp4|m4v|webm|m3u8)(?:$|[?#/])/i.test(url) && !/\/player\/xs1\.php\?data=/i.test(url || "") && !/^https?:\/\/(?:[^/]+\.)?xiaoshenke\.net\/(?:vid|s1)\//i.test(url || "") && !/^https?:\/\/[^/]+\/[^?#]*\/cf-master\.[^/?#]+\.txt(?:$|[?#])/i.test(url || "") && !/^https?:\/\/[^/]+\/sora\/[^?#]+\/[^?#]+(?:$|[?#])/i.test(url || "") && !/^https?:\/\/(?:[^/]+\.)?aki-h\.stream\/(?:file|file2|quality2)\/[^?#]+(?:$|[?#/])/i.test(url || "")) return false;
+  // Path/extension shapes only: every pattern anchored to a *foreign host* was retired
+  // with source/retired/generic-hoster/ — this function is reached solely from the
+  // webRequest listener above, whose urls filter admits only the supported hosts, so a
+  // host-anchored test here could never be true. source/tests/hoster-reachability.test.mjs
+  // keeps that reasoning checked.
+  if (!/\.(mp4|m4v|webm|m3u8)(?:$|[?#/])/i.test(url) && !/\/player\/xs1\.php\?data=/i.test(url || "") && !/^https?:\/\/[^/]+\/[^?#]*\/cf-master\.[^/?#]+\.txt(?:$|[?#])/i.test(url || "") && !/^https?:\/\/[^/]+\/sora\/[^?#]+\/[^?#]+(?:$|[?#])/i.test(url || "")) return false;
   if (/sprite|thumbnail|thumb|preview|mediabook|timelines\.php|\.vtt(?:$|[?#])/i.test(url)) return false;
-  if (looksKnownHosterDocumentMediaUrl(url)) return false;
-  if (looksImageDerivativeMediaUrl(url)) return false;
   if (looksObservedAdMedia(url)) return false;
   return true;
 }
 
-function looksKnownHosterDocumentMediaUrl(url) {
-  try {
-    const parsed = new URL(url || "");
-    const host = parsed.hostname.replace(/^www\./i, "");
-    const path = parsed.pathname;
-    if (/(^|\.)streamtape\.(?:com|to|xyz)$/i.test(host) && /^\/(?:e|v|d)\//i.test(path)) return true;
-    if (/(^|\.)dood\.(?:watch|stream|so|la)$/i.test(host) && /^\/(?:e|d)\//i.test(path)) return true;
-  } catch {}
-  return false;
-}
 
-function looksImageDerivativeMediaUrl(url) {
-  try {
-    const parsed = new URL(url || "");
-    const host = parsed.hostname.replace(/^www\./i, "");
-    const path = parsed.pathname;
-    if (/(^|\.)(?:pix-cdn77|pix-fl)\.phncdn\.com$/i.test(host) && /\/plain\/.*\/rs:fit:/i.test(path)) return true;
-  } catch {}
-  return false;
-}
 
 function looksObservedAdMedia(url) {
   try {
-    const parsed = new URL(url || "");
-    const host = parsed.hostname.replace(/^www\./i, "");
-    const path = parsed.pathname;
-    if (/(^|\.)(adtng\.com|mmcdn\.com|playhubconnect\.com|love\.mydaddy\.cc|cdn\.itsup\.com|psmcdn\.net)$/i.test(host)) return true;
+    const path = new URL(url || "").pathname;
     if (/\/(?:ads?|creatives?|roomad|pubs|banner|vast|tour\/pics)\//i.test(path)) return true;
   } catch {}
   return /(?:^|[/.])(ads?|advert|banner|vast|roomad|creatives?)(?:[/.?_-]|$)/i.test(String(url || ""));
@@ -1583,56 +1563,14 @@ function originOf(value) {
   }
 }
 
-function decodeJwtPayload(token) {
-  try {
-    const payload = String(token || "").split(".")[1] || "";
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
-}
 
-function cloudflareStreamIframeInfo(url) {
-  try {
-    const parsed = new URL(url || "");
-    if (!/^(?:iframe\.cloudflarestream\.com|iframe\.videodelivery\.net)$/i.test(parsed.hostname)) return null;
-    const signedToken = parsed.pathname.split("/").filter(Boolean)[0] || parsed.searchParams.get("token") || "";
-    if (!signedToken) return null;
-    const payload = decodeJwtPayload(signedToken) || decodeJwtPayload(parsed.searchParams.get("token") || "");
-    const videoId = String(payload?.sub || "").trim();
-    if (!videoId) return null;
-    return {
-      videoId,
-      signedToken,
-      iframeUrl: parsed.href,
-    };
-  } catch {
-    return null;
-  }
-}
 
-function rememberCloudflareStreamRequest(details = {}) {
-  const info = cloudflareStreamIframeInfo(details.url);
-  if (!info?.videoId || !info?.signedToken) return;
-  observedCloudflareStreamTokens.set(info.videoId, info);
-}
 
 function observedFormat(url, source = "webrequest") {
   const lowerUrl = String(url || "").toLowerCase();
-  const isHls = lowerUrl.includes(".m3u8") || lowerUrl.includes("/player/xs1.php?data=") || lowerUrl.includes("/cf-master.") || /^https?:\/\/(?:[^/]+\.)?aki-h\.stream\/(?:file|file2|quality2)\/[^?#]+(?:$|[?#/])/i.test(String(url || ""));
+  const isHls = lowerUrl.includes(".m3u8") || lowerUrl.includes("/player/xs1.php?data=") || lowerUrl.includes("/cf-master.");
   let inferredHeight = null;
   let inferredQuality = source;
-  try {
-    const parsed = new URL(String(url || ""));
-    if (/\.xtremestream\.xyz$/i.test(parsed.hostname) && /\/player\/xs1\.php$/i.test(parsed.pathname)) {
-      const q = Number(parsed.searchParams.get("q") || 0) || 0;
-      inferredHeight = q || 2160;
-      inferredQuality = q ? String(q) + "p" : "2160p";
-    }
-  } catch {}
   return normalizeFormat({
     url,
     ext: isHls ? "m3u8" : "mp4",
@@ -1645,76 +1583,8 @@ function observedFormat(url, source = "webrequest") {
   });
 }
 
-function cloudflareStreamSegmentInfo(url) {
-  try {
-    const parsed = new URL(url || "");
-    if (!/(^|\.)cloudflarestream\.com$/i.test(parsed.hostname)) return null;
-    const match = parsed.pathname.match(/^\/([^/]+)\/video\/([^/]+)\/(init\.mp4|seg_(\d+)\.mp4)$/i);
-    if (!match) return null;
-    const streamId = match[1];
-    const rendition = match[2];
-    const fileName = match[3];
-    const segmentIndex = typeof match[4] === "string" ? Number(match[4]) : -1;
-    const height = Number(String(rendition || "").match(/\d{3,4}/)?.[0] || 0) || null;
-    const manifestUrl = parsed.origin + "/" + streamId + "/manifest/video.m3u8" + parsed.search;
-    return {
-      manifestUrl,
-      origin: parsed.origin,
-      streamId,
-      rendition,
-      fileName,
-      segmentIndex,
-      height,
-    };
-  } catch {
-    return null;
-  }
-}
 
-function isCloudflareStreamSegmentUrl(url) {
-  return Boolean(cloudflareStreamSegmentInfo(url));
-}
 
-function cloudflareStreamManifestFormats(formats = [], videoInfo = {}) {
-  const byManifest = new Map();
-  for (const format of formats || []) {
-    const info = cloudflareStreamSegmentInfo(format && format.url);
-    if (!info?.origin || !info?.streamId) continue;
-    const key = info.origin + "/" + info.streamId;
-    const current = byManifest.get(key) || {
-      origin: info.origin,
-      videoId: info.streamId,
-      fallbackManifestUrl: info.manifestUrl,
-      heights: new Set(),
-      seenSegments: new Set(),
-    };
-    if (info.height) current.heights.add(info.height);
-    current.seenSegments.add(info.fileName);
-    byManifest.set(key, current);
-  }
-  return Array.from(byManifest.values()).map((item) => {
-    const tokenInfo = observedCloudflareStreamTokens.get(item.videoId);
-    const manifestUrl = tokenInfo?.signedToken
-      ? item.origin + "/" + tokenInfo.signedToken + "/manifest/video.m3u8"
-      : item.fallbackManifestUrl;
-    const bestHeight = Math.max(0, ...Array.from(item.heights));
-    return normalizeFormat({
-      url: manifestUrl,
-      ext: "m3u8",
-      format_type: "hls",
-      protocol: "m3u8_native",
-      format_id: bestHeight ? `cloudflarestream-${bestHeight}p` : "cloudflarestream-hls",
-      quality: bestHeight ? `${bestHeight}p` : "auto",
-      height: bestHeight || null,
-      source: "cloudflarestream-observed-manifest",
-      forceOffscreenHls: true,
-      requiresReferer: true,
-      refererUrl: tokenInfo?.iframeUrl || videoInfo.playerUrl || videoInfo.embed_url || videoInfo.url || videoInfo.webpage_url || "",
-      cloudflareSignedManifest: Boolean(tokenInfo?.signedToken),
-      observedSegmentCount: item.seenSegments.size,
-    });
-  }).filter(Boolean);
-}
 
 function xiaoshenkePlayerFormats(videoInfo = {}) {
   const playerUrl = videoInfo.playerUrl || videoInfo.embed_url || videoInfo.video_url || videoInfo.url || "";
@@ -1760,7 +1630,6 @@ function rememberObservedMedia(map, key, url, source) {
 
 function rememberObservedRequest(details = {}) {
   const url = details.url || "";
-  rememberCloudflareStreamRequest(details);
   if (!looksObservedPlayable(url)) return;
   const source = "webrequest";
   rememberObservedMedia(observedMediaByOrigin, observedMediaGlobalKey, url, source);
@@ -1787,17 +1656,7 @@ function observedMediaFormats(videoInfo = {}) {
   add(observedMediaByOrigin.get(originOf(videoInfo.url || videoInfo.webpage_url)));
   add(observedMediaByOrigin.get(originOf(videoInfo.playerUrl || videoInfo.embed_url)));
   add(observedMediaByOrigin.get(observedMediaGlobalKey));
-  const cloudflareManifests = cloudflareStreamManifestFormats(formats, videoInfo);
-  if (!cloudflareManifests.length) return formats;
-  const manifestUrls = new Set(cloudflareManifests.map((format) => format.url));
-  const output = [...cloudflareManifests];
-  for (const format of formats) {
-    if (!format?.url) continue;
-    if (manifestUrls.has(format.url)) continue;
-    if (isCloudflareStreamSegmentUrl(format.url)) continue;
-    output.push(format);
-  }
-  return output;
+  return formats;
 }
 
 function sameUrl(left, right) {

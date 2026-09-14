@@ -12,7 +12,10 @@ anything that works.** Everything below was proven, not inferred from a name.
 
 | | |
 |---|---|
-| `background-enhanced.js` | 3517 → **3387 lines** (−130) |
+| `background-enhanced.js` | 3517 → **3246 lines** (−271, in two passes) |
+| Host names removed from the shipped tree | **12** — streamtape, dood, phncdn, playhubconnect, mmcdn, psmcdn, adtng, itsup, mydaddy, cloudflarestream, videodelivery, sa.com |
+| Host names left in place (not provable) | aki-h, xiaoshenke, xtremestream, erome |
+| New test encoding the proof | `source/tests/hoster-reachability.test.mjs` (7 checks) |
 | Dead shipped *files* found | **0** (all 23 reachable — see "what the sweep got wrong") |
 | Provably-inert blocks removed | 6 (table below) |
 | Hoster branches deliberately **kept** | 9 |
@@ -63,10 +66,25 @@ Every one of these *looks* dead; deleting it would have broken the working exten
 `Adapter.getVideoFormats` / `Adapter.prepareDownload` were *also* left in — see the
 plan doc; that global is the cheapest multi-host API you have.
 
-## Not verifiable offline (needs one live page)
+## Pass 2 — the offline proof that replaced the browser check
 
-The remaining hoster guards (`xiaoshenke`, `streamtape`, `aki-h`, `xtremestream`,
-cloudflare-stream, `videodelivery`, erome) sit **inside** live shared predicates
+Asked to work only from what the repo already contains, the sweep found a proof
+stronger than a grep: the observed-media maps have exactly **one** writer
+(`rememberObservedRequest`), and Chrome only calls a `webRequest` listener for URLs
+matching its `urls` filter. The filter admits only `rule34.world`, `rule34video.com`
+and `rule34storage.b-cdn.net`. Therefore *any* predicate downstream that is anchored
+to a foreign **hostname** is unreachable — provable from the file, no page needed.
+
+That retired the whole Cloudflare-Stream cluster, the streamtape/dood/phncdn/ad-network
+predicates, and the xiaoshenke/aki-h/xtremestream **host terms** inside the chain.
+Crucially it also marked the boundary: `videoInfo` is built by the content scripts
+from page DOM and is *not* fenced by that filter, so `normalizeFormat`'s aki-h term,
+`xiaoshenkePlayerFormats`, the erome header/DNR rules and every **path-shaped** test
+(`xs1.php?data=`, `cf-master.`, `/sora/`) stay — they can still be reached.
+
+## Not verifiable offline (still needs a browser, so not done)
+
+The remaining guards (`xiaoshenke`, `aki-h`, `xtremestream`, `erome`) sit **inside** live shared predicates
 (`normalizeFormat`, `looksObservedPlayable`). Two facts prevent a static proof:
 
 - `source/page-source/rule34video-listing.html` contains a third-party
@@ -75,9 +93,9 @@ cloudflare-stream, `videodelivery`, erome) sit **inside** live shared predicates
 - `chrome.downloads.download()` needs **no host permission**, so a foreign media URL
   can reach the worker regardless of `host_permissions`.
 
-So "unreachable" for those is an assumption about the video page, not a theorem.
-Decide it in a browser: open one rule34video.com `/video/{id}` page, and if every
-media request is `rule34video.com`, delete the guards (the kit keeps copies).
+So "unreachable" for those is an assumption about the video page, not a theorem —
+and an assumption is not a reason to edit a working download path. Deferred.
+The kit records where each one lives and which site it would be for.
 
 ## The inventory that replaced guessing
 
