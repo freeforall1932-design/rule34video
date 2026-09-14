@@ -87,7 +87,8 @@ first-party files is **declared**. Detected in the shipped tree:
 ```
 served:      rule34video.com  rule34.world  rule34.xyz  b-cdn.net  github.com
 hoster kit:  xiaoshenke.net  erome.com  aki-h.stream  xtremestream.xyz
-             streamtape.*  videodelivery.net  cloudflarestream.com  sa.com
+             streamtape.*  videodelivery.net  cloudflarestream.com
+retired:     sa.com (its only reference was inside the deleted HLS-segment resolver)
 template     phncdn.com  playhubconnect.com  mmcdn.com  psmcdn.net
  leftovers:  adtng.com  itsup.com  mydaddy.cc  workers.dev
 ```

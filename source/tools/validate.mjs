@@ -170,6 +170,9 @@ const SUPPORTED_HOSTS = new Set([
 ]);
 // Kept deliberately: inert for the two supported sites, but load-bearing if a
 // specific hoster is ever enabled. See source/retired/generic-hoster/README.md.
+// Known limitation: a host written as a TLD alternation (`streamtape\.(?:com|to|xyz)`)
+// is invisible to this inventory, so all three forms are listed even though only the
+// bare prefix appears in the source. This list may only ever SHRINK.
 const ALLOWED_HOSTER_HOSTS = new Set([
   "xiaoshenke.net",
   "xtremestream.xyz",
@@ -186,9 +189,6 @@ const ALLOWED_HOSTER_HOSTS = new Set([
   "psmcdn.net",
   "adtng.com",
   "itsup.com",
-  "sa.com",
-  "rule34gen.com",
-  "theporndude.com",
   "workers.dev",
   "mydaddy.cc",
 ]);
