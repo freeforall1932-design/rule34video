@@ -71,7 +71,7 @@ Downloads/
 | `extension/folder-naming.js` | The output-path engine: master folder, site slug map, path sanitizer, folder-name template |
 | `extension/modules/archive/` | Dependency-free ZIP/CBZ writer and PDF writer for picture sets |
 | `source/` | All development-use code: `retired/` (retired extension code), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
-| `source/tools/validate.mjs` | Offline validation (syntax, JSON, branding) — the single source of truth shared by `npm run check` and CI |
+| `source/tools/validate.mjs` | Offline validation (syntax, JSON, branding, stale file references, declared-host inventory) — the single source of truth shared by `npm run check` and CI |
 | `.github/workflows/ci.yml` | Runs `npm run check` + all three offline suites on every push/PR. Every step is an `npm run` script, so CI and local runs are identical. |
 
 ## Development

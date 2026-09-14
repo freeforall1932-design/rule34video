@@ -24,9 +24,6 @@ const observedMediaByTab = new Map();
 const observedMediaByOrigin = new Map();
 const observedCloudflareStreamTokens = new Map();
 const observedMediaGlobalKey = "__global__";
-const forceChromeHlsSegmentDownload = false;
-const downloadMediaUrlRewriteRules = [];
-const removeMediaUrlQueryParams = [];
 const rangeRequestUrlPatterns = [];
 let currentDownloadTabId = null;
 
@@ -1514,28 +1511,10 @@ function decodeProxyMediaUrl(url) {
   return "";
 }
 
+// The generator template's host-specific URL rewriting was retired with
+// source/retired/generic-hoster/ (nothing in the two supported sites feeds it).
 function rewriteDownloadUrl(url) {
-  let value = decodeProxyMediaUrl(url) || String(url || "").replace(/&amp;/g, "&");
-  for (const rule of Array.isArray(downloadMediaUrlRewriteRules) ? downloadMediaUrlRewriteRules : []) {
-    const pattern = rule && (rule.from || rule.pattern || rule.match);
-    const replacement = rule && (rule.to || rule.replacement || rule.replace);
-    if (!pattern || typeof replacement !== "string") continue;
-    try {
-      const flags = String(rule.flags || "i").replace(/[^dgimsuvy]/g, "") || "i";
-      value = value.replace(new RegExp(String(pattern), flags), replacement);
-    } catch {}
-  }
-  if (Array.isArray(removeMediaUrlQueryParams) && removeMediaUrlQueryParams.length) {
-    try {
-      const parsed = new URL(value);
-      for (const name of removeMediaUrlQueryParams) {
-        if (!name) continue;
-        parsed.searchParams.delete(String(name));
-      }
-      value = parsed.href;
-    } catch {}
-  }
-  return value;
+  return decodeProxyMediaUrl(url) || String(url || "").replace(/&amp;/g, "&");
 }
 
 function normalizeFormat(format) {
@@ -1551,11 +1530,6 @@ function normalizeFormat(format) {
     format_type: isHls ? "hls" : (format.format_type || "mp4"),
     protocol: isHls ? "m3u8_native" : (format.protocol || "https"),
     ...(requiresRangeRequest ? { requiresRangeRequest: true, rangeRequest: true } : {}),
-    ...(isHls && forceChromeHlsSegmentDownload && !format.forceOffscreenHls ? {
-      forceChromeHlsSegmentDownload: true,
-      useDownloadHeaderRules: true,
-      requiresReferer: true,
-    } : {}),
   };
 }
 
@@ -2491,57 +2465,6 @@ async function parseM3U8(m3u8Url, videoInfo = {}, selectedFormat = {}) {
   };
 }
 
-async function resolveHlsSegmentForChromeDownload(m3u8Url, videoInfo = {}, selectedFormat = {}, depth = 0) {
-  if (depth > 2) throw new Error("HLS segment resolver exceeded playlist depth.");
-  const refererUrl = getFormatReferer(selectedFormat, videoInfo, m3u8Url);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-  const response = await fetch(m3u8Url, {
-    method: "GET",
-    cache: "no-store",
-    credentials: "include",
-    headers: buildMediaFetchHeaders(refererUrl),
-    signal: controller.signal,
-    ...(refererUrl ? {
-      referrer: refererUrl,
-      referrerPolicy: "strict-origin-when-cross-origin",
-    } : {}),
-  }).finally(() => clearTimeout(timeout));
-  if (!response.ok) throw new Error("HTTP " + response.status + ": " + response.statusText);
-  const content = await response.text();
-  const lines = String(content || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const absolute = (value) => {
-    try { return new URL(value, m3u8Url).href; } catch { return value; }
-  };
-  const variants = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (!/^#EXT-X-STREAM-INF:/i.test(line)) continue;
-    const next = lines.slice(index + 1).find((item) => item && !item.startsWith("#"));
-    if (!next) continue;
-    const bandwidth = Number(line.match(/BANDWIDTH=(\d+)/i)?.[1] || 0);
-    const resolution = line.match(/RESOLUTION=(\d+)x(\d+)/i);
-    const pixels = resolution ? ((Number(resolution[1]) || 0) * (Number(resolution[2]) || 0)) : 0;
-    variants.push({ url: absolute(next), score: bandwidth || pixels || 0 });
-  }
-  if (variants.length) {
-    variants.sort((left, right) => right.score - left.score);
-    return await resolveHlsSegmentForChromeDownload(variants[0].url, videoInfo, { ...selectedFormat, url: variants[0].url }, depth + 1);
-  }
-  const segments = [];
-  for (const line of lines) {
-    if (!line || line.startsWith("#")) continue;
-    if (/\.(?:key|vtt)(?:$|[?#])/i.test(line)) continue;
-    segments.push(absolute(line));
-  }
-  const mediaSegments = segments.filter((url) => {
-    return /\.(?:ts|m4s|mp4)(?:$|[?#])/i.test(url)
-      || /^https?:\/\/[^/]+\.xspcdn\d+\.sa\.com\/cdn\/down\/[^?#]+\.html(?:$|[?#])/i.test(url);
-  });
-  const segmentUrl = mediaSegments[1] || mediaSegments[0] || segments[1] || segments[0];
-  if (!segmentUrl) throw new Error("No HLS media segment found.");
-  return segmentUrl;
-}
 
 async function downloadHLS(m3u8Url, filename, videoInfo = {}, options = {}) {
   const downloadId = options.downloadId || "hls-" + Date.now();
@@ -2919,51 +2842,6 @@ async function downloadVideo(videoInfo = {}) {
     rememberOutputChoice(videoInfo.url || videoInfo.webpage_url || "", videoInfo.__output);
   }
   console.log("[download] output-path", { path: fullFilename, folder: outputTarget.directory, site: outputTarget.site });
-  if (selectedFormat.format_type === "hls" && selectedFormat.forceChromeHlsSegmentDownload) {
-    console.log("[download] hls-segment-chrome-start", { filename: fullFilename });
-    const hlsHeaderFormat = {
-      ...selectedFormat,
-      useDownloadHeaderRules: true,
-      refererUrl: getFormatReferer(selectedFormat, videoInfo, selectedFormat.url),
-    };
-    const segmentUrl = await withTemporaryHeaderRules(hlsHeaderFormat, videoInfo, async () => {
-      return await resolveHlsSegmentForChromeDownload(selectedFormat.url, videoInfo, hlsHeaderFormat);
-    });
-    const segmentFormat = {
-      ...selectedFormat,
-      url: segmentUrl,
-      format_type: "mp4",
-      ext: /\.m4s(?:$|[?#])/i.test(segmentUrl) ? "m4s" : (/\.ts(?:$|[?#])/i.test(segmentUrl) ? "ts" : "mp4"),
-      protocol: "https",
-      forceChromeDownload: true,
-      useDownloadHeaderRules: true,
-      refererUrl: getFormatReferer(selectedFormat, videoInfo, selectedFormat.url),
-    };
-    if (/\/cdn\/down\/[^?#]+\.html(?:$|[?#])/i.test(segmentUrl)) {
-      segmentFormat.ext = "ts";
-      segmentFormat.responseContentType = "video/mp2t";
-    }
-    rememberDownloadFilename(segmentUrl, fullFilename, conflictAction);
-    const downloadId = await withTemporaryHeaderRules(segmentFormat, videoInfo, async () => await startChromeDownload({
-      url: segmentUrl,
-      filename: fullFilename,
-      saveAs: false,
-      conflictAction,
-    }));
-    rememberDownloadFilenameById(downloadId, fullFilename, conflictAction, segmentUrl);
-    console.log("[download] hls-segment-chrome-id", downloadId);
-    downloadProgress.set(downloadId, { videoInfo, format: segmentFormat, startTime: Date.now() });
-    Bridge.notifyContentDownloadStarted?.({
-      tabId: currentDownloadTabId,
-      downloadId,
-      filename: fullFilename,
-      selectedFormat: segmentFormat,
-      strategy: "chrome-hls-segment",
-      downloadProgress,
-      logger,
-    });
-    return { downloadId, format: segmentFormat, viaChromeHlsSegment: true };
-  }
   if (selectedFormat.format_type === "hls" && !selectedFormat.forceChromeDownload) {
     console.log("[download] hls-start", { filename: fullFilename });
     const downloadId = "hls-" + Date.now();
@@ -3355,9 +3233,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "getDownloadProgress":
       Bridge.handleGetDownloadProgressMessage({ request, sendResponse, downloadProgress });
       return false;
-    case "getActiveDownloads":
-      sendResponse({ active_downloads: Object.fromEntries(downloadProgress) });
-      return false;
     case "HLS_PROCESSING_PROGRESS":
       panelQueue?.notifyProgress(request?.downloadId, request?.progress);
       return Bridge.handleForwardAck({
@@ -3480,12 +3355,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       try { sendResponse({ success: true }); } catch {}
       return false;
-    }
-    case "getOutputSettings": {
-      getOutputSettings()
-        .then((settings) => sendResponse({ success: true, settings }))
-        .catch(() => sendResponse({ success: true, settings: { ...OUTPUT_STORAGE_KEYS } }));
-      return true;
     }
     case "cancelDownload":
       try {
