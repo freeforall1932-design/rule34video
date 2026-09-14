@@ -2,7 +2,10 @@
 
 Status key: `[x]` done · `[~]` in progress · `[ ]` todo
 
-Last updated: 2026-09-04 (**v6.0.2** lazy filename guard in this extension;
+Last updated: 2026-09-14 (**session 12** — dead-code sweep: −271 lines from the
+worker, 12 host names retired to `source/retired/generic-hoster/`, 3 new CI guards;
+see DEADCODE_SWEEP.md. Pending items from it are the section below.)
+Earlier: 2026-09-04 (**v6.0.2** lazy filename guard in this extension;
 earlier same day: PR #12 world keyset-pagination, real-browser world confirm
 still pending — see IMPROVEMENT_LOG.md and SESSION_HANDOFF.md).
 PR #1 merged (rebrand + queue + batch).
@@ -16,6 +19,49 @@ archives, ported from the sister project `nh-dw-2.0` (PR #30 / `9f86426`).
 Session 10 (6.0.0/6.0.1) = Side Panel UI/UX + canonical-page crawler repair
 (PR #10). **Session 11 (this) = rule34.world keyset-pagination fix + world
 fetch-deeper UI (PR #12).**
+
+## Follow-ups from the dead-code sweep (2026-09-14) — next
+
+Nothing here is a bug. These are the items the sweep **proved but did not act on**,
+because acting needs either a browser or a decision. Each is scoped so it can be
+finished in one sitting.
+
+- [ ] **Pending live check — the last 4 host guards.** `xiaoshenke`, `aki-h`,
+      `xtremestream`, `erome` are still in the worker because they read `videoInfo`
+      (built from page DOM, fenced by no `urls` filter), so "never fires" is not
+      provable offline. Check: open one rule34video.com `/video/{id}` post, DevTools
+      → Network → filter `media`, and confirm every `.mp4`/`.m3u8` request goes to
+      `rule34video.com`. If yes, delete those guards (verbatim copies are in
+      `source/retired/generic-hoster/REMOVED-2026-09-14*.md`) and re-run `npm test`.
+      If any request goes elsewhere, they stay permanently — that is a real feature.
+- [ ] **Stale config: `PLAYER_BUTTON`, `ADAPTER`, `POPUP_TITLE` in `site-config.js`
+      have no reader anywhere** (verified: `grep` for each key across `extension/` +
+      `source/tests/` → zero hits outside the file itself). They describe surfaces
+      retired in 6.0.0 (player button, popup, generic content adapter). Note
+      `ADAPTER.blockedMediaUrlPatterns` looks like the ad filter but is **not** what
+      blocks ads — the live one is `looksObservedAdMedia()`. Safe to delete; also
+      worth a line in `validate.mjs`: *"every top-level key in site-config.js must be
+      read by shipped code"*, so this cannot refill itself.
+- [ ] **`COLORS` + `applyThemeVariables` are inert, and misleading.** The block
+      injects `--brand-accent`/`--bg-dark`/… (blue `#2563eb`) but
+      `styles/sidepanel.css` defines and consumes its **own** `:root` palette (purple
+      `#8b5cf6`) — overlap is zero, verified both directions. Anyone "changing the
+      accent colour" in site-config.js will see nothing happen. Delete both, or make
+      the CSS actually read the config; do not leave it as-is.
+- [ ] **`🚧 PHASE 0 (placeholder, not started) — site capabilities.** Replace the
+      `route.site === "world"` ternaries (`panel-queue.js:783`, `:1090`, `:377-378`;
+      `sidepanel.js:113`, `:129-135`) with adapter-declared `capabilities` / `labels`
+      so `mediaTypes: ["video"]` is a property of a site instead of the absence of
+      one. This is the precondition for the video-only sibling repo — do it **before**
+      any fork, or every fork re-invents the same ternaries. Design + effort:
+      `MULTIHOST_PLAN.md` §Phase 0. Constraint: existing `site-routes.test.mjs` +
+      `panel-queue.test.mjs` assertions must pass **unedited** (that is the proof the
+      two sites behave identically).
+- [ ] **New repo hygiene:** start it with `ALLOWED_HOSTER_HOSTS = new Set([])` in
+      `validate.mjs`. Then "no third-party scraping" is enforced by CI, not by intent.
+- [x] `NAMING_REVIEW.md`'s wrong "observedMediaFormats is effectively unreachable"
+      claim — annotated in place 2026-09-14 (it is live; the callback is registered
+      bare, which is what the original scan missed).
 
 ## Follow-ups from the world-domain listing pass (next)
 

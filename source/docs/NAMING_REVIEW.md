@@ -264,6 +264,15 @@ un-prefixed `Con - …`, so the artist appears twice. It produces a valid, safe 
   `observedMediaFormats`, `xiaoshenkePlayerFormats`, `cloudflareStreamManifestFormats`,
   `resolveXiaoshenkeSignedUrl`, `shouldUseTabInitiatedDownload`, `erome` branches,
   and the DNR reference-rule helpers are effectively unreachable in production.
+  > **CORRECTED 2026-09-14 — do not plan against this paragraph.** Partly wrong on
+  > both counts. `observedMediaFormats` **is** reachable: it is rooted at
+  > `chrome.webRequest.onBeforeRequest.addListener(rememberObservedRequest, …)`, and
+  > a callback passed *without parentheses* is invisible to a "who calls this?" scan.
+  > `download-manager.js`, `player-button.js`, `content-bridge.js` and `popup.js` are
+  > **not shipped at all** (retired in 6.0.0 to `source/retired/v5-popup-ui/`), so
+  > they are not weight. What *was* unreachable — the host-anchored predicates fed by
+  > that listener's `urls` filter, and the generator's dead knobs — has since been
+  > removed and preserved in `source/retired/generic-hoster/`; see `DEADCODE_SWEEP.md`.
   They are left in place because removing them is a large, risky change; this is
   the biggest single source of "sloppy code" in the shipped worker.
 - **`getVideoInfoActions` / `getXVideosVideoInfo`** in `popup.js` are generic

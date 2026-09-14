@@ -14,8 +14,52 @@
 > Updated: 2026-09-03 (v6.0.1 — canonical-page crawler repair + bounded review-first fetches).
 > Updated: 2026-09-04 (world listing pass + **rule34.world keyset-pagination fix**).
 > Updated: 2026-09-04 (**v6.0.2** — lazy filename guard; this-repo only).
+> Updated: 2026-09-14 (session 12 — dead-code sweep + generic-hoster retirement kit;
+> new offline guards in CI).
 
 ---
+
+## 0x. Session 12 (2026-09-14): dead-code sweep, generic-hoster retirement, new CI guards
+
+**No behaviour change. No feature work.** Two passes removed **3517 → 3246 lines**
+from `extension/background-enhanced.js` (−271) and added the guards that keep it
+that way. Full write-up: `DEADCODE_SWEEP.md`; lifted code:
+`source/retired/generic-hoster/`.
+
+Pass 1 — provably-inert leftovers from the generator template:
+`forceChromeHlsSegmentDownload` (audit item **S6**, deferred since 2026-08-30, now
+done), `resolveHlsSegmentForChromeDownload` + its caller branch, the two
+`rewriteDownloadUrl` loops fed by never-populated arrays, and two legacy message
+cases no shipped *or retired* file emits.
+
+Pass 2 — a proof, not a grep. `rememberObservedRequest` is the only writer into the
+observed-media maps, and Chrome only invokes a `webRequest` listener for URLs
+matching its `urls` filter (which admits the supported hosts alone). So every
+predicate downstream anchored to a **foreign hostname** is unreachable: the whole
+Cloudflare-Stream cluster, the streamtape/dood/phncdn/ad-network predicates, and the
+xiaoshenke/aki-h/xtremestream host terms went. 12 host names no longer appear
+anywhere in shipped code. `source/tests/hoster-reachability.test.mjs` now enforces
+that premise, so widening the filter or re-adding a hoster fails CI with an
+explanation.
+
+**Deliberately kept** (and the reason is recorded, not hand-waved): everything that
+reads `videoInfo` — built by the content scripts from page DOM and **not** fenced by
+any URL filter — plus every *path-shaped* test (`xs1.php?data=`, `cf-master.`,
+`/sora/`), which a `rule34video.com` URL can match. Also kept: the 11 legacy message
+cases that are the retired popup's revival seam, the `Adapter` hooks (they are the
+multi-host plugin point — see `MULTIHOST_PLAN.md`), and `withTemporaryHeaderRules`
+(erome reachable through it, so erome stayed).
+
+Two claims in older docs are now known **wrong** and were annotated rather than
+silently rewritten: `NAMING_REVIEW.md` called `observedMediaFormats` "effectively
+unreachable" (it is live — rooted at a listener registered with a **bare callback
+reference**), and it listed `download-manager.js` / `player-button.js` /
+`content-bridge.js` / `popup.js` as shipped weight (they were retired in 6.0.0).
+
+Verification, because this class of change is invisible to a smoke click: the three
+suites' output was diffed before/after and is **byte-identical** apart from temp-dir
+names and stack-trace line numbers. `npm test` → 110 fixtures + smoke + e2e green;
+CI green on `main`.
 
 ## 0y. v6.0.2 — filename guard no longer clashes with other downloaders (2026-09-04)
 

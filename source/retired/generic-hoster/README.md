@@ -20,7 +20,14 @@ Two line-number references below are **post-sweep** (`extension/background-enhan
 
 ## Removed on 2026-09-14 (provably inert — kept here verbatim)
 
-See `REMOVED-2026-09-14.md`. Provable because the only feeder for each was the
+Two files, one per sweep pass, each verbatim with the pre-removal line numbers:
+
+| File | Contains |
+|---|---|
+| `REMOVED-2026-09-14.md` | pass 1 — the generator knobs, the HLS-segment resolver + its caller, the `rewriteDownloadUrl` rule loops, two unsent message cases |
+| `REMOVED-2026-09-14-pass2.md` | pass 2 — the observed-media host predicates + the Cloudflare-Stream cluster + the host terms removed from surviving functions |
+
+Pass 1 was provable because the only feeder for each was the
 retired adapter, and no shipped file assigns it:
 
 | Piece | Why provably dead |
