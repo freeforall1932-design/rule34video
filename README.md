@@ -1,15 +1,63 @@
-# rule34video
+<div align="center">
 
-MV3 Chrome extension for [rule34video.com](https://rule34video.com) and
-[rule34.world](https://rule34.world), built around a **Side Panel batch
-queue** (in the style of the sister X/Twitter downloader) and an
-**nh-dw style page fetcher** ("N posts found · Fetch selected pages · pages
-`2,4,6-10`"). Fetching and downloading are deliberately separate: inspect the
-checked rows first, then explicitly start **Download selected**. Free, no
-telemetry, no accounts — see `source/docs/privacy.md`.
+# 🎬 Downloader for Rule 34
 
-The extension **only activates on URLs it recognises** (`extension/site-routes.js`
-is the single routing table); on every other page it stays silent.
+**Batch video & picture downloading for `rule34video.com` and `rule34.world` —
+a Manifest V3 Chrome extension with a Side Panel queue.**
+
+[![CI](https://img.shields.io/github/actions/workflow/status/freeforall1932-design/rule34video/ci.yml?branch=main&logo=githubactions&logoColor=white&label=CI)](https://github.com/freeforall1932-design/rule34video/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/offline%20tests-110%20passing-brightgreen?logo=nodedotjs&logoColor=white)](#-test-it)
+[![Version](https://img.shields.io/badge/version-6.0.2-8b5cf6?logo=googlechrome&logoColor=white)](extension/manifest.json)
+[![Manifest V3](https://img.shields.io/badge/Manifest%20V3-ready-2563eb)](extension/manifest.json)
+[![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-green)](package.json)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Telemetry](https://img.shields.io/badge/telemetry-none-important)](source/docs/privacy.md)
+
+*No accounts · No keys · No paywall · No build step · Nothing leaves your machine
+except the requests to the two sites you browse and GitHub for update checks.*
+
+</div>
+
+---
+
+## Contents
+
+[✨ Highlights](#-highlights) ·
+[🗺️ What works where](#️-what-works-where) ·
+[📥 Where files land](#-where-files-land) ·
+[🧱 How it's built](#-how-its-built) ·
+[🚀 Install](#-install) ·
+[🧪 Test it](#-test-it) ·
+[🗂 Docs](#-docs) ·
+[🧭 Status](#-status--roadmap) ·
+[📄 License](#-license)
+
+---
+
+## ✨ Highlights
+
+- 📋 **Fetch and download are separate on purpose.** List a page, inspect the rows,
+  tick what you want, *then* start **Download selected**. Nothing downloads because a
+  crawl finished.
+- 🔎 **nh-dw-style page fetcher** — `N posts found · Fetch selected pages ·`
+  pages `2,4,6-10`, `1-99`, `50-`, `all`.
+- 🧵 **Real concurrency** — 1/2/3/5 downloads at once; a slot frees, the next queued
+  post starts. Active rows can be cancelled individually.
+- 💾 **Resume-proof** — the queue *and* the in-flight crawl survive service-worker
+  restarts.
+- 🗂️ **Folders you can actually navigate** — `site → artist/tags → file`, template
+  driven, sanitized, never overwriting unless you say so.
+- 🖼️ **Picture sets too** — loose originals, or one `.zip` / `.cbz` / `.pdf` per post,
+  written by a dependency-free archiver.
+- 🎞️ **HLS → MP4 in-browser** — remuxed by a vendored transmuxer, no server, no ffmpeg.
+- 🙈 **Silent everywhere else** — it only activates on URLs the router recognises.
+
+---
+
+## 🗺️ What works where
+
+The extension **only activates on URLs it recognises** (`extension/site-routes.js` is
+the single routing table); on every other page it stays silent.
 
 | Where you are | What the panel / page offers |
 |---|---|
@@ -20,46 +68,46 @@ is the single routing table); on every other page it stays silent.
 | rule34.world homepage, tag search, `/hot` `/highest` `/trends`, playlist | Twitter-style queue: fetch pics and videos through the site API (page N here = page N on the site), filter by media type, review the selected rows, then start them explicitly |
 | anything else | queue only, plus *Fetch from a URL* (paste any listing / playlist URL of either site) |
 
-Every listed post is a row with a checkbox, thumbnail, site/type badge, page
-number and live status (listed → queued → resolving → downloading →
-completed / failed). *Select all*, *Invert*, filter, *Retry failed*, *Clear
-finished*, *Skip already downloaded* (with a resettable history) and a
-1/2/3/5 **Downloads at once** switch behave exactly like the X downloader
-panel. Pick **3** to keep at most three selected posts resolving/downloading;
-the rest remain queued until a slot is free. To avoid an unreviewable list,
-each fetch is limited to **150 pages** (use successive ranges for a larger
-listing). **Stop fetch** aborts the current request and prevents subsequent
-pages; **Stop** pauses waiting downloads while active rows can be cancelled
-individually. The queue and the crawl survive service-worker restarts.
+Every listed post is a row with a checkbox, thumbnail, site/type badge, page number
+and live status (listed → queued → resolving → downloading → completed / failed).
+*Select all*, *Invert*, filter, *Retry failed*, *Clear finished*, *Skip already
+downloaded* (with a resettable history) and a **Downloads at once** switch behave
+exactly like the sister X/Twitter downloader panel. To avoid an unreviewable list,
+each fetch is limited to **150 pages** (use successive ranges for a larger listing).
+**Stop fetch** aborts the current request and prevents subsequent pages; **Stop**
+pauses waiting downloads while active rows can be cancelled individually.
 
-## Where files are saved
+---
+
+## 📥 Where files land
 
 ```
 Downloads/
-  R34V/                          <- master folder (rename it, or clear it to turn off)
-    rule34video/                 <- which site the post came from (automatic)
-      AnArtist - Some title - 4573905/     <- folder name: your tags / template / manual name
+  R34V/                          ← master folder (rename it, or clear it to turn off)
+    rule34video/                 ← which site the post came from (automatic)
+      AnArtist - Some title - 4573905/     ← your tags / template / manual name
         Some title.mp4
     rule34world/
       WorldArtist - post 3571567/
-        001.jpg                  <- picture post, loose mode (or one .zip/.cbz/.pdf)
+        001.jpg                  ← picture post, loose mode (or one .zip/.cbz/.pdf)
 ```
 
 > The **id lives in the folder name**, not the file name — so the file is
-> `<title>.<ext>`. (On rule34.world the title already ends with `post <id>`, so
-> a post there saves as `WorldArtist - post 3571567.mp4`.)
+> `<title>.<ext>`. (On rule34.world the title already ends with `post <id>`, so a
+> post there saves as `WorldArtist - post 3571567.mp4`.)
 
-- The **site level is automatic** — it comes from the site that served the post,
-  so the two sites never end up in the same folder.
-- The **folder name** comes from a template (`{artist} - {title} - {id}` by
-  default, one checkbox per token), from the tags you tick in the popup, from a
-  name you type yourself (highest priority), or from the search you started
-  from. Whatever wins is sanitized; nothing can escape the download folder and
-  files are never overwritten unless you ask for it.
-- Everything happens inside your **fixed download location, with no prompts**
-  (turn off Chrome's "Ask where to save each file" for the folders to appear).
+- 🌐 The **site level is automatic** — it comes from the site that served the post, so
+  the two sites never end up in the same folder.
+- 🏷️ The **folder name** comes from a template (`{artist} - {title} - {id}` by default,
+  one checkbox per token), from the tags you tick, from a name you type yourself
+  (highest priority), or from the search you started from. Whatever wins is sanitized;
+  nothing can escape the download folder and files are never overwritten unless you ask.
+- 📂 Everything happens inside your **fixed download location, with no prompts** (turn
+  off Chrome's *"Ask where to save each file"* for the folders to appear).
 
-## Repository layout
+---
+
+## 🧱 How it's built
 
 | Path | What |
 |---|---|
@@ -70,58 +118,89 @@ Downloads/
 | `extension/content-rule34video.js`, `extension/content-rule34world.js` | Per-site page adapters: corner ⬇ buttons, the floating pill, `collectListing` for the panel. Each fires only on routes the router recognises. |
 | `extension/folder-naming.js` | The output-path engine: master folder, site slug map, path sanitizer, folder-name template |
 | `extension/modules/archive/` | Dependency-free ZIP/CBZ writer and PDF writer for picture sets |
-| `source/` | All development-use code: `retired/` (retired extension code), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
-| `source/tools/validate.mjs` | Offline validation (syntax, JSON, branding) — the single source of truth shared by `npm run check` and CI |
-| `.github/workflows/ci.yml` | Runs `npm run check` + all three offline suites on every push/PR. Every step is an `npm run` script, so CI and local runs are identical. |
+| `source/` | All development-use code: `retired/` (retired extension code + the `generic-hoster/` retirement kit), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
+| `source/tools/validate.mjs` | Offline validation (syntax, JSON, branding, **stale file references**, **declared-host inventory**) — the single source of truth shared by `npm run check` and CI |
+| `.github/workflows/ci.yml` | Runs `npm run check` + every offline suite on each push/PR. Every step is an `npm run` script, so CI and local runs are identical. |
 
-## Development
+**Two design rules keep it small and honest:**
+
+1. 🚫 **Nothing in `extension/` may reference a site that isn't declared.**
+   `validate.mjs` keeps an inventory; the "generic hoster" list is empty on purpose
+   and may only shrink (see `source/docs/DEADCODE_SWEEP.md`).
+2. 🧪 **Everything testable must be testable offline.** No browser, no network, no
+   fixtures that need logging in.
+
+---
+
+## 🚀 Install
 
 ```bash
-# 1. Load the extension
-#    chrome://extensions → Developer mode → Load unpacked → "extension"
-
-# 2. Run the offline test suites (from the repo root — no browser, no network)
-node --test "source/tests/*.test.mjs"      # fixtures: routes, panel queue + crawler, folder naming, ZIP, PDF, queue restore
-node source/tests/smoke.mjs                # real service worker under mocked chrome
-node source/tests/e2e-download-paths.mjs   # real worker + offscreen doc: the saved paths
-npm test                                   # all of the above
-
-# 3. Syntax-check everything (background is an ES module, the rest are classic)
-cd extension
-for f in *.js modules/*.mjs modules/*/*.mjs; do node --check "$f"; done
+git clone https://github.com/freeforall1932-design/rule34video
 ```
 
-Workflow: develop in `source/`, ship the result into `extension/`, debug
-against live-test findings by reading the extension files. CI runs steps 2–3
-(plus JSON + branding greps) automatically. The full manual browser test
-matrix lives in `source/docs/WORKLIST.md` — real-browser checks (does the
-folder appear, does the PDF open) cannot run on GitHub-hosted runners and stay
-manual by design.
+1. Open `chrome://extensions` → enable **Developer mode**.
+2. **Load unpacked** → select the `extension/` folder.
+3. Visit a supported page and click the ⬇ pill, or open the Side Panel from the icon.
 
-## Current state
+> 📦 There is no build step and no `npm install`: the folder you clone is the folder
+> you load. `npm` is only used to run the test suites.
+>
+> 🔁 Update checks hit this repo's GitHub Releases. Turn them off in the panel if you'd
+> rather not.
 
-- **6.0.2-rc (world-domain listing pass, unnumbered build)** — listings no
-  longer act like a single page. Fetching picks pages by **From → To** fields
-  (leave To empty for "to the last page", with a warning), an **advanced**
-  free-text mode keeps the old `2,4,6-10 / all / 50-` syntax, and the fetch
-  button **morphs into "Stop fetch"** while a crawl runs so nothing is pushed
-  off-screen. Engine: widening a fetch (`1-2` → `1-5`) now really lists the new
-  pages instead of stopping on already-listed rows; a page that comes back
-  empty ends the walk; open-ended-from-page works even when the site reports no
-  total. rule34video.com already shares all of this; its real-browser
-  verification is tracked as a follow-up.
-- Version **6.0.1** — side-panel crawl safety and pagination repair: the
-  rule34video.com crawler follows normal `/…/2/` page URLs (the old private
-  ajax endpoint returns HTTP 500); a crawl only lists checked rows and never
-  starts an unbounded download stream; fetches are capped at 150 pages and can
-  abort the active request. The v5 popup / player-button / post-actions code
-  is retained, never packaged, under `source/retired/v5-popup-ui/`.
-- The download pipeline itself (resolvers, concurrency queue, HLS remux,
-  picture-set archives, per-site tag-named folders) is unchanged from 5.x; the
-  panel simply feeds it.
-- Known-open work is tracked in `source/docs/WORKLIST.md`.
+---
 
-## License
+## 🧪 Test it
 
-MIT — see `LICENSE`. Vendored third-party code keeps its own license; see
-`source/docs/THIRD_PARTY_LICENSES.md`.
+```bash
+npm test                                   # everything below, in order
+
+node --test "source/tests/*.test.mjs"      # fixtures: routes, panel queue + crawler, folder
+                                           #   naming, ZIP, PDF, queue restore, hoster reachability
+node source/tests/smoke.mjs                # real service worker under mocked chrome + fetch
+node source/tests/e2e-download-paths.mjs   # real worker + offscreen doc: the saved paths
+npm run check                              # syntax, JSON, branding, stale refs, host inventory
+```
+
+All suites run offline on plain Node — **110 fixture checks, 0 runtime dependencies.**
+
+---
+
+## 🗂 Docs
+
+| Document | Read it when… |
+|---|---|
+| [`SESSION_HANDOFF.md`](source/docs/SESSION_HANDOFF.md) | you're starting a session — true repo state, every session's outcome, what's left |
+| [`WORKLIST.md`](source/docs/WORKLIST.md) | you want the open items, ordered, with *"needs data"* flagged instead of guessed |
+| [`IMPROVEMENT_LOG.md`](source/docs/IMPROVEMENT_LOG.md) | you want the why behind a change, dated |
+| [`DEADCODE_SWEEP.md`](source/docs/DEADCODE_SWEEP.md) | you're about to delete something — includes the near-misses that would have broken a working path |
+| [`MULTIHOST_PLAN.md`](source/docs/MULTIHOST_PLAN.md) | you're adding a third site (or building a sibling repo) |
+| [`NAMING_REVIEW.md`](source/docs/NAMING_REVIEW.md) | you're touching output naming |
+| [`RETROFIT_AUDIT.md`](source/docs/RETROFIT_AUDIT.md) | you're wondering why some odd code exists (it was cloned from a paid multi-site template) |
+| [`privacy.md`](source/docs/privacy.md) | you want the data policy in one paragraph |
+
+---
+
+## 🧭 Status & roadmap
+
+| | |
+|---|---|
+| 🏷️ Shipped | **6.0.2** — filename guard no longer clashes with other downloaders |
+| 🧩 Latest build | 6.0.2-rc: world listings fetch by **From → To**, advanced free-text ranges, and a fetch button that becomes **Stop fetch** mid-crawl |
+| 🧠 Engine | resolvers, concurrency queue, HLS remux, picture archives, per-site tag-named folders — unchanged from 5.x; the panel feeds it |
+| 🧹 Housekeeping | −271 lines of unreachable template code removed 2026-09-14, preserved in `source/retired/generic-hoster/` |
+| 📋 Open work | everything tracked in [`WORKLIST.md`](source/docs/WORKLIST.md); real-browser checks stay manual by design (GitHub runners can't verify "did the folder appear") |
+
+---
+
+## ⚠️ Disclaimer
+
+Unofficial and not affiliated with, endorsed by, or sponsored by any site this
+extension can talk to. It automates **your own** browsing session: it reads pages you
+have already opened and downloads content you can already see. Respect each site's
+terms and the rights of every creator whose work you save.
+
+## 📄 License
+
+MIT — see [`LICENSE`](LICENSE). Vendored third-party code keeps its own license; see
+[`THIRD_PARTY_LICENSES.md`](source/docs/THIRD_PARTY_LICENSES.md).

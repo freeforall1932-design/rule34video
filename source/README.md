@@ -8,7 +8,7 @@ The repo root contains two code folders:
 
 | Path | What | Used as extension? | Revive by |
 |---|---|---|---|
-| `source/retired/` | Retired code that WAS part of the shipped extension (multi-hoster adapter, DASH/WebM pipeline, and `v5-popup-ui/`: the pre-6.0 popup + player button + corner-button toolbar + content bridge) | **Yes, historically** | Moving back into `extension/` (restore paths below), then `node source/tests/smoke.mjs` + reachability check |
+| `source/retired/` | Retired code that WAS part of the shipped extension (multi-hoster adapter, DASH/WebM pipeline, and `v5-popup-ui/`: the pre-6.0 popup + player button + corner-button toolbar + content bridge) plus `generic-hoster/` — the retirement kit for host-specific branches removed from `background-enhanced.js` (see `docs/DEADCODE_SWEEP.md`) | **Yes, historically** | Moving back into `extension/` (restore paths below), then `node source/tests/smoke.mjs` + reachability check |
 | `source/vendor/` | Never-used-as-extension source: mediabunny TS library, `Localize.mjs`, 13 source-project utils fragments | **No** | Porting — mediabunny needs a build step; the utils fragments import paths (`../enums/`, `../options/`, `../ui/`, `sweetalert.mjs`) that don't exist in this repo |
 | `source/page-source/` | Saved page HTML dumps (rule34video listing, rule34.world shell) — session-3 reference material | No | N/A (reference only) |
 | `source/tools/` | Dev tooling: `app.config.json` (generator provenance artifact, not runtime-loaded), `generate-icons.js` (Node icon generator → writes `extension/icons/`) | No | Run in place |

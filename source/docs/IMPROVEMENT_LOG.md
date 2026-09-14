@@ -5,6 +5,30 @@ Date: 2026-08-29 (Asia/Jakarta)
 This log records changes made while rebranding the extension into a free,
 community **Rule34 Downloader** for both `rule34.world` and `rule34video.com`.
 
+## 2026-09-14 — Dead-code sweep: −271 lines, 12 host names retired, 3 new CI guards
+
+No user-visible change. `extension/background-enhanced.js` went 3517 → 3246 lines by
+removing only what could be **proven** unreachable from repository data alone (a
+browser check was explicitly off the table):
+
+- generator-template knobs whose feeder (`site-adapter.js`) no longer ships;
+- the host-anchored predicates behind the observed-media `webRequest` listener,
+  whose `urls` filter admits only the supported hosts — which retires the
+  Cloudflare-Stream cluster and the streamtape/dood/phncdn/ad-network/xiaoshenke/
+  aki-h/xtremestream tests in one argument;
+- two legacy message cases no shipped or retired file emits.
+
+Retired code is preserved verbatim in `source/retired/generic-hoster/` so a repo
+built for one of those sites can lift it; the ad-network names were deleted outright
+(they are ad blocks, not download targets). `source/tools/validate.mjs` gained a
+stale-reference check (manifest + HTML paths must exist), a site-config ↔ manifest
+host consistency check, and a declared-host inventory that can only shrink.
+`source/tests/hoster-reachability.test.mjs` pins the reachability premise itself.
+
+Everything that reads `videoInfo` was left alone on purpose: that input is built from
+page DOM, is fenced by nothing, and "never happens" is not provable offline. Detail:
+`DEADCODE_SWEEP.md`.
+
 ## v6.0.2 — Filename-guard naming leak fixed (2026-09-04)
 
 Chrome treats **any** registered `chrome.downloads.onDeterminingFilename`
