@@ -20,6 +20,12 @@ Session 10 (6.0.0/6.0.1) = Side Panel UI/UX + canonical-page crawler repair
 (PR #10). **Session 11 (this) = rule34.world keyset-pagination fix + world
 fetch-deeper UI (PR #12).**
 
+> Historical wording note: older entries in this file often say `rule34.world`
+> by itself because they were written before `.xyz` support landed, or because
+> the live bug/data being discussed was observed on `.world` specifically.
+> Unless an entry clearly names a historical one-host limitation, read the
+> shared world-family behavior as applying to `rule34.world` / `rule34.xyz`.
+
 ## Follow-ups from the dead-code sweep (2026-09-14) — next
 
 Nothing here is a bug. These are the items the sweep **proved but did not act on**,
@@ -56,7 +62,7 @@ finished in one sitting.
       any fork, or every fork re-invents the same ternaries. Design + effort:
       `MULTIHOST_PLAN.md` §Phase 0. Constraint: existing `site-routes.test.mjs` +
       `panel-queue.test.mjs` assertions must pass **unedited** (that is the proof the
-      two sites behave identically).
+      current site families still behave identically where they are meant to).
 - [ ] **New repo hygiene:** start it with `ALLOWED_HOSTER_HOSTS = new Set([])` in
       `validate.mjs`. Then "no third-party scraping" is enforced by CI, not by intent.
 - [x] `NAMING_REVIEW.md`'s wrong "observedMediaFormats is effectively unreachable"
@@ -201,7 +207,8 @@ pass. Feasibility without extra data is noted per item — anything marked
       nest. Popup input wired by hand so the empty value is savable.
 - [x] **(Session 8) Automatic per-site folder** — hostname → short slug map in
       `extension/folder-naming.js` (`rule34video`, `rule34world`); unknown hosts
-      get their own folder instead of merging; the two sites can never share one.
+      get their own folder instead of merging; the supported site families can
+      never share one.
 - [x] **(Session 8) Collection folder naming** — template string
       (`{artist} - {title} - {id}`) with one checkbox per token, one checkbox
       per page tag, a manual override field, and the search/tag-results query;
@@ -281,10 +288,10 @@ pass. Feasibility without extra data is noted per item — anything marked
       (mediabunny MPL-2.0, mp4box BSD-3).
 - [x] **(Session 4) Move generic multi-hoster out of package:** `site-adapter.js`
       moved to `legacy/` (excluded from the extension package); its background
-      fallback is inert; `host_permissions` narrowed to the two sites +
-      `rule34storage.b-cdn.net` + `api.github.com` (wildcards dropped).
+      fallback is inert; `host_permissions` narrowed to the supported hosts +
+      BunnyCDN + `api.github.com` (wildcards dropped).
 - [x] **(Session 5) Privacy + CI + rule34video.com tag search:**
-      - `docs/privacy.md` (no telemetry; only the two sites + BunnyCDN + GitHub).
+      - `docs/privacy.md` (no telemetry; only the supported hosts + BunnyCDN + GitHub).
       - `.github/workflows/ci.yml` runs `node --check` (classic + background ESM),
         JSON parse, forbidden-paywall grep, and a committed `source/tests/smoke.mjs`
         (mocked chrome + fetch exercising `getVideoFormats` + `bulkDownloadTag`).
@@ -379,10 +386,10 @@ pass. Feasibility without extra data is noted per item — anything marked
 - [ ] A post whose title is all illegal chars (e.g. `???`) saves as
       `<artist> - <id>` (no double/trailing `- `), and a folder called `CON` /
       `NUL` still saves under a `_CON` / `_NUL` master folder.
-- [ ] rule34.world post with an artist that also heads the title saves as
-      `Artist - post <id>` (artist **not** duplicated).
+- [ ] rule34.world / rule34.xyz post with an artist that also heads the title
+      saves as `Artist - post <id>` (artist **not** duplicated).
 
-### rule34.world
+### rule34.world / rule34.xyz family
 - [ ] Hot/listing page: corner `↓` button appears on each post card
       (**verify the `app-post-card` / `mat-card` / `[class*=post]` selectors**).
 - [ ] Single video post (`/post/{id}`): the panel post card lists the real
@@ -397,8 +404,8 @@ pass. Feasibility without extra data is noted per item — anything marked
       stop at the real end (or after two empty pages).
 - [ ] Image post (`/post/{id}`) downloads directly as `.jpg` (**PR #2 fix** —
       confirm it does NOT spin through the HLS/offscreen "Preparing…" state).
-- [ ] **With the CDN down (as of 2026-08-30):** downloads save from the
-      `rule34.world` origin host, and no download fails with a 500.
+- [ ] **With a world-family CDN down:** downloads save from the matched origin
+      host (`rule34.world` or `rule34.xyz`), and no download fails with a 500.
 - [ ] "Download visible" batch works on the listing.
 
 ### Concurrency / queue
@@ -470,8 +477,8 @@ pass. Feasibility without extra data is noted per item — anything marked
       selected** must be a separate, explicit action); a very large listing
       (Batch pre-fills no more than `1-150`); a playlist (Fetch page batch
       pill); and the homepage. Test Stop fetch while a request is delayed and
-      verify no later page is requested. Also test rule34.world post (picture
-      and video), a tag page (media filter pics / videos; page 2 in the panel
+      verify no later page is requested. Also test a rule34.world / rule34.xyz
+      post (picture and video), a tag page (media filter pics / videos; page 2 in the panel
       == page 2 on the site), `/hot`, and a playlist while logged in. Choose
       **3 Downloads at once**, start more than three selected rows, and verify
       only three are active. Check the toolbar icon, context-menu item, and
@@ -499,8 +506,8 @@ pass. Feasibility without extra data is noted per item — anything marked
       the legacy `downloadVideo` / `batchDownloadPosts` handlers once nothing
       external depends on them.
 
-- [ ] **Verify rule34.world listing-card selectors on a live page**; adjust
-      `content-rule34world.js` `CARD_SELECTOR` / `cardsOnPage()` if needed.
+- [ ] **Verify rule34.world / rule34.xyz listing-card selectors on a live page**;
+      adjust `content-rule34world.js` `CARD_SELECTOR` / `cardsOnPage()` if needed.
       (rule34video.com selectors were verified against live HTML in session 3.)
 - [ ] **(Session 6) Remux-only hls.js build** — `modules/hls/hls.mjs` is a ~400 KB
       full-player hls.js bundle, but `transmuxer.mjs` only imports 6 symbols
@@ -533,8 +540,8 @@ pass. Feasibility without extra data is noted per item — anything marked
       mocked-chrome harness: temp key dropped, live numeric key re-tracked,
       dead numeric key dropped.
 - [x] **(Session 6 hardening pass, 4.4.2) Host-probe both-fail state** —
-      `getWorldHostStatus()` now logs a warning when both rule34.world roots
-      fail, and the both-fail state re-probes after 60 s
+      `getWorldHostStatus()` now logs a warning when both matched world-family
+      roots fail, and the both-fail state re-probes after 60 s
       (`WORLD_HOST_PROBE_FAIL_TTL_MS`) instead of pinning for the full 10 min.
 - [x] **(Session 6 hardening pass, 4.4.2) Minor nits** — offscreen sync-ack
       branches (`processHLS`, `PROCESS_HLS_SEGMENTS`, `PROCESS_MP4_DOWNLOAD`)

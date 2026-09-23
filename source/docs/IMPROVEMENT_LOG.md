@@ -3,7 +3,13 @@
 Date: 2026-08-29 (Asia/Jakarta)
 
 This log records changes made while rebranding the extension into a free,
-community **Rule34 Downloader** for both `rule34.world` and `rule34video.com`.
+community **Rule34 Downloader** for `rule34video.com` plus the shared
+`rule34.world` / `rule34.xyz` family.
+
+> Historical wording note: many log entries were written when `rule34.world`
+> was the only implemented host in that family, so they name `.world`
+> specifically. Read those as historical snapshots unless the entry is talking
+> about a live `.world`-only incident or capture.
 
 ## 2026-09-14 — Dead-code sweep: −271 lines, 12 host names retired, 3 new CI guards
 
@@ -354,7 +360,8 @@ third-party involvement.
   mp4box **BSD-3-Clause**). No external telemetry / analytics / beacon found.
 - **Gated the generic multi-hoster surface:** `site-adapter.js` is no longer
   injected into rule34 pages and its background fallback is now inert;
-  `host_permissions` narrowed to the two sites + `rule34storage.b-cdn.net` +
+  `host_permissions` narrowed to the supported site family
+  (`rule34video.com`, `rule34.world`, `rule34.xyz`) + their BunnyCDN hosts +
   `api.github.com` (dropped the `"https://*/*"` / `"http://*/*"` wildcards).
 
 ### Quality-of-life features
@@ -380,7 +387,8 @@ tag search, then update the three docs and (a) open the merge-commit PR.
 
 ### privacy.md
 - `docs/privacy.md`: no telemetry/analytics; exact network destinations
-  (rule34.world, rule34video.com, BunnyCDN host, api.github.com for update checks);
+  (`rule34.world`, `rule34.xyz`, `rule34video.com`, their BunnyCDN hosts, and
+  `api.github.com` for update checks);
   local-only storage. Supports the Web Store listing.
 
 ### GitHub Actions CI
@@ -611,8 +619,9 @@ byte-identical (no change).
 
 Ported the proven output-organization mechanics from the sister project
 (`nh-dw-2.0`, PR #30 / `9f86426`) to this extension: every download now lands
-in `Downloads/<Root>/<Site>/<Collection>/<file>`, the two sites never share a
-folder, and the collection folder is named from the post's tags.
+in `Downloads/<Root>/<Site>/<Collection>/<file>`, `rule34video.com` never shares
+its folder tree with the shared `rule34world` family, and the collection folder
+is named from the post's tags.
 
 ### Feature 1 — per-website master folders (automatic)
 
@@ -856,7 +865,7 @@ videos, page-range / all-pages crawling.
 ### New files
 
 - `extension/site-routes.js` — the URL router (`R34Routes.match`) covering
-  every supported page of both sites (video/post, home, latest, search, tag,
+  every supported page of both current site families (video/post, home, latest, search, tag,
   category, artist, member, playlist, world feeds), the nh-dw page-range
   grammar (`2,4,6-10`, `1-99`, `50-`, `all`, clamped to the real last page,
   now capped at 150 selected pages), the rule34video.com listing/pagination
@@ -927,7 +936,7 @@ videos, page-range / all-pages crawling.
 
 ### Tests
 
-- `source/tests/site-routes.test.mjs` (15) — every route of both sites,
+- `source/tests/site-routes.test.mjs` (15) — every route of both current site families,
   negatives, ajax URL builder, world search body, page-range grammar, the
   listing parser against `source/page-source/rule34video-listing.html`
   (35 cards, 9136 pages).

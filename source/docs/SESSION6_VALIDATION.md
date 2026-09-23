@@ -17,9 +17,9 @@ change.
 A mocked-chrome harness loaded the **real** `background-enhanced.js` from each
 commit (same temp-copy + ESM-rewrite mechanism as `source/tests/smoke.mjs`) and fired
 all 25 message actions through the real `chrome.runtime.onMessage` handler
-with identical fixtures: `getVideoFormats` (world + rule34video),
+with identical fixtures: `getVideoFormats` (world-family + rule34video),
 `downloadVideo` (image / direct MP4 / HLS→offscreen), queue controls,
-`batchDownloadPosts`, `bulkDownloadTag` (both sites), progress/ack forwarders,
+`batchDownloadPosts`, `bulkDownloadTag` (both current site families), progress/ack forwarders,
 `cancelDownload`, `TELEMETRY_LOG`, `LOG_MIRROR`, unknown action.
 
 Result: **byte-identical responses on every action for both commits** —

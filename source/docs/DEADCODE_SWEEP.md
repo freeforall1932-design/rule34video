@@ -5,8 +5,9 @@ left alone apart from gaining a retirement kit). Baseline: **v6.0.2, 12 457 line
 in 23 shipped JS files, all suites green.**
 
 Goal, per the brief: retire the generic-hoster code that has nothing to do with
-rule34video.com / rule34.world, sweep for stale/unlinked code, **without touching
-anything that works.** Everything below was proven, not inferred from a name.
+rule34video.com or the shared rule34.world / rule34.xyz family, sweep for
+stale/unlinked code, **without touching anything that works.** Everything below
+was proven, not inferred from a name.
 
 ## Result
 
@@ -71,8 +72,9 @@ plan doc; that global is the cheapest multi-host API you have.
 Asked to work only from what the repo already contains, the sweep found a proof
 stronger than a grep: the observed-media maps have exactly **one** writer
 (`rememberObservedRequest`), and Chrome only calls a `webRequest` listener for URLs
-matching its `urls` filter. The filter admits only `rule34.world`, `rule34video.com`
-and `rule34storage.b-cdn.net`. Therefore *any* predicate downstream that is anchored
+matching its `urls` filter. The filter admits only `rule34.world`, `rule34.xyz`,
+`rule34video.com`, `rule34storage.b-cdn.net`, and `rule34xyz.b-cdn.net`.
+Therefore *any* predicate downstream that is anchored
 to a foreign **hostname** is unreachable — provable from the file, no page needed.
 
 That retired the whole Cloudflare-Stream cluster, the streamtape/dood/phncdn/ad-network

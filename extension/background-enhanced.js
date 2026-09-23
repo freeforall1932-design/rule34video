@@ -491,10 +491,56 @@ try {
 // Site-specific post resolvers (rule34video.com + rule34.world).
 // Used by the popup format list, the per-card corner buttons, and batch mode.
 // ---------------------------------------------------------------------------
-const WORLD_CDN_ROOT = "https://rule34storage.b-cdn.net";
-const WORLD_ROOT = "https://rule34.world";
-// rule34.world file format ids -> [extension, label, kind, preview] (best
-// first). Taken from the site's own file-type table (the SPA's
+const WORLD_DEFAULT_SITE = Object.freeze({
+  host: "rule34.world",
+  root: "https://rule34.world",
+  apiRoot: "https://rule34.world",
+  cdnRoot: "https://rule34storage.b-cdn.net",
+  label: "rule34.world",
+});
+const WORLD_SITE_FALLBACKS = Object.freeze({
+  "rule34.world": WORLD_DEFAULT_SITE,
+  "rule34.xyz": Object.freeze({
+    host: "rule34.xyz",
+    root: "https://rule34.xyz",
+    apiRoot: "https://rule34.xyz",
+    cdnRoot: "https://rule34xyz.b-cdn.net",
+    label: "rule34.xyz",
+  }),
+});
+
+function worldSiteMetaFor(value) {
+  try {
+    const viaRoutes = Routes?.worldHostMeta?.(value);
+    if (viaRoutes) return viaRoutes;
+  } catch {}
+  let host = "";
+  try {
+    host = new URL(String(value || "")).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    host = String(value?.hostname || value?.hostLabel || value?.host || value || "").toLowerCase().replace(/^www\./, "");
+  }
+  if (host === "rule34.xyz" || host.endsWith(".rule34.xyz")) return WORLD_SITE_FALLBACKS["rule34.xyz"];
+  if (host === "rule34.world" || host.endsWith(".rule34.world")) return WORLD_SITE_FALLBACKS["rule34.world"];
+  return WORLD_DEFAULT_SITE;
+}
+
+function rule34WorldPostInfo(url) {
+  try {
+    const route = Routes?.match?.(url);
+    if (route?.site === "world" && route.kind === "post" && route.id) {
+      const siteMeta = worldSiteMetaFor(route);
+      return { id: String(route.id), siteMeta };
+    }
+  } catch {}
+  const match = String(url || "").match(/^https?:\/\/(?:www\.)?rule34\.(world|xyz)\/post\/(\d+)/i);
+  if (!match) return null;
+  const siteMeta = worldSiteMetaFor(`rule34.${String(match[1] || "world").toLowerCase()}`);
+  return { id: match[2], siteMeta };
+}
+
+// rule34.world / rule34.xyz file format ids -> [extension, label, kind, preview]
+// (best first). Taken from the site's own file-type table (the SPA's
 // `typesStr`, session 10): 100 is the source the site's Download button uses,
 // 111-114 are the 360/480/720/1080 ladders, and 101/102 are the 256px grid
 // previews — kept last, flagged, so they are only ever offered when a post
@@ -519,7 +565,7 @@ const WORLD_HOST_PROBE_TTL_MS = 10 * 60 * 1000;
 // When BOTH roots fail the probe we treat it as a likely transient outage and
 // re-probe after 60s instead of pinning "both dead" for the full TTL.
 const WORLD_HOST_PROBE_FAIL_TTL_MS = 60 * 1000;
-let worldHostProbe = null; // { cdnOk, originOk, checkedAt }
+const worldHostProbeBySite = new Map(); // siteRoot -> { cdnOk, originOk, checkedAt }
 
 async function probeMediaUrl(url) {
   const attempt = async (method, headers, timeoutMs) => {
@@ -542,20 +588,24 @@ async function probeMediaUrl(url) {
   return attempt("GET", { Range: "bytes=0-0" }, 8000);
 }
 
-async function getWorldHostStatus(samplePath) {
-  const ttl = worldHostProbe && !worldHostProbe.cdnOk && !worldHostProbe.originOk
+async function getWorldHostStatus(siteMeta, samplePath) {
+  const meta = worldSiteMetaFor(siteMeta);
+  const cacheKey = String(meta.root || WORLD_DEFAULT_SITE.root);
+  const cached = worldHostProbeBySite.get(cacheKey) || null;
+  const ttl = cached && !cached.cdnOk && !cached.originOk
     ? WORLD_HOST_PROBE_FAIL_TTL_MS
     : WORLD_HOST_PROBE_TTL_MS;
-  if (worldHostProbe && Date.now() - worldHostProbe.checkedAt < ttl) return worldHostProbe;
+  if (cached && Date.now() - cached.checkedAt < ttl) return cached;
   const [cdnOk, originOk] = await Promise.all([
-    probeMediaUrl(WORLD_CDN_ROOT + samplePath),
-    probeMediaUrl(WORLD_ROOT + samplePath),
+    probeMediaUrl(meta.cdnRoot + samplePath),
+    probeMediaUrl(meta.root + samplePath),
   ]);
   if (!cdnOk && !originOk) {
-    logger.warn("rule34.world host probe: BOTH file hosts unreachable", { samplePath, cdnOk, originOk });
+    logger.warn(`${meta.label} host probe: BOTH file hosts unreachable`, { samplePath, cdnOk, originOk });
   }
-  worldHostProbe = { cdnOk, originOk, checkedAt: Date.now() };
-  return worldHostProbe;
+  const status = { cdnOk, originOk, checkedAt: Date.now() };
+  worldHostProbeBySite.set(cacheKey, status);
+  return status;
 }
 
 function decodeHtmlEntities(value) {
@@ -573,8 +623,7 @@ function rule34VideoPostId(url) {
 }
 
 function rule34WorldPostId(url) {
-  const match = String(url || "").match(/^https?:\/\/(?:www\.)?rule34\.world\/post\/(\d+)/i);
-  return match ? match[1] : "";
+  return rule34WorldPostInfo(url)?.id || "";
 }
 
 function heightFromLabel(label) {
@@ -694,12 +743,18 @@ async function resolveRule34VideoPost(pageUrl) {
   };
 }
 
-async function resolveRule34WorldPost(postId, pageUrl) {
-  const response = await fetch(`${WORLD_ROOT}/api/v2/post/${postId}`, {
+async function resolveRule34WorldPost(postIdOrInfo, pageUrl) {
+  const pageInfo = rule34WorldPostInfo(pageUrl);
+  const postInfo = typeof postIdOrInfo === "object" && postIdOrInfo
+    ? { id: String(postIdOrInfo.id || ""), siteMeta: worldSiteMetaFor(postIdOrInfo.siteMeta || postIdOrInfo) }
+    : null;
+  const postId = String(postInfo?.id || pageInfo?.id || postIdOrInfo || "").trim();
+  const siteMeta = worldSiteMetaFor(pageInfo?.siteMeta || postInfo?.siteMeta || pageUrl || postIdOrInfo);
+  const response = await fetch(`${siteMeta.apiRoot}/api/v2/post/${postId}`, {
     credentials: "include",
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) throw new Error(`rule34.world API failed (${response.status})`);
+  if (!response.ok) throw new Error(`${siteMeta.label} API failed (${response.status})`);
   const post = await response.json();
   const files = post?.files || {};
   const idNumber = Number(postId);
@@ -717,12 +772,12 @@ async function resolveRule34WorldPost(postId, pageUrl) {
   // Probe both file hosts once per session (sampled on the first real file)
   // and prefer the healthy one over whatever the API flag claims.
   const samplePath = `/posts/${directory}/${idNumber}/${postId}.${entries[0].extension}`;
-  const hostStatus = await getWorldHostStatus(samplePath);
+  const hostStatus = await getWorldHostStatus(siteMeta, samplePath);
   const pickRoots = (useCdn) => {
-    const preferred = useCdn ? WORLD_CDN_ROOT : WORLD_ROOT;
-    const preferredOk = preferred === WORLD_CDN_ROOT ? hostStatus.cdnOk : hostStatus.originOk;
-    const other = preferred === WORLD_CDN_ROOT ? WORLD_ROOT : WORLD_CDN_ROOT;
-    const otherOk = preferred === WORLD_CDN_ROOT ? hostStatus.originOk : hostStatus.cdnOk;
+    const preferred = useCdn ? siteMeta.cdnRoot : siteMeta.root;
+    const preferredOk = preferred === siteMeta.cdnRoot ? hostStatus.cdnOk : hostStatus.originOk;
+    const other = preferred === siteMeta.cdnRoot ? siteMeta.root : siteMeta.cdnRoot;
+    const otherOk = preferred === siteMeta.cdnRoot ? hostStatus.originOk : hostStatus.cdnOk;
     if (preferredOk || (!preferredOk && !otherOk)) {
       return { root: preferred, altRoot: otherOk ? other : "" };
     }
@@ -759,9 +814,9 @@ async function resolveRule34WorldPost(postId, pageUrl) {
     id: String(postId),
     title: title || `rule34world-${postId}`,
     artist,
-    thumbnail: `${WORLD_CDN_ROOT}/posts/${directory}/${idNumber}/${idNumber}.pic256.jpg`,
+    thumbnail: `${siteMeta.cdnRoot}/posts/${directory}/${idNumber}/${idNumber}.pic256.jpg`,
     duration: Number(post?.duration) || undefined,
-    url: pageUrl || `${WORLD_ROOT}/post/${postId}`,
+    url: pageUrl || `${siteMeta.root}/post/${postId}`,
     formats,
     tags,
     date: String(post?.created || "").slice(0, 10),
@@ -771,8 +826,8 @@ async function resolveRule34WorldPost(postId, pageUrl) {
 async function resolveKnownPost(url) {
   const videoId = rule34VideoPostId(url);
   if (videoId) return resolveRule34VideoPost(url);
-  const worldId = rule34WorldPostId(url);
-  if (worldId) return resolveRule34WorldPost(worldId, url);
+  const worldInfo = rule34WorldPostInfo(url);
+  if (worldInfo?.id) return resolveRule34WorldPost(worldInfo, url);
   return null;
 }
 
@@ -800,39 +855,41 @@ async function searchRule34VideoTag({ tags, maxUrls = BATCH_MAX_URLS } = {}) {
   return Array.from(ids).map((id) => `https://rule34video.com/video/${id}/${id}/`);
 }
 
-// rule34.world cursor-paginated search (confirmed from the gallery-dl
-// rule34xyz extractor). Used by the "bulk download by tag / playlist" feature.
-async function searchRule34WorldPosts({ tags, playlistId, maxUrls = BATCH_MAX_URLS } = {}) {
+// rule34.world / rule34.xyz cursor-paginated search (confirmed from the
+// current SPA requests). Used by the "bulk download by tag / playlist"
+// feature.
+async function searchRule34WorldPosts({ tags, playlistId, site, maxUrls = BATCH_MAX_URLS } = {}) {
   const tagged = Array.isArray(tags)
     ? tags.filter(Boolean)
     : String(tags || "").split(/[,+]/).map((t) => t.trim()).filter(Boolean);
+  const siteMeta = worldSiteMetaFor(site);
   const urls = [];
-  let cursor = null;
-  for (let page = 0; page < 50 && urls.length < maxUrls; page += 1) {
+  let cursor = "";
+  for (let page = 1; page <= 50 && urls.length < maxUrls; page += 1) {
     const isPlaylist = Boolean(playlistId);
     const endpoint = isPlaylist
-      ? `${WORLD_ROOT}/v2/post/search/playlist/${encodeURIComponent(playlistId)}`
-      : `${WORLD_ROOT}/api/v2/post/search/root`;
+      ? `${siteMeta.apiRoot}/api/v2/post/search/playlist/${encodeURIComponent(playlistId)}`
+      : `${siteMeta.apiRoot}/api/v2/post/search/root`;
     const body = isPlaylist
-      ? { Skip: page * 60, take: 60, CountTotal: false, IncludeLinks: true, OrderBy: 0 }
-      : { includeTags: tagged, Skip: page * 60, take: 60, CountTotal: false, IncludeLinks: true, OrderBy: 0, cursor: cursor || undefined };
+      ? { skip: (page - 1) * 30, take: 30, countTotal: false, checkHasMore: true, filterAi: false, sortBy: 0, ...(cursor ? { cursor } : {}) }
+      : { skip: (page - 1) * 30, take: 30, countTotal: false, checkHasMore: true, filterAi: false, sortBy: 0, includeTags: tagged, ...(cursor ? { cursor } : {}) };
     const response = await fetch(endpoint, {
       method: "POST",
       credentials: "include",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw new Error(`rule34.world search failed (${response.status})`);
+    if (!response.ok) throw new Error(`${siteMeta.label} search failed (${response.status})`);
     const data = await response.json();
     const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
     if (!items.length) break;
     for (const item of items) {
       const id = item && (item.id || item.postId || item.post_id);
-      if (id && urls.length < maxUrls) urls.push(`${WORLD_ROOT}/post/${id}`);
+      if (id && urls.length < maxUrls) urls.push(`${siteMeta.root}/post/${id}`);
     }
-    const nextCursor = data?.cursor;
-    if (nextCursor) cursor = nextCursor;
-    if (items.length < 60 && !nextCursor) break;
+    cursor = String(data?.cursor || cursor || "");
+    const hasMore = data?.hasMore === true ? true : data?.hasMore === false ? false : items.length >= 30;
+    if (!hasMore) break;
   }
   return urls;
 }
@@ -1688,7 +1745,14 @@ try {
           "http://*.rule34.world/*",
           "https://www.rule34.world/*",
           "http://www.rule34.world/*",
+          "https://rule34.xyz/*",
+          "http://rule34.xyz/*",
+          "https://*.rule34.xyz/*",
+          "http://*.rule34.xyz/*",
+          "https://www.rule34.xyz/*",
+          "http://www.rule34.xyz/*",
           "https://rule34storage.b-cdn.net/*",
+          "https://rule34xyz.b-cdn.net/*",
           "https://rule34video.com/*",
           "http://rule34video.com/*",
           "https://*.rule34video.com/*",
@@ -2928,6 +2992,7 @@ void restoreQueueState();
 const CONTEXT_MENU_ID = "r34-download";
 const CONTEXT_MENU_PATTERNS = [
   "https://rule34.world/*", "https://*.rule34.world/*", "http://rule34.world/*", "http://*.rule34.world/*",
+  "https://rule34.xyz/*", "https://*.rule34.xyz/*", "http://rule34.xyz/*", "http://*.rule34.xyz/*",
   "https://rule34video.com/*", "https://*.rule34video.com/*", "http://rule34video.com/*", "http://*.rule34video.com/*",
 ];
 
@@ -3059,11 +3124,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const pid = String(request.playlistUrl).match(/playlist[/=](\w+)/i)?.[1]
               || String(request.playlistUrl).match(/(\d+)/)?.[1];
             if (!pid) throw new Error("Could not parse a playlist id from that URL.");
-            urls = await searchRule34WorldPosts({ playlistId: pid, maxUrls: BATCH_MAX_URLS });
+            urls = await searchRule34WorldPosts({ playlistId: pid, site: request?.playlistUrl || request?.site || sender?.tab?.url || "", maxUrls: BATCH_MAX_URLS });
           } else if (request?.tags) {
             urls = isVideo
               ? await searchRule34VideoTag({ tags: request.tags, maxUrls: BATCH_MAX_URLS })
-              : await searchRule34WorldPosts({ tags: request.tags, maxUrls: BATCH_MAX_URLS });
+              : await searchRule34WorldPosts({ tags: request.tags, site: request?.site || sender?.tab?.url || "", maxUrls: BATCH_MAX_URLS });
           } else {
             throw new Error("Enter a tag/artist or a playlist URL.");
           }

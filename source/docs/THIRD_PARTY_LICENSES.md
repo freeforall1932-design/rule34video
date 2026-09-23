@@ -4,8 +4,9 @@ This document records the third-party code shipped inside
 `extension/modules/`. The project itself is MIT
 (see the top-level `LICENSE`); the items below are **vendored** and keep their
 own licenses. No third-party **service / API / telemetry** dependency was found
-in the extension — all network calls target rule34.world, rule34video.com,
-their BunnyCDN file host, or `api.github.com` (update checker) only.
+in the extension — all network calls target `rule34.world`, `rule34.xyz`,
+`rule34video.com`, their BunnyCDN file hosts, or `api.github.com` (update
+checker) only.
 
 > Session 6 removed the vendored code the extension never loaded from the
 > shipped package (`mediabunny/`, `mp4box.mjs`, `reencoder/`, `dash2mp4/`,

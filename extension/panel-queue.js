@@ -375,7 +375,7 @@
         id,
         url: route.canonicalUrl || url,
         title: String(raw.title || "").trim() || (site === "world" ? `Post ${id}` : `Video ${id}`),
-        thumbnail: String(raw.thumbnail || (site === "world" ? routes.worldThumbnail(id) : "")),
+        thumbnail: String(raw.thumbnail || (site === "world" ? routes.worldThumbnail(id, route) : "")),
         duration: String(raw.duration || ""),
         type,
         page: Number(raw.page) || Number(source?.page) || 0,
@@ -963,8 +963,9 @@
     const worldAdapter = {
       delayMs: WORLD_PAGE_DELAY_MS,
       endpoint(route) {
-        if (route.kind === "playlist") return `https://rule34.world/api/v2/post/search/playlist/${encodeURIComponent(route.id)}`;
-        return "https://rule34.world/api/v2/post/search/root";
+        const apiRoot = String(route?.apiRoot || route?.root || "https://rule34.world");
+        if (route.kind === "playlist") return `${apiRoot}/api/v2/post/search/playlist/${encodeURIComponent(route.id)}`;
+        return `${apiRoot}/api/v2/post/search/root`;
       },
       newSeq() {
         return { advancedTo: 0, cursor: "", hasMore: true, byPage: {} };
@@ -982,10 +983,10 @@
           body: JSON.stringify(body),
           ...(context?.signal ? { signal: context.signal } : {}),
         });
-        if (!response.ok) throw new Error(`rule34.world API ${response.status}`);
+        if (!response.ok) throw new Error(`${route?.hostLabel || "rule34.world"} API ${response.status}`);
         const data = await response.json();
         const list = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-        const items = list.map(worldItem).filter(Boolean);
+        const items = list.map((raw) => worldItem(raw, route)).filter(Boolean);
         const take = Number(body.take) > 0 ? Number(body.take) : 30;
         // hasMore only when the API says so (or, if it omits the field, when a
         // full page came back — a short/empty page means the feed is exhausted).
@@ -1039,16 +1040,16 @@
       },
     };
 
-    function worldItem(raw) {
+    function worldItem(raw, route) {
       const id = raw && (raw.id ?? raw.postId ?? raw.post_id);
       if (id === undefined || id === null) return null;
       const isVideo = Number(raw.type) === 1 || Number(raw.duration) > 0;
       const artist = Array.isArray(raw.tags) ? raw.tags.find((tag) => tag && tag.type === 8)?.value : "";
       return {
         id: String(id),
-        url: routes.worldPostUrl(id),
+        url: routes.worldPostUrl(id, route),
         title: artist ? `${artist} - post ${id}` : `Post ${id}`,
-        thumbnail: routes.worldThumbnail(id),
+        thumbnail: routes.worldThumbnail(id, route),
         duration: isVideo && Number(raw.duration) > 0 ? formatDuration(raw.duration) : "",
         type: isVideo ? "video" : "image",
       };

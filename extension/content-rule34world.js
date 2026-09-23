@@ -68,7 +68,7 @@
         id: route.id,
         url: route.canonicalUrl,
         title: `Post ${route.id}`,
-        thumbnail: Routes.worldThumbnail(route.id),
+        thumbnail: Routes.worldThumbnail(route.id, route),
         duration: isVideo && durationMatch ? durationMatch[1] : "",
         type: isVideo ? "video" : "image",
         anchor,
@@ -234,7 +234,7 @@
     while (pill.children.length > 1) pill.removeChild(pill.lastChild);
     if (route.kind === "post") {
       state.pillCount.textContent = pillCountText();
-      pill.appendChild(button("⬇ Download", "", () => queueItems([{ id: route.id, url: route.canonicalUrl, title: `Post ${route.id}`, thumbnail: Routes.worldThumbnail(route.id), type: document.querySelector("video") ? "video" : "image" }], true)));
+      pill.appendChild(button("⬇ Download", "", () => queueItems([{ id: route.id, url: route.canonicalUrl, title: `Post ${route.id}`, thumbnail: Routes.worldThumbnail(route.id, route), type: document.querySelector("video") ? "video" : "image" }], true)));
       pill.appendChild(button("Panel", PREFIX + "-ghost", openPanel));
       return;
     }

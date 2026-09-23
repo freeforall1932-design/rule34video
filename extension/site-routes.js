@@ -31,7 +31,43 @@
   "use strict";
 
   const VIDEO_HOST = /(^|\.)rule34video\.com$/i;
-  const WORLD_HOST = /(^|\.)rule34\.world$/i;
+  const WORLD_HOST = /(^|\.)rule34\.(?:world|xyz)$/i;
+  const WORLD_SITES = Object.freeze({
+    "rule34.world": Object.freeze({
+      host: "rule34.world",
+      root: "https://rule34.world",
+      apiRoot: "https://rule34.world",
+      cdnRoot: "https://rule34storage.b-cdn.net",
+      label: "rule34.world",
+    }),
+    "rule34.xyz": Object.freeze({
+      host: "rule34.xyz",
+      root: "https://rule34.xyz",
+      apiRoot: "https://rule34.xyz",
+      cdnRoot: "https://rule34xyz.b-cdn.net",
+      label: "rule34.xyz",
+    }),
+  });
+
+  function worldHostMeta(input) {
+    let host = "";
+    if (input && typeof input === "object") {
+      host = String(input.hostname || input.hostLabel || input.host || "").toLowerCase();
+    } else {
+      host = String(input || "").trim().toLowerCase();
+      if (/^https?:\/\//i.test(host)) {
+        try {
+          host = new URL(host).hostname.toLowerCase();
+        } catch {
+          host = "";
+        }
+      }
+    }
+    host = host.replace(/^www\./i, "");
+    if (host === "rule34.xyz" || host.endsWith(".rule34.xyz")) return WORLD_SITES["rule34.xyz"];
+    if (host === "rule34.world" || host.endsWith(".rule34.world")) return WORLD_SITES["rule34.world"];
+    return null;
+  }
 
   function parseUrl(value) {
     const text = String(value || "").trim();
@@ -129,8 +165,10 @@
     return null;
   }
 
-  // --- rule34.world -----------------------------------------------------------
+  // --- rule34.world / rule34.xyz --------------------------------------------
   function matchWorldSite(parsed) {
+    const siteMeta = worldHostMeta(parsed);
+    if (!siteMeta) return null;
     const path = parsed.pathname.replace(/\/+$/, "") || "/";
     const segments = path.split("/").filter(Boolean);
     const page = positivePage(parsed.searchParams.get("page"));
@@ -142,30 +180,38 @@
       if (value) filters.set(key, value);
     }
     const suffix = filters.toString() ? `?${filters.toString()}` : "";
-    const base = `${parsed.protocol}//${parsed.host}`;
+    const common = {
+      site: "world",
+      family: "world",
+      host: siteMeta.host,
+      hostLabel: siteMeta.label,
+      root: siteMeta.root,
+      apiRoot: siteMeta.apiRoot,
+      cdnRoot: siteMeta.cdnRoot,
+    };
     let match;
 
     if ((match = path.match(/^\/post\/(\d+)/i))) {
-      return { site: "world", kind: "post", id: match[1], page: 1, listingUrl: "", title: "", canonicalUrl: `${base}/post/${match[1]}` };
+      return { ...common, kind: "post", id: match[1], page: 1, listingUrl: "", title: "", canonicalUrl: `${siteMeta.root}/post/${match[1]}` };
     }
     if (segments.length === 0) {
-      return { site: "world", kind: "home", id: "", tags: [], page, listingUrl: `${base}/${suffix}`, title: "Home", mediaType: worldMediaType(parsed), sort: worldSort(parsed) };
+      return { ...common, kind: "home", id: "", tags: [], page, listingUrl: `${siteMeta.root}/${suffix}`, title: "Home", mediaType: worldMediaType(parsed), sort: worldSort(parsed) };
     }
     if ((match = path.match(/^\/playlists\/view\/(\d+)$/i))) {
-      return { site: "world", kind: "playlist", id: match[1], page, listingUrl: `${base}/playlists/view/${match[1]}`, title: `Playlist ${match[1]}` };
+      return { ...common, kind: "playlist", id: match[1], page, listingUrl: `${siteMeta.root}/playlists/view/${match[1]}`, title: `Playlist ${match[1]}` };
     }
     if (path === "/playlists") {
-      return { site: "world", kind: "playlists", id: "", page, listingUrl: "", title: "Playlists" };
+      return { ...common, kind: "playlists", id: "", page, listingUrl: "", title: "Playlists" };
     }
     if (segments.length === 1 && /^(hot|highest|trends)$/i.test(segments[0])) {
       const feed = segments[0].toLowerCase();
-      return { site: "world", kind: "feed", id: feed, tags: [], page, listingUrl: `${base}/${feed}${suffix}`, title: feed === "highest" ? "Highest rated" : feed === "hot" ? "Hot" : "Trends", feed, mediaType: worldMediaType(parsed), sort: worldSort(parsed) };
+      return { ...common, kind: "feed", id: feed, tags: [], page, listingUrl: `${siteMeta.root}/${feed}${suffix}`, title: feed === "highest" ? "Highest rated" : feed === "hot" ? "Hot" : "Trends", feed, mediaType: worldMediaType(parsed), sort: worldSort(parsed) };
     }
     if (segments.length === 1 && !WORLD_RESERVED.has(segments[0].toLowerCase())) {
       // "/{tag}" or "/{tag1}|{tag2}" — underscores stand in for spaces.
       const raw = decode(segments[0]);
       const tags = raw.split("|").map((t) => t.replace(/_/g, " ").trim()).filter(Boolean);
-      return { site: "world", kind: "tag", id: raw, tags, page, listingUrl: `${base}/${segments[0]}${suffix}`, title: tags.join(", "), mediaType: worldMediaType(parsed), sort: worldSort(parsed) };
+      return { ...common, kind: "tag", id: raw, tags, page, listingUrl: `${siteMeta.root}/${segments[0]}${suffix}`, title: tags.join(", "), mediaType: worldMediaType(parsed), sort: worldSort(parsed) };
     }
     return null;
   }
@@ -359,18 +405,19 @@
     return `${route.listingUrl.replace(/\/$/, "")}/${n}/`;
   }
 
-  // --- rule34.world helpers ----------------------------------------------------
+  // --- rule34.world / rule34.xyz helpers --------------------------------------
   const WORLD_PAGE_SIZE = 30; // the SPA's posts.default.pageSize
-  const WORLD_CDN = "https://rule34storage.b-cdn.net";
 
-  function worldThumbnail(id) {
+  function worldThumbnail(id, context) {
     const n = Number(id);
     if (!Number.isFinite(n)) return "";
-    return `${WORLD_CDN}/posts/${Math.floor(n / 1000)}/${n}/${n}.pic256.jpg`;
+    const meta = worldHostMeta(context) || WORLD_SITES["rule34.world"];
+    return `${meta.cdnRoot}/posts/${Math.floor(n / 1000)}/${n}/${n}.pic256.jpg`;
   }
 
-  function worldPostUrl(id) {
-    return `https://rule34.world/post/${id}`;
+  function worldPostUrl(id, context) {
+    const meta = worldHostMeta(context) || WORLD_SITES["rule34.world"];
+    return `${meta.root}/post/${id}`;
   }
 
   // The search body the SPA posts to /api/v2/post/search/root for a listing
@@ -434,6 +481,8 @@
     WORLD_HOST,
     WORLD_PAGE_SIZE,
     PAGE_RANGE_HARD_CAP,
+    WORLD_SITES,
+    worldHostMeta,
     siteOf,
     match,
     isListing,

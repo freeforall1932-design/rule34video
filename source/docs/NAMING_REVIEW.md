@@ -2,6 +2,11 @@
 
 Review date: 2026-09-02 · on branch `arena/01a06057-rule34video`.
 
+> Historical wording note: this review was written before `.xyz` support was
+> added to the shared world-family adapter, so its concrete examples often use
+> `rule34.world`. Those examples still describe the same naming logic unless a
+> point depends on a `.world`-specific live capture.
+
 This is a targeted review of the output-naming feature (master folder + per-site
 folder + tag/artist collection folder + filename) and the paths that feed it,
 motivated by the fact that the sister `twitter-batch` project found bugs after
@@ -257,10 +262,10 @@ un-prefixed `Con - …`, so the artist appears twice. It produces a valid, safe 
 ## Sloppy / dead-weight code (safe to trim eventually, not addressable here)
 
 - **Leftover generic-hoster code** in `background-enhanced.js` and
-  `background-bridge.js` for hosts that cannot appear on these two sites
-  (xiaoshenke, erome, cloudflarestream, xtremestream, doodstream, streamtape,
-  aki-h, `get_file`/`reversebuffer` proxy rewrites). The `webRequest` listener and
-  host permissions only cover the two rule34 sites, so most of
+  `background-bridge.js` for hosts that cannot appear on this repo's supported
+  hosts/site families (xiaoshenke, erome, cloudflarestream, xtremestream,
+  doodstream, streamtape, aki-h, `get_file`/`reversebuffer` proxy rewrites).
+  The `webRequest` listener and host permissions only cover the supported Rule 34 hosts, so most of
   `observedMediaFormats`, `xiaoshenkePlayerFormats`, `cloudflareStreamManifestFormats`,
   `resolveXiaoshenkeSignedUrl`, `shouldUseTabInitiatedDownload`, `erome` branches,
   and the DNR reference-rule helpers are effectively unreachable in production.

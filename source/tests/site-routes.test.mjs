@@ -95,6 +95,8 @@ describe("rule34.world routes", () => {
     assert.equal(post.kind, "post");
     assert.equal(post.id, "3571567");
     assert.equal(R.isSinglePost(post), true);
+    assert.equal(post.hostLabel, "rule34.world");
+    assert.equal(post.cdnRoot, "https://rule34storage.b-cdn.net");
 
     const home = R.match("https://rule34.world/");
     assert.equal(home.kind, "home");
@@ -114,6 +116,23 @@ describe("rule34.world routes", () => {
     assert.equal(R.match("https://rule34.world/hot").kind, "feed");
     assert.equal(R.match("https://rule34.world/playlists/view/123").kind, "playlist");
     assert.equal(R.match("https://rule34.world/playlists").kind, "playlists");
+  });
+
+  it("treats rule34.xyz as the same route family with its own origin and CDN", () => {
+    const post = R.match("https://rule34.xyz/post/4740362");
+    assert.equal(post.site, "world");
+    assert.equal(post.kind, "post");
+    assert.equal(post.id, "4740362");
+    assert.equal(post.hostLabel, "rule34.xyz");
+    assert.equal(post.root, "https://rule34.xyz");
+    assert.equal(post.cdnRoot, "https://rule34xyz.b-cdn.net");
+    assert.equal(post.canonicalUrl, "https://rule34.xyz/post/4740362");
+
+    const tag = R.match("https://rule34.xyz/touhou?page=2&type=video&sort=top");
+    assert.equal(tag.kind, "tag");
+    assert.equal(tag.listingUrl, "https://rule34.xyz/touhou?type=video&sort=top");
+    assert.equal(R.worldPostUrl(4740362, tag), "https://rule34.xyz/post/4740362");
+    assert.equal(R.worldThumbnail(4740362, tag), "https://rule34xyz.b-cdn.net/posts/4740/4740362/4740362.pic256.jpg");
   });
 
   it("does not treat reserved paths as tags", () => {
