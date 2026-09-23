@@ -2,11 +2,12 @@
 
 # 🎬 Downloader for Rule 34
 
-**Batch video & picture downloading for `rule34video.com` and `rule34.world` —
-a Manifest V3 Chrome extension with a Side Panel queue.**
+**Batch video & picture downloading for `rule34video.com` plus the shared
+`rule34.world` / `rule34.xyz` family — a Manifest V3 Chrome extension with a
+Side Panel queue.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/freeforall1932-design/rule34video/ci.yml?branch=main&logo=githubactions&logoColor=white&label=CI)](https://github.com/freeforall1932-design/rule34video/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/offline%20tests-110%20passing-brightgreen?logo=nodedotjs&logoColor=white)](#-test-it)
+[![Tests](https://img.shields.io/badge/offline%20tests-112%20passing-brightgreen?logo=nodedotjs&logoColor=white)](#-test-it)
 [![Version](https://img.shields.io/badge/version-6.0.2-8b5cf6?logo=googlechrome&logoColor=white)](extension/manifest.json)
 [![Manifest V3](https://img.shields.io/badge/Manifest%20V3-ready-2563eb)](extension/manifest.json)
 [![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-green)](package.json)
@@ -14,7 +15,8 @@ a Manifest V3 Chrome extension with a Side Panel queue.**
 [![Telemetry](https://img.shields.io/badge/telemetry-none-important)](source/docs/privacy.md)
 
 *No accounts · No keys · No paywall · No build step · Nothing leaves your machine
-except the requests to the two sites you browse and GitHub for update checks.*
+except the requests to the supported sites you browse and GitHub for update
+checks.*
 
 </div>
 
@@ -64,9 +66,9 @@ the single routing table); on every other page it stays silent.
 | **rule34video.com** video page | *Download this post* (best quality, or your preferred height) |
 | rule34video.com homepage, `/latest-updates`, search, tag, category, artist, member | *List this page* · *Download page* · page range (`2,4,6-10`, `1-99`) → *Fetch selected pages*, review, then *Download selected*; a ⬇ on every card |
 | rule34video.com **playlist** | the same, plus a *Fetch page batch* pill — every fetched row is reviewed in the panel before it can download |
-| **rule34.world** post | *Download this post* (picture **or** video) |
-| rule34.world homepage, tag search, `/hot` `/highest` `/trends`, playlist | Twitter-style queue: fetch pics and videos through the site API (page N here = page N on the site), filter by media type, review the selected rows, then start them explicitly |
-| anything else | queue only, plus *Fetch from a URL* (paste any listing / playlist URL of either site) |
+| **rule34.world / rule34.xyz** post | *Download this post* (picture **or** video) |
+| rule34.world / rule34.xyz homepage, tag search, `/hot` `/highest` `/trends`, playlist | Twitter-style queue: fetch pics and videos through the site API (page N here = page N on the site), filter by media type, review the selected rows, then start them explicitly |
+| anything else | queue only, plus *Fetch from a URL* (paste any listing / playlist URL of a supported site) |
 
 Every listed post is a row with a checkbox, thumbnail, site/type badge, page number
 and live status (listed → queued → resolving → downloading → completed / failed).
@@ -93,11 +95,13 @@ Downloads/
 ```
 
 > The **id lives in the folder name**, not the file name — so the file is
-> `<title>.<ext>`. (On rule34.world the title already ends with `post <id>`, so a
-> post there saves as `WorldArtist - post 3571567.mp4`.)
+> `<title>.<ext>`. (On the shared rule34.world / rule34.xyz family, the title
+> already ends with `post <id>`, so a post there saves as
+> `WorldArtist - post 3571567.mp4`.)
 
 - 🌐 The **site level is automatic** — it comes from the site that served the post, so
-  the two sites never end up in the same folder.
+  `rule34video.com` stays separate from the shared `rule34world` folder used by
+  `rule34.world` / `rule34.xyz`.
 - 🏷️ The **folder name** comes from a template (`{artist} - {title} - {id}` by default,
   one checkbox per token), from the tags you tick, from a name you type yourself
   (highest priority), or from the search you started from. Whatever wins is sanitized;
@@ -112,10 +116,10 @@ Downloads/
 | Path | What |
 |---|---|
 | `extension/` | The shipped extension (load this folder unpacked). Runtime-only. |
-| `extension/site-routes.js` | **URL router** (which page is this? what listing does it belong to?), page-range grammar, rule34video.com listing/pagination parser, rule34.world search-body builder. Shared by the worker, the panel and both content scripts; unit-tested. |
-| `extension/panel-queue.js` | The Side Panel **queue engine** (worker side): persistent list, worker pool, page crawler with one adapter per site, download history. Dependency-injected, unit-tested offline. |
+| `extension/site-routes.js` | **URL router** (which page is this? what listing does it belong to?), page-range grammar, rule34video.com listing/pagination parser, and the shared rule34.world / rule34.xyz search-body builder. Shared by the worker, the panel and both content scripts; unit-tested. |
+| `extension/panel-queue.js` | The Side Panel **queue engine** (worker side): persistent list, worker pool, page crawler with one adapter per site family, download history. Dependency-injected, unit-tested offline. |
 | `extension/sidepanel.html/.js` + `styles/sidepanel.css` | The Side Panel UI (opens from the toolbar icon, the page pill, or the context menu) |
-| `extension/content-rule34video.js`, `extension/content-rule34world.js` | Per-site page adapters: corner ⬇ buttons, the floating pill, `collectListing` for the panel. Each fires only on routes the router recognises. |
+| `extension/content-rule34video.js`, `extension/content-rule34world.js` | Per-site page adapters: corner ⬇ buttons, the floating pill, `collectListing` for the panel. `content-rule34world.js` serves the shared rule34.world / rule34.xyz family. |
 | `extension/folder-naming.js` | The output-path engine: master folder, site slug map, path sanitizer, folder-name template |
 | `extension/modules/archive/` | Dependency-free ZIP/CBZ writer and PDF writer for picture sets |
 | `source/` | All development-use code: `retired/` (retired extension code + the `generic-hoster/` retirement kit), `vendor/` + `page-source/` (never-used sources), `tools/`, `tests/`, `docs/`. See `source/README.md`. |
@@ -162,7 +166,7 @@ node source/tests/e2e-download-paths.mjs   # real worker + offscreen doc: the sa
 npm run check                              # syntax, JSON, branding, stale refs, host inventory
 ```
 
-All suites run offline on plain Node — **110 fixture checks, 0 runtime dependencies.**
+All suites run offline on plain Node — **112 fixture checks, 0 runtime dependencies.**
 
 ---
 
@@ -174,6 +178,7 @@ All suites run offline on plain Node — **110 fixture checks, 0 runtime depende
 | [`WORKLIST.md`](source/docs/WORKLIST.md) | you want the open items, ordered, with *"needs data"* flagged instead of guessed |
 | [`IMPROVEMENT_LOG.md`](source/docs/IMPROVEMENT_LOG.md) | you want the why behind a change, dated |
 | [`DEADCODE_SWEEP.md`](source/docs/DEADCODE_SWEEP.md) | you're about to delete something — includes the near-misses that would have broken a working path |
+| [`MASTER_PLAN.md`](source/docs/MASTER_PLAN.md) | you want the reusable repo-split / auth / future-site plan for this and sibling repos |
 | [`MULTIHOST_PLAN.md`](source/docs/MULTIHOST_PLAN.md) | you're adding a third site (or building a sibling repo) |
 | [`NAMING_REVIEW.md`](source/docs/NAMING_REVIEW.md) | you're touching output naming |
 | [`RETROFIT_AUDIT.md`](source/docs/RETROFIT_AUDIT.md) | you're wondering why some odd code exists (it was cloned from a paid multi-site template) |

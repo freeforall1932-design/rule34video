@@ -23,8 +23,8 @@ optional update check:
 
 | Destination | Why |
 |---|---|
-| `rule34.world` and `rule34video.com` | Resolve the post you want and download the media you click. |
-| `rule34storage.b-cdn.net` | BunnyCDN file host that rule34.world serves media from. |
+| `rule34.world`, `rule34.xyz`, and `rule34video.com` | Resolve the post you want and download the media you click. |
+| `rule34storage.b-cdn.net` and `rule34xyz.b-cdn.net` | BunnyCDN file hosts that the shared rule34.world / rule34.xyz family serves media from. |
 | `api.github.com` | Check for a newer release (update notifier). Disabled if you turn off update checks. |
 
 That is the complete list. It does **not** contact any third-party analytics,

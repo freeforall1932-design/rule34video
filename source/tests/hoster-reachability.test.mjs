@@ -158,7 +158,7 @@ describe("host inventory stays honest", () => {
   it("SUPPORTED_HOSTS covers every host the manifest grants", () => {
     const supported = new Set(setFrom("SUPPORTED_HOSTS"));
     for (const host of [...supported]) assert.ok(host.includes("."), `malformed allowlist entry ${host}`);
-    for (const host of ["rule34video.com", "rule34.world"]) {
+    for (const host of ["rule34video.com", "rule34.world", "rule34.xyz"]) {
       assert.ok(supported.has(host), `${host} must be a supported host`);
     }
   });

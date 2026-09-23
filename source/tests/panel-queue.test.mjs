@@ -76,7 +76,7 @@ function worldFeedFetch(pageIds) {
   for (const [k, v] of Object.entries(pageIds || {})) pages[Number(k)] = v;
   const maxPage = Object.keys(pages).length ? Math.max(...Object.keys(pages).map(Number)) : 0;
   return async (url, init) => {
-    if (!/rule34\.world\/api/.test(String(url))) return null;
+    if (!/rule34\.(?:world|xyz)\/api/.test(String(url))) return null;
     const body = JSON.parse(init.body);
     const take = Number(body.take) || 30;
     // The adapter walks 1→N sending skip=(page-1)*take plus the prior cursor;
@@ -223,6 +223,16 @@ describe("listing a page", () => {
     assert.equal(items.filter((item) => item.type === "image").length, 15);
     assert.equal(items.filter((item) => item.type === "video").length, 15);
     assert.equal(items[0].thumbnail, Routes.worldThumbnail(5000));
+  });
+
+  it("lists a rule34.xyz tag page through the matching host family", async () => {
+    const { engine } = createEngine();
+    const result = await engine.handleMessage({ action: "panel.listPage", url: "https://rule34.xyz/touhou?type=video&sort=top" });
+    assert.equal(result.success, true);
+    assert.equal(result.added, 30);
+    const items = engine.snapshot().items;
+    assert.ok(items.every((item) => item.url.startsWith("https://rule34.xyz/post/")));
+    assert.equal(items[0].thumbnail, Routes.worldThumbnail(5000, "https://rule34.xyz/post/5000"));
   });
 
   it("treats a single post URL as a one-item listing", async () => {

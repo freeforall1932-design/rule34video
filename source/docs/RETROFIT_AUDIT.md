@@ -5,10 +5,16 @@ read the handoff/improvement/worklist, look up a "must-have / nice-to-have"
 quality-of-life feature, brainstorm robust-coding & quality ideas, and **recheck
 for stale code + third-party involvement** because the product is being
 retrofitted from a *marketed, paid, license-checked* Chrome extension into a
-*free, community* extension for rule34.world + rule34video.com.
+*free, community* extension for rule34video.com plus the shared
+rule34.world / rule34.xyz family.
 
 Branch: `arena/01a05149-rule34video`. State reviewed: extension **v4.2.0**
 (dual-site, persistent queue, CDN-outage fallback — all from PR #1/#2/#3).
+
+> Historical wording note: this audit captured the repo at a point when the
+> world-family support had not yet been generalized to `.xyz`, so many
+> references say `rule34.world` alone. Treat those as historical unless the
+> text is explicitly about a `.world`-specific live observation.
 
 ---
 
@@ -51,7 +57,7 @@ template. Two kinds of "third party" remain:
   luluvid, vidara, xtremestream, cloudflarestream, erome, … It is loaded as a
   **content script on every page** and `import`ed into the background, where it
   is used only as a *generic fallback* for non-rule34 URLs.
-- For a rule34.world + rule34video.com-only community tool this generic surface:
+- For a `rule34video.com` + shared `rule34.world` / `rule34.xyz` community tool this generic surface:
   1. is **dead weight** (large bundle, slow to load, maintenance burden);
   2. is a **privacy/security surface** (code that talks to dozens of arbitrary
      hosts);
@@ -60,21 +66,22 @@ template. Two kinds of "third party" remain:
      (observed-media scan). Chrome Web Store review flags over-broad host
      permissions.
 - **Recommendation (see §C):** strip or hard-gate the generic scraper so the
-  extension only loads on the two rule34 sites, then narrow host permissions.
+  extension only loads on the supported Rule 34 hosts/site families, then narrow
+  host permissions.
 
 ### B3. No external telemetry / analytics / beacon found
 - `TELEMETRY_LOG` is a **local SW-log ack** (no backend). No GA/gtag/mixpanel/
   sentry/beacon/cookie code exists. Good baseline for community trust.
 - Recommend adding a one-paragraph `privacy.md` ("we send zero data anywhere
-  except the two target sites + GitHub for update checks") for the Web Store
+  except the supported site hosts + GitHub for update checks") for the Web Store
   listing.
 
 ---
 
 ## C. Proposed structural change (needs your go-ahead)
 
-**Goal:** make the extension genuinely "free community / two-site only" and
-Web-Store-clean.
+**Goal:** make the extension genuinely "free community / supported-hosts only"
+and Web-Store-clean.
 
 1. **Gate/remove the generic `site-adapter.js` multi-hoster path.**
    - Option A (recommended): keep `site-adapter.js` only as an *opt-in* module
@@ -84,7 +91,8 @@ Web-Store-clean.
      target functionality, so behavior is unchanged for users.
    - Option B: delete the generic hosters entirely (smaller, cleaner) — but
      loses any future "download from anywhere" flexibility.
-2. **Narrow `host_permissions`** to the two sites + `rule34storage.b-cdn.net` +
+2. **Narrow `host_permissions`** to the supported site family
+   (`rule34video.com`, `rule34.world`, `rule34.xyz`) + their BunnyCDN hosts +
    `api.github.com` (drop `"https://*/*"` / `"http://*/*"`).
 3. **Scope the `webRequest` observed-media listener** to those origins instead of
    `<all_urls>`.

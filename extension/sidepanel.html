@@ -20,7 +20,7 @@
       <span id="tabStatusDot" class="dot"></span>
       <div class="tab-status-text">
         <strong id="tabStatusTitle">Checking active tab…</strong>
-        <span id="tabStatusDetail">Open rule34video.com or rule34.world to begin.</span>
+        <span id="tabStatusDetail">Open rule34video.com, rule34.world or rule34.xyz to begin.</span>
       </div>
       <button id="refreshTabBtn" class="icon-button" title="Re-read the active tab" aria-label="Re-read the active tab">⟳</button>
     </section>
@@ -110,7 +110,7 @@
     <details id="remoteCard" class="source-card remote-card">
       <summary>Fetch from a URL — playlist, search, tag or artist page</summary>
       <div class="target-row">
-        <input id="remoteInput" type="text" autocomplete="off" spellcheck="false" placeholder="https://rule34video.com/playlists/… or https://rule34.world/touhou">
+        <input id="remoteInput" type="text" autocomplete="off" spellcheck="false" placeholder="https://rule34video.com/playlists/… or https://rule34.xyz/touhou">
         <button id="remoteUseTabBtn" class="icon-button" title="Use the active tab" aria-label="Use the active tab">⌁</button>
       </div>
       <div class="range-row">
@@ -121,7 +121,7 @@
         <button id="remoteListBtn" class="button secondary">Fetch selected pages</button>
         <button id="remoteDownloadBtn" class="button primary" title="Start only the checked posts in the queue">Download selected</button>
       </div>
-      <p id="remoteHint" class="hint">Fetches add posts to the queue without downloading them. rule34video.com playlists, searches, tags, artists and members; rule34.world tags, feeds and playlists.</p>
+      <p id="remoteHint" class="hint">Fetches add posts to the queue without downloading them. rule34video.com playlists, searches, tags, artists and members; the rule34.world / rule34.xyz family supports tags, feeds and playlists.</p>
     </details>
 
     <section class="summary" aria-label="Queue summary">
@@ -152,7 +152,7 @@
 
       <label class="settings-label" for="masterFolder">Master folder</label>
       <input id="masterFolder" type="text" autocomplete="off" placeholder="R34V (empty = off)">
-      <p class="hint">Files save as <code>Downloads/&lt;master&gt;/&lt;site&gt;/&lt;collection&gt;/file</code>. The site folder (<code>rule34video</code> / <code>rule34world</code>) is automatic so the two sites never mix. Empty = no master folder.</p>
+      <p class="hint">Files save as <code>Downloads/&lt;master&gt;/&lt;site&gt;/&lt;collection&gt;/file</code>. The site folder is automatic: <code>rule34video</code> for rule34video.com, <code>rule34world</code> for the shared rule34.world / rule34.xyz family. Empty = no master folder.</p>
 
       <label class="settings-label">Collection folder is built from</label>
       <div id="tokenChecks" class="template-checks"></div>

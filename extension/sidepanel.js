@@ -89,6 +89,15 @@
     return `${n} ${word}${n === 1 ? "" : "s"}`;
   }
 
+  function worldLabel(route) {
+    return String(route?.hostLabel || "rule34.world / rule34.xyz");
+  }
+
+  function siteLabel(route) {
+    if (!route) return "Rule 34 Downloader";
+    return route.site === "world" ? worldLabel(route) : route.site === "video" ? "rule34video.com" : "Rule 34 Downloader";
+  }
+
   // --- active tab --------------------------------------------------------------------
   async function readActiveTab() {
     let tab = null;
@@ -110,7 +119,7 @@
   function renderTabContext() {
     const route = state.route;
     const site = route ? route.site : "";
-    el.siteEyebrow.textContent = site === "video" ? "RULE34VIDEO.COM" : site === "world" ? "RULE34.WORLD" : "RULE 34 DOWNLOADER";
+    el.siteEyebrow.textContent = site === "world" ? worldLabel(route).toUpperCase() : site === "video" ? "RULE34VIDEO.COM" : "RULE 34 DOWNLOADER";
     el.siteEyebrow.className = `eyebrow ${site}`.trim();
     el.postCard.classList.add("hidden");
     el.listingCard.classList.add("hidden");
@@ -119,7 +128,7 @@
     if (!route) {
       el.panelTitle.textContent = "Download queue";
       el.tabStatusTitle.textContent = "No supported page in this tab";
-      el.tabStatusDetail.textContent = state.tab?.url ? "The panel only activates on rule34video.com and rule34.world pages." : "Open rule34video.com or rule34.world to begin.";
+      el.tabStatusDetail.textContent = state.tab?.url ? "The panel only activates on rule34video.com, rule34.world and rule34.xyz pages." : "Open rule34video.com, rule34.world or rule34.xyz to begin.";
       el.tabStatus.classList.add("warn");
       el.remoteCard.open = true;
       return;
@@ -127,12 +136,12 @@
     el.tabStatus.classList.add("ok");
     if (Routes.isSinglePost(route)) {
       el.panelTitle.textContent = site === "world" ? "Post" : "Video";
-      el.tabStatusTitle.textContent = site === "world" ? `rule34.world post ${route.id}` : `rule34video.com video ${route.id}`;
+      el.tabStatusTitle.textContent = site === "world" ? `${worldLabel(route)} post ${route.id}` : `rule34video.com video ${route.id}`;
       el.tabStatusDetail.textContent = state.tab?.title || state.tab?.url || "";
       el.postCard.classList.remove("hidden");
       el.postTitle.textContent = cleanTitle(state.tab?.title) || `${site === "world" ? "Post" : "Video"} ${route.id}`;
       el.postMeta.textContent = site === "world" ? "Picture or video — the best file is picked automatically." : "Best available quality unless you pick one below.";
-      const thumb = site === "world" ? Routes.worldThumbnail(route.id) : "";
+      const thumb = site === "world" ? Routes.worldThumbnail(route.id, route) : "";
       if (thumb) { el.postThumb.src = thumb; el.postThumb.hidden = false; } else { el.postThumb.hidden = true; }
       hint(el.postHint, "");
       return;
@@ -140,7 +149,7 @@
     if (Routes.isListing(route)) {
       const titles = { playlist: "Playlist", search: "Search", home: "Homepage", latest: "Latest updates", feed: route.title, tag: "Tag", category: "Category", model: "Artist", member: "Member" };
       el.panelTitle.textContent = titles[route.kind] || "Listing";
-      el.tabStatusTitle.textContent = `${site === "world" ? "rule34.world" : "rule34video.com"} · ${route.title || route.kind}`;
+      el.tabStatusTitle.textContent = `${site === "world" ? worldLabel(route) : "rule34video.com"} · ${route.title || route.kind}`;
       el.tabStatusDetail.textContent = `Page ${route.page || 1}` + (state.tab?.url ? ` · ${state.tab.url}` : "");
       el.listingCard.classList.remove("hidden");
       el.listingTitle.textContent = route.title || route.kind;
@@ -163,7 +172,7 @@
     }
     // playlists index etc.
     el.panelTitle.textContent = "Download queue";
-    el.tabStatusTitle.textContent = `${site === "world" ? "rule34.world" : "rule34video.com"} · ${route.title || route.kind}`;
+    el.tabStatusTitle.textContent = `${site === "world" ? worldLabel(route) : "rule34video.com"} · ${route.title || route.kind}`;
     el.tabStatusDetail.textContent = "Open a playlist to fetch its videos, or paste its URL below.";
     el.tabStatus.classList.add("warn");
     el.remoteCard.open = true;
@@ -380,7 +389,7 @@
     const item = {
       url: route.canonicalUrl || state.tab.url,
       title: cleanTitle(state.tab.title),
-      thumbnail: route.site === "world" ? Routes.worldThumbnail(route.id) : "",
+      thumbnail: route.site === "world" ? Routes.worldThumbnail(route.id, route) : "",
       selected: true,
     };
     el.downloadPostBtn.disabled = true;
@@ -668,7 +677,9 @@
 
   function renderNamePreview() {
     if (!Folder || !el.masterFolder) return;
-    const site = state.route?.site === "world" ? "https://rule34.world/post/1" : "https://rule34video.com/video/1/";
+    const site = state.route?.site === "world"
+      ? Routes?.worldPostUrl?.(1, state.route) || "https://rule34.world/post/1"
+      : "https://rule34video.com/video/1/";
     const path = Folder.buildRelativePath({
       masterFolder: el.masterFolder.value,
       site,

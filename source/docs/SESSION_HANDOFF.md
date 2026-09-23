@@ -16,6 +16,12 @@
 > Updated: 2026-09-04 (**v6.0.2** — lazy filename guard; this-repo only).
 > Updated: 2026-09-14 (session 12 — dead-code sweep + generic-hoster retirement kit;
 > new offline guards in CI).
+>
+> Historical wording note: many older sections below say `rule34.world`
+> alone because they describe the repo state before `.xyz` support landed, or
+> because the captured live issue happened on `.world` specifically. Unless a
+> section is explicitly documenting an old one-host limitation, treat current
+> world-family behavior as shared across `rule34.world` / `rule34.xyz`.
 
 ---
 
@@ -164,15 +170,16 @@ unmatched URLs:
 | rule34video.com `/video/{id}/{slug}/` | pill "⬇ Download · Panel" | `panel.add` → `resolveRule34VideoPost` |
 | rule34video.com home, `/latest-updates[/N]`, `/search/<q>[/N]`, `/tags/<id>`, `/categories/<slug>`, `/models/<slug>`, `/members/<id>` | corner ⬇ per card; pill "N videos · Download page · Panel"; panel listing card with **List this page / Download page / page range (`2,4,6-10`, `1-99`, `50-`) / Fetch selected pages / Download selected / Stop fetch** | `panel.listPage` (asks the tab's `collectListing` first, else fetches), `panel.crawl.start` through canonical `/…/N/` page URLs (not the broken KVS ajax endpoint) |
 | rule34video.com `/playlists/{id}/{slug}/` | same + pill "Fetch page batch" | bounded canonical-page crawl |
-| rule34.world `/post/{id}` | pill Download (image or video) | `panel.add` → `resolveRule34WorldPost` |
-| rule34.world `/`, `/{tag}[|{tag2}]`, `/hot|highest|trends`, `/playlists/view/{id}` | corner ⬇, pill "N pics · N videos · Download page · Fetch batch · Panel"; panel media filter all/video/image | `POST /api/v2/post/search/root` (or `/playlist/{id}`), 30/page = site page N |
+| rule34.world / rule34.xyz `/post/{id}` | pill Download (image or video) | `panel.add` → `resolveRule34WorldPost` |
+| rule34.world / rule34.xyz `/`, `/{tag}[|{tag2}]`, `/hot|highest|trends`, `/playlists/view/{id}` | corner ⬇, pill "N pics · N videos · Download page · Fetch batch · Panel"; panel media filter all/video/image | `POST /api/v2/post/search/root` (or `/playlist/{id}`), 30/page = site page N |
 | context menu "Download with Rule 34 Downloader" | post link → queued; listing → listed + panel opened | `background-enhanced.js` ~3061 |
 
 Key files (all new in 6.0.0 unless noted): `extension/site-routes.js` (the
 single routing table + listing parsers + `parsePageRange`),
 `extension/panel-queue.js` (the queue/crawler engine, DI'd for tests),
 `extension/sidepanel.*`, `extension/content-rule34video.js`,
-`extension/content-rule34world.js`; `manifest.json` (6.0.0: `sidePanel`
+`extension/content-rule34world.js` (shared rule34.world / rule34.xyz adapter);
+`manifest.json` (6.0.0: `sidePanel`
 permission, no `default_popup`, per-host content scripts, no
 `web_accessible_resources`); `background-enhanced.js` (imports the two new
 scripts, creates the engine ~2966, routes `panel.*` / `openSidePanel` /
@@ -268,13 +275,13 @@ and fixed the biggest real-world bug found so far:
    (mediabunny MPL-2.0, mp4box BSD-3). The generic multi-hoster `site-adapter.js`
    has been **moved out of the packaged extension** to `legacy/site-adapter.js`
    (still in the repo for reference; its background fallback is inert) and
-   `host_permissions` narrowed to the two sites
+   `host_permissions` narrowed to the supported hosts at the time
    + BunnyCDN + `api.github.com`. New **Smart Library** auto-organization
    (configurable `{site}/{artist}/{title}` download-path template) and **bulk
    "download by tag / playlist"** for rule34.world (cursor-paginated search API).
    Version bumped **4.2.0 → 4.3.0**. Full write-up: `docs/RETROFIT_AUDIT.md`.
 5. **Session 5 — privacy, CI, full tag search:** added `docs/privacy.md`
-   (no telemetry; only the two sites + BunnyCDN + GitHub), a GitHub Actions
+   (no telemetry; only the supported site hosts + BunnyCDN + GitHub), a GitHub Actions
    workflow (`.github/workflows/ci.yml`) that runs syntax/JSON/branding checks plus
    a committed `source/tests/smoke.mjs` integration test (mocked chrome + fetch exercising
    the real `background-enhanced.js`), and wired **rule34video.com tag search**
@@ -376,7 +383,7 @@ and fixed the biggest real-world bug found so far:
       **empty string = off** → the flat pre-feature layout; slashes nest).
     - **Site level is automatic** (hostname → slug map in the new
       `extension/folder-naming.js`): `rule34video`, `rule34world`, unknown hosts
-      get their own folder. The two sites can never share one.
+      get their own folder. The supported site families can never share one.
     - **Collection folder** from a template string
       (`{artist} - {title} - {id}`) filled three ways — manual field, per-token
       + per-tag checkboxes, or the search/tag-results query — with a live
@@ -452,10 +459,12 @@ first** — do not trust the local checkout to be current.
 ## 2. What the product is
 
 A **Manifest V3 Chrome/Edge browser extension** — a **free, community
-"Downloader for Rule 34"** that supports BOTH target sites:
+"Downloader for Rule 34"** that supports the current target site families:
 
-- **rule34.world** — Angular SPA; post data via `https://rule34.world/api/v2/post/{id}`;
-  media on the BunnyCDN host `https://rule34storage.b-cdn.net`.
+- **rule34.world / rule34.xyz** — same Angular SPA family; post data via
+  `https://rule34.world/api/v2/post/{id}` or `https://rule34.xyz/api/v2/post/{id}`;
+  media on the BunnyCDN hosts `https://rule34storage.b-cdn.net` and
+  `https://rule34xyz.b-cdn.net`.
 - **rule34video.com** — KVS-style site; signed `get_file/..._{height}p.mp4`
   download links live in the post-page HTML.
 
@@ -491,7 +500,7 @@ All third-party paywall/auth/trial machinery from the original generator
   tag/playlist search, and the central `chrome.runtime.onMessage` router. It
   also imports `folder-naming.js` (session 8), the pure naming engine shared
   with the popup.
-- **Content scripts** (run `document_idle` on both sites), in order:
+- **Content scripts** (run `document_idle` on the supported hosts), in order:
   `site-config.js → logger.js → download-manager.js → content-bridge.js →
   content.js → player-button.js → post-actions.js`.
 - **Popup:** `popup.html` + `popup.js` (+ `site-config.js`, `logger.js`,
@@ -530,11 +539,11 @@ All third-party paywall/auth/trial machinery from the original generator
 
 - Free rebrand; all auth/license/trial/paywall code deleted; update checker
   repointed to `freeforall1932-design/rule34video` GitHub releases.
-- **Dual-site post resolvers** in `background-enhanced.js`:
+- **Current post resolvers** in `background-enhanced.js`:
   - rule34video.com: scrapes signed `get_file` MP4 links, prefers
     `download=true` links, skips `_preview.mp4`, sorts highest-res first.
-  - rule34.world: `/api/v2/post/{id}` → builds CDN URLs
-    (`{cdn}/posts/{id//1000}/{id}/{id}.{ext}`); formats `100` Source MP4,
+  - rule34.world / rule34.xyz: `/api/v2/post/{id}` → builds host-aware CDN/origin
+    URLs (`{cdn}/posts/{id//1000}/{id}/{id}.{ext}`); formats `100` Source MP4,
     `101` 720p, `102` 480p, `10` Image; title from artist tag (`type===8`).
 - **Configurable concurrency queue**: storage key `downloadConcurrencyLimit`
   (0/empty = Unlimited, max 99). Slider (0–10) + numeric input in the popup,
@@ -553,11 +562,12 @@ All third-party paywall/auth/trial machinery from the original generator
   `batchDownloadPosts` handler. Dedupes against pending batch, queued jobs
   AND active downloads (reports `skipped`); no per-item browser
   notifications for batch-originated queue entries.
-- **rule34.world host probe + fallback retry (session 3)**: both file roots
-  (`rule34storage.b-cdn.net` CDN vs `rule34.world` origin) probed once per
-  session (HEAD → `GET Range` fallback, 10-min TTL); formats built on the
-  healthy root; `fallbackUrl` on the other healthy root. Interrupted
-  (non-user-cancelled) chrome downloads restart once on the fallback host.
+- **rule34.world / rule34.xyz host probe + fallback retry (session 3, later generalized)**:
+  both file roots for the matched world-family host (CDN vs origin) are probed
+  once per session (HEAD → `GET Range` fallback, 10-min TTL); formats are built
+  on the healthy root; `fallbackUrl` points at the other healthy root.
+  Interrupted (non-user-cancelled) chrome downloads restart once on the
+  fallback host.
 - **Re-resolve on dispatch failure (session 3)**: rule34 post jobs that fail
   at dispatch re-resolve the post page/API once and retry with fresh
   formats/signed links (signed-URL expiry safety).
@@ -569,7 +579,7 @@ All third-party paywall/auth/trial machinery from the original generator
 - Rich generic media detection inherited from the generator (`site-adapter.js`):
   HLS/DASH, many third-party hosters (eporner, voe, streamtape, dood,
   nhplayer, xiaoshenke, byse/q8 proof-of-work, etc.) — mostly irrelevant to
-  the two rule34 sites but harmless.
+  this repo's supported hosts but harmless.
 - Offscreen HLS transmux + MP4 fetch (`offscreen.js` + `modules/`), progress
   manager, context menu, notifications.
 - **Output organization (session 8, replaces the session-4 "Smart Library"
@@ -592,20 +602,23 @@ All third-party paywall/auth/trial machinery from the original generator
     scope offscreen saves — the worker supplies the complete relative path.
   - New naming metadata from the resolvers: `apiTags`, `apiUploader`,
     `apiDate`, `apiKind` (and `tags` in `getVideoInfo` from `content.js`).
-- **Bulk download by tag / playlist (session 4):** popup "Download tag" enqueues
-  a whole rule34.world tag search or playlist via the cursor-paginated
-  `/api/v2/post/search/root` (and `/v2/post/search/playlist/{id}`) API, reusing
-  the existing batch engine. (rule34video.com tag search not yet wired — see §6.)
+- **Bulk download by tag / playlist (session 4, later generalized):** popup
+  "Download tag" enqueues a whole rule34.world / rule34.xyz tag search or
+  playlist via the cursor-paginated `/api/v2/post/search/root` (and
+  `/v2/post/search/playlist/{id}`) API, reusing the existing batch engine.
+  (rule34video.com tag search not yet wired — see §6.)
 - **Generic multi-hoster surface removed (sessions 4 + 6):** `site-adapter.js`
   moved to `legacy/` in session 4, then to `source/retired/site-adapter.js` in
   session 6 (retained for future site support; hook points at
   `background-enhanced.js:9,1296,2229` remain); `host_permissions` narrowed to
-  the two sites + BunnyCDN + api.github.com.
+  the supported hosts (`rule34video.com`, `rule34.world`, `rule34.xyz`) + their
+  BunnyCDN hosts + `api.github.com`.
 - **Licensing clarity (session 4):** top-level `LICENSE` (MIT) +
   `docs/THIRD_PARTY_LICENSES.md`.
 - **Privacy doc + CI (session 5):** `docs/privacy.md`; `.github/workflows/ci.yml`
   + `source/tests/smoke.mjs` (loads the real background module under mocks; asserts
-  `getVideoFormats` + `bulkDownloadTag` behaviors end-to-end).
+  `getVideoFormats` + `bulkDownloadTag` behaviors end-to-end for the supported
+  site families).
 - **rule34video.com bulk by tag (session 5):** `searchRule34VideoTag` scrapes
   `rule34video.com/search/<tag>/` post links; the popup detects the active-tab site
   and routes the tag/playlist control to the right backend. (Single-page scrape;
@@ -694,18 +707,19 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 
 1. **MANUAL BROWSER TESTING IS STILL THE #1 GAP.** Static analysis + mocked
    Node harnesses can't confirm live behavior. Run the matrix in
-   `WORKLIST.md` on both sites (it grew: persistent-queue + fallback-retry
-   sections are new in session 3).
+   `WORKLIST.md` across the supported site families (it grew: persistent-queue +
+   fallback-retry sections are new in session 3).
 2. **rule34.world listing-card selectors are inferred, not confirmed**
    (`app-post-card` / `mat-card` / `[class*='post']`); the site is an Angular
    shell with no SSR, so it can't be checked from static HTML. Verify on a
    live listing page and adjust `post-actions.js` `pinContainerFor` /
    `processCards` if cards don't get buttons. (The rule34video.com side WAS
    verified live in session 3 — selectors are correct there.)
-3. **Host permissions narrowed (session 4):** the `"https://*/*"` / `"http://*/*"`
-   wildcards are gone; `host_permissions` is now just the two rule34 sites +
-   `rule34storage.b-cdn.net` + `api.github.com`. (If a future feature needs a
-   new host, add it explicitly.)
+3. **Host permissions narrowed (session 4, later extended for `.xyz`):** the
+   `"https://*/*"` / `"http://*/*"` wildcards are gone; `host_permissions` is
+   now just `rule34video.com`, the shared `rule34.world` / `rule34.xyz` family,
+   their BunnyCDN hosts, and `api.github.com`. (If a future feature needs a new
+   host, add it explicitly.)
 4. **Cosmetic namespace rename done (session 4):** `Serp*` identifiers and
    `SERP`/`serp` strings were renamed to `Rule34*`/`rule34` across active code
    (the kept-but-unloaded `site-adapter.js` retains its internal `serp` strings).
@@ -716,16 +730,16 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 6. **Dead `chrome.action.onClicked` listener removed (session 4)** (manifest
    sets a default popup, so it never fired).
 7. Nice-to-haves: rule34video image posts; "already downloaded" dedupe via
-   `chrome.downloads` history; batch auto-paginate rule34.world — session 3
-   pinned down the exact API from the gallery-dl fork: `POST
+   `chrome.downloads` history; batch auto-paginate the rule34.world / rule34.xyz
+   family — session 3 pinned down the exact API from the gallery-dl fork: `POST
    {root}/api/v2/post/search/root`, JSON
    `{ includeTags, skip, cursor, take:30, countTotal:false, checkHasMore:true,
    filterAi:false, sortBy, ... }` → `{ items:[{id,type,duration,files,…}],
    cursor, hasMore }` (30/page; **session 11 superseded the older
    uppercase/60-page gallery-dl guess** — see the top block);
    `/v2/post/search/playlist/{id}` for playlists.
-   **Session 4 implemented** the rule34.world bulk-by-tag/playlist flow on top of
-   the older API guess (`searchRule34WorldPosts` + `bulkDownloadTag`); the
+   **Session 4 implemented** the rule34.world / rule34.xyz bulk-by-tag/playlist
+   flow on top of the older API guess (`searchRule34WorldPosts` + `bulkDownloadTag`); the
    session-11 keyset fix corrects the same endpoint for the panel crawler.
    **Session 5 wired rule34video.com tag search** (`searchRule34VideoTag`,
    single-page scrape of `rule34video.com/search/<tag>/`) — still needs a live
@@ -747,11 +761,11 @@ Ordered by priority. Full checklist in `docs/WORKLIST.md`.
 | File | Role |
 |---|---|
 | `manifest.json` | MV3 config; surface registration; permissions (6.0.0: `sidePanel`, per-host content scripts, no popup) |
-| `site-routes.js` | **6.0.0** — `globalThis.R34Routes`: URL → route table for both sites (`match`, `isListing`, `isSinglePost`), `parsePageRange`, rule34video listing HTML parser (main `*_items` block only) + ajax page URL builder, rule34.world search body / thumbnail / post-URL helpers. Loaded by the worker, the panel and both content scripts |
+| `site-routes.js` | **6.0.0** — `globalThis.R34Routes`: URL → route table for both current site families (`match`, `isListing`, `isSinglePost`), `parsePageRange`, rule34video listing HTML parser (main `*_items` block only) + ajax page URL builder, and the shared rule34.world / rule34.xyz search-body / thumbnail / post-URL helpers. Loaded by the worker, the panel and both content scripts |
 | `panel-queue.js` | **6.0.0** — `globalThis.R34PanelQueue.create(deps)`: the Side Panel queue + crawler engine (listing, page ranges, download pool, history, persistence, `panel.*` message handler, `pickFormat`). Pure logic with injected `chrome`/`fetch`/resolvers so `panel-queue.test.mjs` runs it offline |
 | `sidepanel.html` / `sidepanel.js` / `styles/sidepanel.css` | **6.0.0** — the Side Panel UI (counters, page card, queue rows, output settings, footer dock). Renders `panel.snapshot`, follows the active tab |
 | `content-rule34video.js` | **6.0.0** — rule34video.com page adapter: corner ⬇ per card, bottom pill, `collectListing` / `routeMatch` responders; renders only on routed URLs |
-| `content-rule34world.js` | **6.0.0** — rule34.world (Angular SPA) page adapter: same surface, history/observer hooks for SPA navigation |
+| `content-rule34world.js` | **6.0.0** — shared rule34.world / rule34.xyz (Angular SPA family) page adapter: same surface, history/observer hooks for SPA navigation |
 | `background-enhanced.js` | SW: queue, post resolvers, batch, message router, download routing |
 | `background-bridge.js` | SW helpers (offscreen doc, DNR rules, progress forwarders, response wrappers) |
 | `site-config.js` | SITE_NAME, folder, player-button selectors, context-menu patterns, update-check config, colors |
@@ -814,15 +828,17 @@ hand-maintained list, duplicated between `ci.yml` and `package.json`, had
 already drifted between the two copies.
 
 `test:e2e` is the one to re-run after touching the output-path code: it asserts
-the exact relative path handed to `chrome.downloads.download` for both sites,
+the exact relative path handed to `chrome.downloads.download` for the supported
+site families,
 the naming priority chain, the master-folder-off layout, the filename guard,
 and the archives the offscreen document actually builds.
 
 `source/tests/site-routes.test.mjs` + `source/tests/panel-queue.test.mjs`
 (session 10) are the ones to re-run after touching the routing table or the
 panel engine: the latter builds the engine with fake `chrome`/`fetch`/resolvers
-(`createEngine`) and drives listing, page-range crawls (both sites, incl. the
-open-ended `all` path), the download pool, stop/cancel, selection semantics,
+(`createEngine`) and drives listing, page-range crawls (both current site
+families, incl. the open-ended `all` path), the download pool, stop/cancel,
+selection semantics,
 history and restart-restore.
 
 `source/tests/queue-restore.test.mjs` (session 9) covers restore-on-startup:
@@ -869,7 +885,8 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   `source/`, CI. PR #8 / #9 (sessions 8–9): output folders + naming engine
   (5.0.0), review pass + queue-restore fix + CI workflow rewrite.
 - PR #10 (session 10): the 6.0.0 UI/UX rework — Side Panel queue, URL-routed
-  page adapters, page-range / all-pages crawling on both sites, popup retired.
+  page adapters, page-range / all-pages crawling on the supported site families,
+  popup retired.
   Merged with a merge commit.
 - **PR #12 (session 11, this session): the world-domain listing pass + the
   rule34.world keyset-pagination fix** — real lowercase search payload
@@ -908,9 +925,9 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   `temp_blacklist_items` block — the parser only reads the main `*_items`
   block. `/search/<q>/2/` is a 404.
 
-### rule34.world
+### rule34.world / rule34.xyz family
 - Angular SPA (`<app-root>`); data via API, not static HTML.
-- `GET https://rule34.world/api/v2/post/{id}` → JSON
+- `GET https://rule34.world/api/v2/post/{id}` or `https://rule34.xyz/api/v2/post/{id}` → JSON
   `{ id, type, files: { "100"|"101"|"102"|"10": [flag] }, tags:[...], duration, width, height, created, ... }`.
   **No `filename` field** on single-post responses (resolver falls back to
   `post {id}`).
@@ -923,10 +940,11 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   search API pages 30 at a time (site page N == `skip = 30·(N−1)`, keyset —
   see the top block); the SPA's own config caps listings at 300 pages.
 - File URL: `{root}/posts/{floor(id/1000)}/{id}/{id}.{mov.mp4|mov720.mp4|mov480.mp4|pic.jpg}`,
-  where `root` = `rule34storage.b-cdn.net` (CDN) or `rule34.world` (origin)
-  per the file flag — **session 3: the CDN was 500ing on every post while
-  the origin served fine, so the extension probes both roots and builds URLs
-  on the healthy one** (10-min TTL + `fallbackUrl` retry).
+  where `root` is the matched host's CDN or origin (`rule34storage.b-cdn.net`
+  vs `rule34.world`, or `rule34xyz.b-cdn.net` vs `rule34.xyz`) per the file
+  flag — **session 3: the `.world` CDN was 500ing on every post while the
+  origin served fine, so the extension probes both roots and builds URLs on the
+  healthy one** (10-min TTL + `fallbackUrl` retry).
 - Thumbnail: `{...}/{id}.pic256.jpg`.
 - Listing/search pagination (not yet used, confirmed from gallery-dl
   `rule34xyz.py`): `POST {root}/api/v2/post/search/root` with the lowercase
@@ -940,4 +958,5 @@ gh pr merge <PR_NUMBER> --merge      # merge COMMIT (not squash), so it lands on
   images `/post/100`, `/post/1280481` (2026). Old ids (100–250000) are
   mostly image-only.
 - The sister domain `rule34.xyz` uses the same API/CDN pattern
-  (`rule34xyz.b-cdn.net`); the extension currently targets rule34.world only.
+  (`rule34xyz.b-cdn.net`) and is now supported by the same extension family
+  logic as `rule34.world`.
